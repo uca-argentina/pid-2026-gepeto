@@ -1,0 +1,14 @@
+# IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Maven build output
+target/
+
+# Variables de entorno reales (nunca el .env real, solo el .env.example)
+.env
+
+# macOS
+.DS_Store

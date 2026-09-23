@@ -1,0 +1,19 @@
+databaseChangeLog:
+  - changeSet:
+      id: 005-identidad-visitante-unica
+      author: codex
+      dbms: postgresql
+      # No modifica ni fusiona cuentas existentes. Si hay duplicados históricos
+      # por espacios/mayúsculas, se deben resolver antes de aplicar los índices.
+      changes:
+        - sql:
+            sql: >-
+              CREATE UNIQUE INDEX uq_visitantes_email_normalizado
+              ON visitantes (lower(trim(email)));
+              CREATE UNIQUE INDEX uq_visitantes_documento_normalizado
+              ON visitantes (trim(documento));
+      rollback:
+        - sql:
+            sql: >-
+              DROP INDEX uq_visitantes_email_normalizado;
+              DROP INDEX uq_visitantes_documento_normalizado;

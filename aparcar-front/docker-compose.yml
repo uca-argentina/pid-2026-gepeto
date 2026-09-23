@@ -1,0 +1,12 @@
+name: aparcar-front
+
+services:
+  ui:
+    container_name: aparcar-front
+    build:
+      context: .
+    ports:
+      - '3000:3000'
+    env_file:
+      - .env
+    restart: always

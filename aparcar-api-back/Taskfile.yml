@@ -1,0 +1,68 @@
+version: '3'
+
+tasks:
+  default:
+    desc: Lists available tasks
+    cmds:
+      - task --list
+
+  # --- SETUP COMMANDS ---
+  setup-pip:
+    desc: Setup for Windows/Linux (via Pip)
+    cmds:
+      - 'echo "🐍 Installing pre-commit via Pip..."'
+      - pip install pre-commit
+      - pre-commit install
+      - 'echo "⚠️  Note: Windows users need to install Graphviz manually (winget install Graphviz)"'
+      - 'echo "✅ Setup (Pip) complete."'
+
+  setup-brew:
+    desc: Setup for MacOS (via Homebrew)
+    cmds:
+      - 'echo "🍺 Installing pre-commit and graphviz via Homebrew..."'
+      - brew install pre-commit graphviz
+      - pre-commit install
+      - 'echo "✅ Setup (Brew) complete."'
+
+  # --- DAILY WORKFLOW ---
+  fmt:
+    desc: Run code formatting and static checks (Pre-commit)
+    cmds:
+      - 'echo "🧹 Running pre-commit hooks..."'
+      - pre-commit run --all-files
+
+  migrate:
+    desc: Create a new migration based on entity changes
+    summary: |
+      Usage: task migrate name=your-migration-name
+    cmds:
+      - 'go run scripts/create-migration.go -name={{.name}}'
+
+  run:
+    desc: Run the app locally
+    cmds:
+      - mvn spring-boot:run
+
+  test:
+    desc: Run all unit tests
+    cmds:
+      - mvn test
+
+  cover:
+    desc: Run tests and generate Jacoco coverage report
+    cmds:
+      - 'echo "🛡️  Running tests and checking coverage..."'
+      - mvn verify
+      - 'echo "To view coverage report: open target/site/jacoco/index.html"'
+
+  build:
+    desc: Build the application JAR
+    cmds:
+      - mvn clean package -DskipTests
+
+  profile:
+    desc: "Run the application with JFR profiling for 60 seconds"
+    cmds:
+      - 'echo "🔬 Running with JFR profiling (60 seconds)..."'
+      - java -XX:StartFlightRecording=duration=60s,filename=recording.jfr -jar target/*.jar
+      - 'echo "To view: open recording.jfr with JDK Mission Control or IntelliJ"'

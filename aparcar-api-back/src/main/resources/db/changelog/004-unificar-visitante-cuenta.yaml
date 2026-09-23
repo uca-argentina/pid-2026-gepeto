@@ -1,0 +1,264 @@
+databaseChangeLog:
+  # Unifica visitante y cuenta de login en una sola entidad.
+  #
+  # Antes eran dos tablas (`visitantes` y `app_users`) unidas por un
+  # app_user_id opcional. Esa opcionalidad producia "visitantes fantasma":
+  # filas de visitantes sin cuenta, duplicadas contra la cuenta real de la
+  # misma persona. Con una sola tabla, un documento es una persona es una
+  # cuenta.
+  #
+  # Se descarta el dato existente a proposito (decision del equipo): las
+  # filas viejas no se pueden reconciliar de forma confiable porque no hay
+  # manera de saber que visitante fantasma corresponde a que cuenta. Sobrevive
+  # unicamente `cocheras`, que no depende de ninguna de las dos tablas.
+
+  - changeSet:
+      id: 004-drop-reservas
+      author: claude
+      changes:
+        - dropTable:
+            tableName: reservas
+
+  - changeSet:
+      id: 004-drop-vehiculos
+      author: claude
+      changes:
+        - dropTable:
+            tableName: vehiculos
+
+  # Va antes de los drops de abajo: la columna app_user_id de `visitantes`
+  # quedo con una foreign key fisica hacia app_users que creo Hibernate con
+  # ddl-auto: update (el changeset 003 no la creaba, justamente porque
+  # app_users no lo maneja Liquibase). Mientras `visitantes` exista, esa FK
+  # impide dropear app_users.
+  - changeSet:
+      id: 004-drop-visitantes
+      author: claude
+      changes:
+        - dropTable:
+            tableName: visitantes
+
+  # otp_codes y app_users los creaba Hibernate (ddl-auto), no Liquibase, asi
+  # que en una base nueva todavia no existen cuando corre este changeset: por
+  # eso cada drop va con su precondicion.
+  - changeSet:
+      id: 004-drop-otp-codes
+      author: claude
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            tableName: otp_codes
+      changes:
+        - dropTable:
+            tableName: otp_codes
+
+  - changeSet:
+      id: 004-drop-app-user-authorities
+      author: claude
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            tableName: app_user_authorities
+      changes:
+        - dropTable:
+            tableName: app_user_authorities
+
+  - changeSet:
+      id: 004-drop-app-users
+      author: claude
+      preConditions:
+        - onFail: MARK_RAN
+        - tableExists:
+            tableName: app_users
+      changes:
+        - dropTable:
+            tableName: app_users
+
+  - changeSet:
+      id: 004-create-visitantes
+      author: claude
+      changes:
+        - createTable:
+            tableName: visitantes
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: nombre
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              # Identifica a la persona y es ademas su contraseña inicial
+              # cuando el alta la hace un admin desde el panel.
+              - column:
+                  name: documento
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+                    unique: true
+              # Ahora es el identificador de login, por eso pasa a ser
+              # obligatorio y unico (antes era un dato de contacto opcional).
+              - column:
+                  name: email
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: password
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: telefono
+                  type: varchar(255)
+              - column:
+                  name: is_active
+                  type: boolean
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 004-create-visitante-authorities
+      author: claude
+      changes:
+        - createTable:
+            tableName: visitante_authorities
+            columns:
+              - column:
+                  name: visitante_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_visitante_authorities_visitante
+                    references: visitantes(id)
+              - column:
+                  name: authority
+                  type: varchar(50)
+
+  - changeSet:
+      id: 004-create-otp-codes
+      author: claude
+      changes:
+        - createSequence:
+            sequenceName: otp_codes_seq
+            startValue: 1
+            incrementBy: 50
+        - createTable:
+            tableName: otp_codes
+            columns:
+              - column:
+                  name: id
+                  type: bigint
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: token
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: user_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    unique: true
+                    foreignKeyName: fk_otp_codes_visitante
+                    references: visitantes(id)
+              - column:
+                  name: expires_at
+                  type: timestamp
+                  constraints:
+                    nullable: false
+              - column:
+                  name: used
+                  type: boolean
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 004-create-vehiculos
+      author: claude
+      changes:
+        - createTable:
+            tableName: vehiculos
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: patente
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: tipo
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: visitante_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_vehiculos_visitante
+                    references: visitantes(id)
+
+  - changeSet:
+      id: 004-create-reservas
+      author: claude
+      changes:
+        - createTable:
+            tableName: reservas
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: fecha
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: visitante_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_reservas_visitante
+                    references: visitantes(id)
+              - column:
+                  name: vehiculo_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_reservas_vehiculo
+                    references: vehiculos(id)
+              - column:
+                  name: cochera_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_reservas_cochera
+                    references: cocheras(id)
+              - column:
+                  name: estado
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: fecha_creacion
+                  type: timestamp
+                  constraints:
+                    nullable: false

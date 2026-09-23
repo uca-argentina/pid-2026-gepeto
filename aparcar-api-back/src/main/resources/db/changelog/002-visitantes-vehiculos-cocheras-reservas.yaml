@@ -1,0 +1,195 @@
+databaseChangeLog:
+  - changeSet:
+      id: 002-create-visitantes
+      author: mateo
+      changes:
+        - createTable:
+            tableName: visitantes
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: nombre
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: documento
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: telefono
+                  type: varchar(255)
+              - column:
+                  name: email
+                  type: varchar(255)
+
+  - changeSet:
+      id: 002-create-vehiculos
+      author: mateo
+      changes:
+        - createTable:
+            tableName: vehiculos
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: patente
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: tipo
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: visitante_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_vehiculos_visitante
+                    references: visitantes(id)
+
+  - changeSet:
+      id: 002-create-cocheras
+      author: mateo
+      changes:
+        - createTable:
+            tableName: cocheras
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: numero
+                  type: varchar(50)
+                  constraints:
+                    nullable: false
+                    unique: true
+              - column:
+                  name: sector
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tipo
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: estado
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 002-create-reservas
+      author: mateo
+      changes:
+        - createTable:
+            tableName: reservas
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: fecha
+                  type: date
+                  constraints:
+                    nullable: false
+              - column:
+                  name: visitante_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_reservas_visitante
+                    references: visitantes(id)
+              - column:
+                  name: vehiculo_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_reservas_vehiculo
+                    references: vehiculos(id)
+              - column:
+                  name: cochera_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_reservas_cochera
+                    references: cocheras(id)
+              - column:
+                  name: estado
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: fecha_creacion
+                  type: timestamp
+                  constraints:
+                    nullable: false
+
+  # Datos de ejemplo para poder probar /api/v1/cocheras/disponibles de punta a
+  # punta hasta que exista una pantalla de administracion de cocheras.
+  - changeSet:
+      id: 002-seed-cocheras
+      author: mateo
+      changes:
+        - insert:
+            tableName: cocheras
+            columns:
+              - column: { name: id, value: "b1a7c2b0-1111-4a1a-9c1a-000000000001" }
+              - column: { name: numero, value: "A-01" }
+              - column: { name: sector, value: "Planta Baja" }
+              - column: { name: tipo, value: "AUTO" }
+              - column: { name: estado, value: "HABILITADA" }
+        - insert:
+            tableName: cocheras
+            columns:
+              - column: { name: id, value: "b1a7c2b0-1111-4a1a-9c1a-000000000002" }
+              - column: { name: numero, value: "A-02" }
+              - column: { name: sector, value: "Planta Baja" }
+              - column: { name: tipo, value: "AUTO" }
+              - column: { name: estado, value: "HABILITADA" }
+        - insert:
+            tableName: cocheras
+            columns:
+              - column: { name: id, value: "b1a7c2b0-1111-4a1a-9c1a-000000000003" }
+              - column: { name: numero, value: "M-01" }
+              - column: { name: sector, value: "Sector Motos" }
+              - column: { name: tipo, value: "MOTO" }
+              - column: { name: estado, value: "HABILITADA" }
+        - insert:
+            tableName: cocheras
+            columns:
+              - column: { name: id, value: "b1a7c2b0-1111-4a1a-9c1a-000000000004" }
+              - column: { name: numero, value: "C-01" }
+              - column: { name: sector, value: "Sector Carga" }
+              - column: { name: tipo, value: "CARGA" }
+              - column: { name: estado, value: "HABILITADA" }
+        - insert:
+            tableName: cocheras
+            columns:
+              - column: { name: id, value: "b1a7c2b0-1111-4a1a-9c1a-000000000005" }
+              - column: { name: numero, value: "AC-01" }
+              - column: { name: sector, value: "Entrada Principal" }
+              - column: { name: tipo, value: "ACCESIBLE" }
+              - column: { name: estado, value: "HABILITADA" }

@@ -1,0 +1,50 @@
+api:
+  title: AparcAR API
+  version: 0.0.1 # Reminder: change it in the pom.xml too!
+
+spring:
+  application:
+    name: AparcarApi
+
+  threads:
+    virtual:
+      enabled: true
+
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+      naming:
+        physical-strategy: org.hibernate.boot.model.naming.CamelCaseToUnderscoresNamingStrategy
+    properties:
+      hibernate:
+        dialect: ${DB_DIALECT}
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    protocol: smtp
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+      mail.smtp.ssl.enable: false
+
+springdoc:
+  swagger-ui:
+    path: /docs
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd'T'HH:mm:ss.SSSXXX} %5p ${PID} --- [${api.title}] [v${api.version}] [%15.15t] %-40.40logger{39} : %m%n"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

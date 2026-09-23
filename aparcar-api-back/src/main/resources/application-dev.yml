@@ -1,0 +1,10 @@
+spring:
+  jpa:
+    show-sql: true
+    hibernate:
+      # La base de auth (app_users, otp_codes) nunca tuvo una migracion de
+      # Liquibase (001-initial-schema.yaml esta vacio), asi que en dev dejamos
+      # que Hibernate cree/actualice el esquema el mismo. En prod se mantiene
+      # "validate" (definido en application.yml) para no auto-modificar la
+      # base con datos reales.
+      ddl-auto: update

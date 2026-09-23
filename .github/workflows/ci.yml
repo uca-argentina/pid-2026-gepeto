@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  pull_request:
+    branches: ["main", "dev"]
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'aparcar-api-back/**'
+            frontend:
+              - 'aparcar-front/**'
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aparcar-api-back
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+          cache: "maven"
+
+      - name: Build and test
+        run: mvn -B clean install
+
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: aparcar-front
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: aparcar-front/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm run test -- --reporter=verbose
+
+      - name: Build
+        run: npm run build
+
+  # Job agregador para solucionar el bloqueo en los PRs
+  ci-status:
+    needs: [changes, backend, frontend]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check overall CI status
+        run: |
+          backend_result="${{ needs.backend.result }}"
+          frontend_result="${{ needs.frontend.result }}"
+         
+          if [ "$backend_result" = "failure" ] || [ "$frontend_result" = "failure" ]; then
+            echo "Uno o más jobs fallaron."
+            exit 1
+          fi
+          echo "Todos los jobs necesarios pasaron o se skipearon correctamente."

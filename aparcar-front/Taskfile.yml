@@ -1,0 +1,38 @@
+version: '3'
+
+tasks:
+  default:
+    cmds:
+      - task: dev
+
+  install:
+    desc: Install NPM dependencies
+    cmds:
+      - npm install
+
+  dev:
+    desc: Run the Next.js development server
+    cmds:
+      - npm run dev
+
+  build:
+    desc: Build the Next.js application for production
+    cmds:
+      - npm run build
+
+  start:
+    desc: Start the production server
+    cmds:
+      - npm run start
+
+  lint:
+    desc: Run ESLint
+    cmds:
+      - npm run lint
+
+  setup:
+    desc: Initial project setup (install dependencies and configure pre-commit)
+    cmds:
+      - task: install
+      - pip install pre-commit
+      - pre-commit install
