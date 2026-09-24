@@ -68,5 +68,6 @@ public interface ICocheraService {
      * indica tipoVehiculo, solo devuelve las compatibles (ver regla de
      * compatibilidad en {@link IReservaService}).
      */
-    List<CocheraResponseDto> listarDisponibles(LocalDate fecha, VehiculoTipo tipoVehiculo);
+    List<CocheraResponseDto> listarDisponibles(LocalDateTime desde, LocalDateTime hasta,
+                                               VehiculoTipo tipoVehiculo);
 }

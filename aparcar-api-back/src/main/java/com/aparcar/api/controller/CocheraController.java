@@ -71,10 +71,15 @@ public class CocheraController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Cocheras libres durante toda la franja pedida. El rango es semiabierto:
+     * una cochera cuya reserva termina justo en "desde" cuenta como libre.
+     */
     @GetMapping("/disponibles")
     public ResponseEntity<List<CocheraResponseDto>> listarDisponibles(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime desde,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime hasta,
             @RequestParam(required = false) VehiculoTipo tipoVehiculo) {
-        return ResponseEntity.ok(cocheraService.listarDisponibles(fecha, tipoVehiculo));
+        return ResponseEntity.ok(cocheraService.listarDisponibles(desde, hasta, tipoVehiculo));
     }
 }

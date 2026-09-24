@@ -168,7 +168,7 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
 
   const cancelarReserva = async (reserva) => {
     const confirmado = window.confirm(
-      `¿Seguro que querés cancelar la reserva de la cochera ${reserva.cochera?.numero} del ${reserva.fecha}?`
+      `¿Seguro que querés cancelar la reserva de la cochera ${reserva.cochera?.numero} (${formatearRango(reserva.desde, reserva.hasta)})?`
     );
     if (!confirmado) {
       return;
@@ -192,8 +192,8 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
         <h1 className="text-3xl font-extrabold tracking-tight text-ink mb-2">Nueva reserva</h1>
         <p className="text-sm text-ink/60">
           {esAdmin
-            ? "Ingresá la patente del vehículo y elegí una cochera disponible para la fecha."
-            : "Elegí uno de tus vehículos y una cochera disponible para la fecha."}
+            ? "Ingresá la patente, elegí desde y hasta cuándo, y una cochera libre en esa franja."
+            : "Elegí uno de tus vehículos, desde y hasta cuándo, y una cochera libre en esa franja."}
         </p>
       </div>
 
@@ -253,15 +253,32 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
             </div>
 
             <div>
-              <label className={labelClasses} htmlFor="reserva-fecha">Fecha</label>
+              <label className={labelClasses} htmlFor="reserva-desde">Desde</label>
               <input
-                id="reserva-fecha"
-                type="date"
-                min={today()}
-                {...register("fecha")}
+                id="reserva-desde"
+                type="datetime-local"
+                {...register("desde")}
                 className={inputClasses}
               />
-              {errors.fecha && <p className="mt-1 text-sm text-red-500">{errors.fecha.message}</p>}
+              {errors.desde && <p className="mt-1 text-sm text-red-500">{errors.desde.message}</p>}
+            </div>
+
+            <div>
+              <label className={labelClasses} htmlFor="reserva-hasta">Hasta</label>
+              <input
+                id="reserva-hasta"
+                type="datetime-local"
+                min={desde}
+                {...register("hasta")}
+                className={inputClasses}
+              />
+              {errors.hasta && <p className="mt-1 text-sm text-red-500">{errors.hasta.message}</p>}
+              {/* Se avisa al instante: si se espera al submit, el error que
+                  aparece es el de la cochera (que quedo deshabilitada), y el
+                  problema real —la franja dada vuelta— queda invisible. */}
+              {desde && hasta && hasta <= desde && !errors.hasta && (
+                <p className="mt-1 text-sm text-red-500">El fin tiene que ser posterior al inicio</p>
+              )}
             </div>
 
             <div className="sm:col-span-2">
@@ -270,14 +287,14 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
                 id="reserva-cocheraId"
                 {...register("cocheraId")}
                 className={inputClasses}
-                disabled={!vehiculoEncontrado || !fecha}
+                disabled={!vehiculoEncontrado || !rangoValido}
               >
                 <option value="">
-                  {vehiculoEncontrado && fecha
+                  {vehiculoEncontrado && rangoValido
                     ? "Seleccioná una cochera"
                     : esAdmin
-                    ? "Ingresá primero una patente válida y una fecha"
-                    : "Elegí primero un vehículo y una fecha"}
+                    ? "Ingresá primero una patente válida y la franja"
+                    : "Elegí primero un vehículo y la franja"}
                 </option>
                 {cocheras.map((c) => (
                   <option key={c.id} value={c.id}>

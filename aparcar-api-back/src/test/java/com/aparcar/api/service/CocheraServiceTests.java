@@ -267,7 +267,7 @@ public class CocheraServiceTests {
         Cochera a01 = cocheraAuto("A-01");
         when(cocheraRepository.buscar(null, null, null)).thenReturn(List.of(a01));
 
-        var resultado = cocheraService.listar(null, null, null, null);
+        var resultado = cocheraService.listar(null, null, null, null, null);
 
         assertEquals(1, resultado.size());
         assertEquals(null, resultado.get(0).disponibleEnFecha());
@@ -278,7 +278,7 @@ public class CocheraServiceTests {
     void listarTrataSectorEnBlancoComoNull() {
         when(cocheraRepository.buscar(null, CocheraTipo.AUTO, null)).thenReturn(List.of());
 
-        cocheraService.listar("   ", CocheraTipo.AUTO, null, null);
+        cocheraService.listar("   ", CocheraTipo.AUTO, null, null, null);
 
         verify(cocheraRepository).buscar(null, CocheraTipo.AUTO, null);
     }
@@ -288,16 +288,17 @@ public class CocheraServiceTests {
     void listarConFechaMarcaOcupadaCorrectamente() {
         Cochera libre = cocheraAuto("A-01");
         Cochera ocupada = cocheraAuto("A-02");
-        LocalDate fecha = LocalDate.now();
+        LocalDateTime desde = LocalDateTime.now();
+        LocalDateTime hasta = desde.plusHours(2);
 
         Reserva reserva = new Reserva();
         reserva.setCochera(ocupada);
         reserva.setEstado(ReservaEstado.CONFIRMADA);
 
         when(cocheraRepository.buscar(null, null, null)).thenReturn(List.of(libre, ocupada));
-        when(reservaRepository.findByFechaAndEstado(fecha, ReservaEstado.CONFIRMADA)).thenReturn(List.of(reserva));
+        when(reservaRepository.findSolapadas(ReservaEstado.CONFIRMADA, desde, hasta)).thenReturn(List.of(reserva));
 
-        var resultado = cocheraService.listar(null, null, null, fecha);
+        var resultado = cocheraService.listar(null, null, null, desde, hasta);
 
         var dtoLibre = resultado.stream().filter(c -> c.numero().equals("A-01")).findFirst().orElseThrow();
         var dtoOcupada = resultado.stream().filter(c -> c.numero().equals("A-02")).findFirst().orElseThrow();

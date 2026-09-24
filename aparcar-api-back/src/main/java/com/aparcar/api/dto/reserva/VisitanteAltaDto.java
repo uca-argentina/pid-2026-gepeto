@@ -50,6 +50,11 @@ public class VisitanteAltaDto {
     private UUID cocheraId;
 
     // Si se omite, se conserva el alta para hoy de los clientes existentes.
-    @FutureOrPresent(message = "La fecha no puede ser anterior a hoy")
-    private LocalDate fecha;
+    /**
+     * Franja de la reserva que se crea junto con el alta. Si no vienen, el
+     * servicio usa "desde ahora y por una hora".
+     */
+    private LocalDateTime desde;
+
+    private LocalDateTime hasta;
 }

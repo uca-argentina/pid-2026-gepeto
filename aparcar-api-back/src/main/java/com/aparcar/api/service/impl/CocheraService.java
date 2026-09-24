@@ -17,7 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -86,19 +86,18 @@ public class CocheraService implements ICocheraService {
     }
 
     @Override
-    public List<CocheraResponseDto> listar(String sector, CocheraTipo tipo, CocheraEstado estado, LocalDate fecha) {
+    public List<CocheraResponseDto> listar(String sector, CocheraTipo tipo, CocheraEstado estado,
+                                           LocalDateTime desde, LocalDateTime hasta) {
         List<Cochera> cocheras = cocheraRepository.buscar(blankToNull(sector), tipo, estado);
 
-        if (fecha == null) {
+        if (desde == null || hasta == null) {
             return cocheras.stream().map(cochera -> toResponseDto(cochera, null)).toList();
         }
 
-        Set<UUID> ocupadasEnFecha = reservaRepository.findByFechaAndEstado(fecha, ReservaEstado.CONFIRMADA).stream()
-                .map(reserva -> reserva.getCochera().getId())
-                .collect(Collectors.toSet());
+        Set<UUID> ocupadas = ocupadasEnRango(desde, hasta);
 
         return cocheras.stream()
-                .map(cochera -> toResponseDto(cochera, !ocupadasEnFecha.contains(cochera.getId())))
+                .map(cochera -> toResponseDto(cochera, !ocupadas.contains(cochera.getId())))
                 .toList();
     }
 

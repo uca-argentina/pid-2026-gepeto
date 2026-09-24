@@ -91,7 +91,7 @@ describe("ReservasContent en modo admin", () => {
     expect(screen.getByLabelText("Cochera")).toBeDisabled();
   });
 
-  it("al resolver un vehiculo (con fecha ya cargada por defecto), pide las cocheras disponibles de ese tipo", async () => {
+  it("al resolver un vehiculo (con la franja ya cargada por defecto), pide las cocheras disponibles de ese tipo", async () => {
     mockData({ visitantes: [visitante()], vehiculos: [vehiculo()], disponibles: [cochera()] });
     const user = userEvent.setup();
     render(<ReservasContent modo="admin" />);
@@ -128,7 +128,7 @@ describe("ReservasContent en modo admin", () => {
     });
   });
 
-  it("confirmar la reserva envia el visitanteId/vehiculoId resueltos por patente, junto con cochera y fecha", async () => {
+  it("confirmar la reserva envia el visitanteId/vehiculoId resueltos por patente, junto con cochera y franja", async () => {
     mockData({ visitantes: [visitante()], vehiculos: [vehiculo()], disponibles: [cochera()] });
     postMock.mockResolvedValue({ data: {} });
     const user = userEvent.setup();
@@ -143,7 +143,13 @@ describe("ReservasContent en modo admin", () => {
     await waitFor(() =>
       expect(postMock).toHaveBeenCalledWith(
         "/api/v1/reservas",
-        expect.objectContaining({ visitanteId: "v1", vehiculoId: "veh1", cocheraId: "c1" })
+        expect.objectContaining({
+          visitanteId: "v1",
+          vehiculoId: "veh1",
+          cocheraId: "c1",
+          desde: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/),
+          hasta: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/),
+        })
       )
     );
     expect(toastSuccessMock).toHaveBeenCalledWith("Reserva creada correctamente");
@@ -161,7 +167,8 @@ describe("ReservasContent en modo admin", () => {
 describe("ReservasContent: cancelar una reserva", () => {
   const RESERVA_CONFIRMADA = {
     id: "r1",
-    fecha: "2026-01-01",
+    desde: "2026-01-01T10:00",
+    hasta: "2026-01-01T12:00",
     estado: "CONFIRMADA",
     visitante: { nombre: "Juan Perez" },
     vehiculo: { patente: "ABC123" },
@@ -315,7 +322,8 @@ describe("ReservasContent en modo visitante", () => {
       reservas: [
         {
           id: "r1",
-          fecha: "2026-01-01",
+          desde: "2026-01-01T10:00",
+          hasta: "2026-01-01T12:00",
           estado: "CONFIRMADA",
           visitante: { nombre: "Juan Perez" },
           vehiculo: { patente: "ABC123" },
@@ -327,5 +335,127 @@ describe("ReservasContent en modo visitante", () => {
 
     expect(await screen.findByText("Mis reservas")).toBeInTheDocument();
     expect(screen.queryByText("Juan Perez — ABC123")).not.toBeInTheDocument();
+  });
+});
+
+describe("ReservasContent: franja horaria", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // "La reserva debe marcar por default la hora y dia del momento": el campo
+  // no arranca vacío ni en medianoche.
+  it("arranca con el desde en el momento actual y el hasta una hora despues", async () => {
+    mockData({ vehiculos: [vehiculo()] });
+    render(<ReservasContent modo="admin" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+
+    const desde = screen.getByLabelText("Desde").value;
+    const hasta = screen.getByLabelText("Hasta").value;
+
+    expect(desde).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    expect(hasta).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    // Una hora exacta de diferencia.
+    expect(new Date(hasta) - new Date(desde)).toBe(60 * 60 * 1000);
+
+    // Y el "desde" es efectivamente ahora, no una fecha fija.
+    const diferenciaConAhora = Math.abs(new Date(desde) - Date.now());
+    expect(diferenciaConAhora).toBeLessThan(2 * 60 * 1000);
+  });
+
+  // La disponibilidad se pregunta por el rango completo, no por el día.
+  it("pide las cocheras libres mandando desde y hasta", async () => {
+    mockData({ visitantes: [visitante()], vehiculos: [vehiculo()], disponibles: [cochera()] });
+    const user = userEvent.setup();
+    render(<ReservasContent modo="admin" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+
+    await user.type(screen.getByPlaceholderText("ABC123 / AB123CD"), "ABC123");
+
+    await waitFor(() =>
+      expect(getMock).toHaveBeenCalledWith(
+        "/api/v1/cocheras/disponibles",
+        expect.objectContaining({
+          params: expect.objectContaining({
+            tipoVehiculo: "AUTO",
+            desde: expect.any(String),
+            hasta: expect.any(String),
+          }),
+        })
+      )
+    );
+  });
+
+  // Se puede reservar el tiempo que se desee: cambiar el "hasta" a otro día
+  // tiene que volver a consultar disponibilidad con ese rango.
+  it("permite estirar la franja a varios dias y vuelve a consultar disponibilidad", async () => {
+    mockData({ visitantes: [visitante()], vehiculos: [vehiculo()], disponibles: [cochera()] });
+    const user = userEvent.setup();
+    render(<ReservasContent modo="admin" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+    await user.type(screen.getByPlaceholderText("ABC123 / AB123CD"), "ABC123");
+    await screen.findByRole("option", { name: /A-01/ });
+
+    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2099-03-10T18:00" } });
+
+    await waitFor(() =>
+      expect(getMock).toHaveBeenLastCalledWith(
+        "/api/v1/cocheras/disponibles",
+        expect.objectContaining({ params: expect.objectContaining({ hasta: "2099-03-10T18:00" }) })
+      )
+    );
+  });
+
+  it("avisa si la franja queda invertida y no consulta disponibilidad con ella", async () => {
+    mockData({ visitantes: [visitante()], vehiculos: [vehiculo()], disponibles: [cochera()] });
+    const user = userEvent.setup();
+    render(<ReservasContent modo="admin" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+    await user.type(screen.getByPlaceholderText("ABC123 / AB123CD"), "ABC123");
+
+    fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2099-01-01T12:00" } });
+    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2099-01-01T08:00" } });
+
+    expect(await screen.findByText("El fin tiene que ser posterior al inicio")).toBeInTheDocument();
+    expect(screen.getByLabelText("Cochera")).toBeDisabled();
+  });
+
+  it("muestra la franja de cada reserva en el listado, no una fecha suelta", async () => {
+    mockData({
+      reservas: [
+        {
+          id: "r1",
+          desde: "2026-01-01T10:00",
+          hasta: "2026-01-01T12:00",
+          estado: "CONFIRMADA",
+          visitante: { nombre: "Juan Perez" },
+          vehiculo: { patente: "ABC123" },
+          cochera: { numero: "A-01", sector: "Planta Baja" },
+        },
+      ],
+    });
+    render(<ReservasContent modo="admin" />);
+
+    // Mismo día: se nombra una sola vez y se muestran las dos horas.
+    expect(await screen.findByText(/01\/01 de 10:00 a 12:00/)).toBeInTheDocument();
+  });
+
+  it("muestra los dos dias cuando la franja cruza la medianoche", async () => {
+    mockData({
+      reservas: [
+        {
+          id: "r1",
+          desde: "2026-01-01T22:00",
+          hasta: "2026-01-03T08:00",
+          estado: "CONFIRMADA",
+          visitante: { nombre: "Juan Perez" },
+          vehiculo: { patente: "ABC123" },
+          cochera: { numero: "A-01", sector: "Planta Baja" },
+        },
+      ],
+    });
+    render(<ReservasContent modo="admin" />);
+
+    expect(await screen.findByText(/01\/01 22:00 → 03\/01 08:00/)).toBeInTheDocument();
   });
 });

@@ -30,8 +30,25 @@ public class Reserva {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    /**
+     * Inicio de la franja reservada, inclusive.
+     *
+     * <p>La reserva dejo de ser "por dia" para pasar a ser un rango: dos
+     * reservas sobre la misma cochera se pisan si y solo si sus rangos se
+     * solapan. El intervalo es semiabierto [desde, hasta), asi que una reserva
+     * que termina justo cuando arranca la siguiente NO se considera
+     * superpuesta: el lugar queda libre en ese instante.
+     */
     @Column(nullable = false)
-    private LocalDate fecha;
+    private LocalDateTime desde;
+
+    /**
+     * Fin de la franja, exclusive. Cuando pasa, la cochera queda libre sola:
+     * ningun rango posterior se solapa con uno ya terminado, sin depender de
+     * que corra ninguna tarea.
+     */
+    @Column(nullable = false)
+    private LocalDateTime hasta;
 
     @ManyToOne(optional = false)
     @JoinColumn(name = "visitante_id", nullable = false)

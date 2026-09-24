@@ -21,6 +21,11 @@ services:
       dockerfile: dockerfiles/server.Dockerfile
     ports:
       - '8080:8080'
+    environment:
+      # La app fija su zona horaria por configuracion (ZonaHorariaConfig); esto
+      # alinea ademas el reloj del sistema del contenedor, que por defecto
+      # arranca en UTC, para que los logs no digan otra hora que la aplicacion.
+      TZ: America/Argentina/Buenos_Aires
     env_file:
       - .env
     depends_on:

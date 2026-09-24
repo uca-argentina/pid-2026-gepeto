@@ -29,7 +29,7 @@ import org.mockito.Mock;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Instant;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -96,7 +96,8 @@ public class VisitanteServiceTests {
     private static ReservaResponseDto unaReserva() {
         return new ReservaResponseDto(
                 UUID.randomUUID(),
-                LocalDate.now(),
+                LocalDateTime.now(),
+                LocalDateTime.now().plusHours(1),
                 new VisitanteResponseDto(UUID.randomUUID(), "Juan Perez", "30111222", null, "juan@mail.com"),
                 new VehiculoResponseDto(VEHICULO_ID, "ABC123", VehiculoTipo.AUTO, UUID.randomUUID()),
                 new CocheraResponseDto(COCHERA_ID, "A-01", "Planta Baja", CocheraTipo.AUTO, CocheraEstado.HABILITADA, null),

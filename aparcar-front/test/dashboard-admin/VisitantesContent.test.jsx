@@ -48,7 +48,7 @@ describe("VisitantesContent (alta de visitante con reserva)", () => {
     vi.clearAllMocks();
   });
 
-  it("consulta disponibilidad y reserva para la fecha elegida, limpiando la cochera anterior", async () => {
+  it("consulta disponibilidad y reserva para la franja elegida, limpiando la cochera anterior", async () => {
     mockCocheras([cochera()]);
     postMock.mockResolvedValue({ data: {} });
     const user = userEvent.setup();
