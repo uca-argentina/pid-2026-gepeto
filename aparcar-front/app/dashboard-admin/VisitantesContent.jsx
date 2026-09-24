@@ -7,6 +7,7 @@ import * as z from "zod";
 import { toast } from "sonner";
 import api from "@/app/api";
 import { formatoPatenteValido, MENSAJE_FORMATO_INVALIDO } from "@/utils/patenteValidation";
+import { ahora, enUnaHora } from "@/utils/franjaHoraria";
 
 const visitanteSchema = z
   .object({

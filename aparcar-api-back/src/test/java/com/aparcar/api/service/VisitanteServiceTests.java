@@ -172,22 +172,27 @@ public class VisitanteServiceTests {
         ArgumentCaptor<ReservaRequestDto> captor = ArgumentCaptor.forClass(ReservaRequestDto.class);
         verify(reservaService).crear(captor.capture(), any(), anyBoolean());
 
-        assertEquals(LocalDate.now(), captor.getValue().getFecha());
+        // Sin franja explicita, el alta arranca ahora y dura una hora.
+        assertEquals(60, java.time.Duration.between(
+                captor.getValue().getDesde(), captor.getValue().getHasta()).toMinutes());
         assertEquals(COCHERA_ID, captor.getValue().getCocheraId());
         assertEquals(VEHICULO_ID, captor.getValue().getVehiculoId());
     }
 
     @Test
-    @DisplayName("altaConReserva usa la fecha elegida al crear la reserva")
-    void altaReservaParaLaFechaElegida() {
-        LocalDate fecha = LocalDate.now().plusDays(7);
-        dto.setFecha(fecha);
+    @DisplayName("altaConReserva usa la franja elegida al crear la reserva")
+    void altaReservaParaLaFranjaElegida() {
+        LocalDateTime desde = LocalDateTime.now().plusDays(7);
+        LocalDateTime hasta = desde.plusHours(3);
+        dto.setDesde(desde);
+        dto.setHasta(hasta);
 
         visitanteService.altaConReserva(dto);
 
         ArgumentCaptor<ReservaRequestDto> captor = ArgumentCaptor.forClass(ReservaRequestDto.class);
         verify(reservaService).crear(captor.capture(), any(), anyBoolean());
-        assertEquals(fecha, captor.getValue().getFecha());
+        assertEquals(desde, captor.getValue().getDesde());
+        assertEquals(hasta, captor.getValue().getHasta());
     }
 
     // El alta es todo o nada: si la cochera ya estaba tomada, la excepcion sale
