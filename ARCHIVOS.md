@@ -37,6 +37,20 @@ Convenciones:
 
 Resumen de lo nuevo, para no tener que leer todo el archivo buscando las marcas.
 
+**Reservas por franja horaria** 🆕
+
+- Una reserva dejó de ser "por día" y pasó a ser un rango `[desde, hasta)`. Se puede reservar el tiempo que se quiera, incluidos varios días.
+- **Toda la regla de "no se pisan" es una sola condición**, en `ReservaRepository`: `r.desde < :hasta AND r.hasta > :desde`. Es el test estándar de intersección de intervalos semiabiertos: cubre los cuatro casos de superposición y deja pasar el borde que hay que permitir — si una reserva termina justo cuando arranca la siguiente, no se pisan y la cochera se puede volver a entregar en ese instante.
+- **Las cocheras se liberan solas.** Sale de lo mismo: una reserva vencida ya no intersecta ningún rango futuro, así que deja de ocupar en el instante exacto en que termina, sin depender de que corra ninguna tarea.
+- `ReservasVencidas.java` 🆕 marca las vencidas como `FINALIZADA`, pero es **solo informativo**: mantiene el listado legible. Si el proceso se cae un fin de semana, nadie se queda sin poder reservar.
+- Un mismo vehículo no puede ocupar dos cocheras a la vez, aunque las dos estén libres.
+- El formulario arranca el "desde" en el momento actual y deja elegir día y hora del "hasta", en los dos dashboards.
+
+**⚠️ Zona horaria**
+
+- `ZonaHorariaConfig.java` 🆕 fija la zona de la aplicación (`app.zona-horaria`, por defecto `America/Argentina/Buenos_Aires`).
+- Hace falta porque las franjas se guardan como `LocalDateTime`, un reloj de pared sin zona. Es el modelo correcto para un predio —"de 10 a 12" son las 10 y las 12 *del lugar*— pero solo funciona si backend y navegador coinciden en cuál es ese reloj. Sin esto el contenedor arrancaba en UTC mientras el navegador mandaba hora local: una reserva de las 16 a las 17 llegaba a un servidor que creía que eran las 19 y la rechazaba por "terminada en el pasado".
+
 **Integración continua**
 
 - `.github/workflows/ci.yml` 🆕: GitHub Actions corre los checks en cada pull request a `main` o `dev`.
@@ -164,6 +178,7 @@ Piezas reutilizables e inyectables.
 | `IEmailSender.java` | Contrato para enviar emails |
 | `IRevokedUserCache.java` | Contrato para el cache de JWT revocados |
 | `OTPCleanup.java` | Tarea programada que elimina códigos OTP vencidos |
+| `ReservasVencidas.java` 🆕 | Tarea programada que pasa a `FINALIZADA` las reservas cuya franja terminó. **No es lo que libera la cochera**: eso sale del solapamiento de rangos y funciona aunque esta tarea nunca corra. Solo mantiene el listado legible |
 | `impl/RevokedUserCache.java` | Implementación del cache de usuarios revocados usando Caffeine |
 | `impl/SpringEmailSender.java` | Implementación del envío de emails con `JavaMailSender` |
 
@@ -181,6 +196,7 @@ Configuración general de Spring.
 | `SchedulingConfig.java` | Configura tareas `@Scheduled` |
 | `WebClientConfig.java` | Configura el bean de `WebClient` |
 | `WebConfig.java` | Maneja headers `X-Forwarded-*` |
+| `ZonaHorariaConfig.java` 🆕 | Fija la zona horaria de la aplicación (`app.zona-horaria`, por defecto `America/Argentina/Buenos_Aires`). Sin esto el contenedor arranca en UTC y las franjas, que son reloj de pared, quedan desfasadas respecto del navegador |
 | `middleware/DevExceptionHandler.java` ✏️ | Convierte excepciones a respuestas JSON detalladas en desarrollo. Agregado el handler de `AccessDeniedException` 🆕, que devuelve 403 con el mensaje del service (ej. "No podés modificar un vehículo que no es tuyo") |
 | `middleware/ProdExceptionHandler.java` ✏️ | Manejo de errores para producción, con el mismo handler de `AccessDeniedException` |
 
@@ -219,7 +235,7 @@ Todo lo que el backend sabe hacer hoy. La columna "Quién puede" sale de `DevSec
 | `GET /api/v1/cocheras/{id}` | Una cochera por id | ADMIN |
 | `PUT /api/v1/cocheras/{id}` | Edita; al deshabilitarla, cancela sus reservas CONFIRMADAS | ADMIN |
 | `DELETE /api/v1/cocheras/{id}` | Borra; falla con 400 si tiene reservas | ADMIN |
-| `GET /api/v1/cocheras/disponibles` | Cocheras libres para una fecha y tipo de vehículo | **Público** |
+| `GET /api/v1/cocheras/disponibles` ✏️ | Cocheras libres **durante toda la franja** `desde`/`hasta`, filtradas por tipo de vehículo. Ojo: es "libre en todo el rango", no "libre en algún momento" | **Público** |
 | `POST /api/v1/visitantes` | Alta de visitante (documento único) | Autenticado |
 | `GET /api/v1/visitantes` | Lista de visitantes | Autenticado |
 | `GET /api/v1/visitantes/{id}` | Un visitante por id | Autenticado |
@@ -231,7 +247,7 @@ Todo lo que el backend sabe hacer hoy. La columna "Quién puede" sale de `DevSec
 | `GET /api/v1/vehiculos/{id}` | Un vehículo por id | Autenticado |
 | `PUT /api/v1/vehiculos/{id}` 🆕 | Edita patente y tipo | Dueño o ADMIN |
 | `DELETE /api/v1/vehiculos/{id}` 🆕 | Borra; falla con 400 si tiene reservas | Dueño o ADMIN |
-| `POST /api/v1/reservas` | Crea la reserva aplicando las reglas de negocio | Autenticado |
+| `POST /api/v1/reservas` ✏️ | Crea la reserva sobre la franja `desde`/`hasta`, aplicando las reglas de negocio y el control de superposición | Autenticado |
 | `GET /api/v1/reservas` | Lista todas las reservas | Autenticado |
 | `GET /api/v1/reservas/{id}` | Una reserva por id | Autenticado |
 | `GET /docs` | Swagger UI: la API documentada e interactiva | Público |
@@ -272,7 +288,7 @@ Objetos usados para entrada y salida de información de la API.
 
 | Archivo | Qué hace |
 |---|---|
-| `VisitanteRequestDto.java` | Datos recibidos para crear un visitante |
+| `VisitanteAltaDto.java` ✏️ | Alta operativa del admin: los datos del visitante, su vehículo y la franja de la reserva, todo junto, porque se crean en una sola transacción |
 | `VisitanteResponseDto.java` | Datos devueltos de un visitante |
 | `VehiculoRequestDto.java` | Datos recibidos para crear un vehículo |
 | `VehiculoUpdateDto.java` 🆕 | Body de `PUT /api/v1/vehiculos/{id}`: patente y tipo. Valida el formato de patente con regex (`AAA000` o `AA000AA`) |

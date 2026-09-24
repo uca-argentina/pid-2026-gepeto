@@ -342,7 +342,9 @@ cierra la sesión y navega a /login
 
 ## `components/ReservasContent.test.jsx`
 
-Reserva por patente, y la **regresion del bug de cache de vehiculos al hacer foco**. El componente lo comparten los dos dashboards.
+_26 tests._
+
+El formulario de reserva, que comparten los dos dashboards. Cubre la **franja horaria** (arranque por defecto en el momento actual, rango invertido, varios dias) y la **regresion del bug de cache de vehiculos al hacer foco**.
 
 ```
 muestra el mensaje de vacio cuando no hay reservas cargadas
@@ -350,59 +352,117 @@ lista las reservas existentes con su estado
 al escribir una patente registrada, muestra el nombre del visitante y el tipo de vehiculo
 al escribir una patente que no existe, avisa que no se encontro ningun vehiculo
 la cochera queda deshabilitada hasta encontrar un vehiculo por patente
-al resolver un vehiculo (con fecha ya cargada por defecto), pide las cocheras disponibles de ese tipo
+al resolver un vehiculo (con la franja ya cargada por defecto), pide las cocheras disponibles de ese tipo
 el foco en el campo de patente vuelve a pedir vehiculos y visitantes
-confirmar la reserva envia el visitanteId/vehiculoId resueltos por patente, junto con cochera y fecha
+confirmar la reserva envia el visitanteId/vehiculoId resueltos por patente, junto con cochera y franja
 el boton de confirmar reserva esta deshabilitado hasta elegir una cochera
+cancela con POST /api/v1/reservas/{id}/cancelar
+pide confirmacion y no hace nada si se cancela el dialogo
+avisa que la ocupacion cambio
+no ofrece cancelar una reserva que ya esta cancelada
+el visitante tambien puede cancelar desde su dashboard
+si el backend rechaza la cancelacion, muestra su mensaje
+no pide el catalogo de visitantes
+ofrece sus propias patentes en un desplegable en vez de un campo libre
+si todavia no cargo ningun vehiculo, explica que hace falta uno para reservar
+no manda visitanteId al reservar
+lista solo la patente, sin el nombre del visitante
+arranca con el desde en el momento actual y el hasta una hora despues
+pide las cocheras libres mandando desde y hasta
+permite estirar la franja a varios dias y vuelve a consultar disponibilidad
+avisa si la franja queda invertida y no consulta disponibilidad con ella
+muestra la franja de cada reserva en el listado, no una fecha suelta
+muestra los dos dias cuando la franja cruza la medianoche
+```
+
+## `components/ThemeToggle.test.jsx`
+
+_2 tests._
+
+El boton de cambio de tema.
+
+```
+se hidrata al montar y muestra el ícono de luna en modo claro
+al hacer click, alterna a oscuro y aplica la clase al <html>
+```
+
+## `dashboard-admin/PanelOperativo.test.jsx`
+
+_1 tests._
+
+El panel operativo del ADMIN. **Regresion del bug de la reserva que no se agregaba**: que el panel incluya el formulario de reservas, que el admin pueda crear una, y que la cuadricula de ocupacion se refresque despues.
+
+```
+muestra unicamente el alta de visitante, no la grilla vieja ni el formulario de reservas
+```
+
+## `dashboard-admin/VisitantesContent.test.jsx`
+
+_12 tests._
+
+El alta operativa del admin: crea cuenta, vehiculo y reserva en una sola llamada, con su franja.
+
+```
+consulta disponibilidad y reserva para la franja elegida, limpiando la cochera anterior
+ignora respuestas de disponibilidad de una franja anterior y deshabilita la cochera sin franja
+avisa al instante si la franja esta invertida, sin llamar al backend
+muestra errores si se envia el formulario vacio
+exige el email porque es con lo que el visitante inicia sesion
+rechaza una patente con formato invalido
+rechaza una patente de moto cuando el tipo elegido sigue siendo AUTO
+pide las cocheras disponibles de hoy para el tipo de vehiculo elegido
+manda cuenta, vehiculo y cochera en una sola llamada
+avisa que la contraseña inicial es el documento
+avisa al padre para que refresque ocupacion y reservas
+si el alta falla (ej. documento duplicado), muestra el error del backend
 ```
 
 ## `dashboard-admin/cocheras/CocherasManagement.test.jsx`
 
+_24 tests._
+
+ABM de cocheras con sus filtros. El filtro por fecha se traduce al dia completo como rango.
+
 ```
 muestra la navegación de regreso al panel
 carga y lista las cocheras existentes
-filtra por sector
-filtra por tipo
-crea una cochera nueva y refresca la lista
+combina tipo y estado sin sector y recupera todas las cocheras al limpiar filtros
+una respuesta anterior no reemplaza los resultados del filtro actual
+el dropdown de sector se arma con los sectores reales, sin repetidos
+filtra por sector pidiendole al backend, no en el cliente
+filtra por tipo pidiendole al backend
+sin fecha seleccionada, la columna de disponibilidad muestra un guion
+al elegir una fecha, pide al backend el dia completo como rango y muestra Libre/Ocupada
+crea una cochera nueva y refresca la lista y los sectores
 muestra errores de validacion si falta numero o sector
 al editar, precarga el formulario con los datos de la fila elegida
 al deshabilitar una cochera antes HABILITADA, pide confirmacion; si se cancela, no llama a PUT
 al deshabilitar y confirmar, llama a PUT con el nuevo estado
 eliminar pide confirmacion, y si se cancela no llama a DELETE
 eliminar, si se confirma, llama a DELETE y refresca la lista
-```
-
-## `dashboard-admin/EstadoCocherasGrid.test.jsx`
-
-```
-muestra el estado de carga mientras llegan los datos
-muestra el mensaje de vacio cuando no hay cocheras cargadas
-agrupa las cocheras por tipo y solo muestra columnas con al menos una
-marca como ocupada una cochera habilitada que no aparece en /disponibles
-una cochera DESHABILITADA se muestra como tal y no cuenta como ocupada
-si falla la carga, muestra un toast de error
-```
-
-## `dashboard-admin/PanelOperativo.test.jsx`
-
-El panel operativo del ADMIN. **Regresion del bug de la reserva que no se agregaba**: que el panel incluya el formulario de reservas, que el admin pueda crear una, y que la cuadricula de ocupacion se refresque despues.
-
-```
-incluye el formulario de nueva reserva, no solo el alta de visitante
-el admin crea una reserva resolviendo el visitante por patente
-al crear la reserva refresca la cuadricula de ocupacion
+el alta usa un dropdown de sector con las opciones reales del backend
+elegir '+ Otro' en el alta muestra un input de texto libre para el sector nuevo
+sin ningun sector cargado todavia, el alta arranca directo en modo texto libre
+el lote arranca con una sola fila y permite agregar mas
+no permite quitar la ultima fila del lote
+envia el lote completo a POST /api/v1/cocheras/bulk
+si el backend rechaza el lote completo, muestra su mensaje y no limpia el formulario
+muestra errores de validacion por fila si falta el numero
 ```
 
 ## `dashboard-admin/usuarios/UserManagement.test.jsx`
 
+_13 tests._
+
 ```
 muestra la navegación de regreso al panel
 carga y lista los usuarios existentes
-un usuario inactivo muestra el badge Inactivo y el boton Activar
+conserva el boton Activar para usuarios inactivos sin mostrar la columna Estado
 un usuario activo no muestra el boton Activar
 activar un usuario llama a POST /users/activate con su email
 muestra errores de validacion al crear un usuario con datos invalidos
 crea un usuario con datos validos
+no deja crear una cuenta sin documento
 al editar, precarga nombre, telefono y los roles marcados
 editar sin ningun rol marcado muestra el error de validacion
 guarda los cambios de edicion con PUT /api/v1/usuarios/{id}
@@ -410,38 +470,38 @@ eliminar pide confirmacion y llama a DELETE /users con el email
 eliminar cancelado no llama a DELETE
 ```
 
-## `dashboard-admin/VisitantesContent.test.jsx`
-
-```
-muestra errores si se envia el formulario vacio
-rechaza una patente con formato invalido
-crea el visitante y despues el vehiculo con el visitanteId devuelto
-si falla la creacion del visitante (ej. documento duplicado), no intenta crear el vehiculo
-si falla la creacion del vehiculo (ej. patente duplicada), muestra el error del backend
-```
-
 ## `dashboard-user/MiPerfilContent.test.jsx`
 
-Autoregistro del visitante y la **gestion completa de sus datos y vehiculos** (editar perfil, editar y eliminar vehiculos).
+_20 tests._
+
+Los datos propios del visitante y la **gestion completa de sus vehiculos**, mas el cambio de contraseña.
 
 ```
 muestra el estado de carga inicialmente
-si la cuenta todavia no tiene perfil (404), muestra el formulario de autoregistro
-si ya tiene perfil, muestra sus datos y sus vehiculos
-si ya tiene perfil pero ningun vehiculo, avisa que todavia no cargo ninguno
-un error que no es 404 al cargar el perfil muestra un toast de error
-muestra errores de validacion al enviar el formulario de autoregistro vacio
-crea el perfil propio y pasa a mostrar la vista de datos guardados
-si falla la creacion del perfil (ej. cuenta ya tiene uno), muestra el error del backend
+no ofrece ningun formulario de autoregistro: el perfil viene con la cuenta
+muestra sus datos y sus vehiculos
+pide sus vehiculos sin mandar visitanteId
+si todavia no tiene ningun vehiculo, avisa que no cargo ninguno
+un error al cargar el perfil muestra un toast de error
 agregar un vehiculo con patente invalida muestra el error de formato
-agrega un vehiculo propio y refresca la lista
+agregar un vehiculo con patente de auto para un tipo MOTO muestra el error especifico de moto
+agrega un vehiculo propio sin mandar visitanteId y refresca la lista
 el boton 'Editar mis datos' precarga telefono y email actuales
 guarda los cambios de telefono/email con PUT /api/v1/visitantes/me
+no deja vaciar el email, porque es con lo que se inicia sesion
 edita un vehiculo existente con PUT /api/v1/vehiculos/{id}
 elimina un vehiculo con confirmacion
+el formulario esta oculto hasta tocar 'Cambiar contraseña'
+manda la actual y la nueva a PUT /api/v1/visitantes/me/password
+exige la contraseña actual
+rechaza una contraseña nueva de menos de 8 caracteres
+avisa si la repeticion no coincide
+si el backend rechaza el cambio, muestra su mensaje
 ```
 
 ## `login/page.test.jsx`
+
+_10 tests._
 
 ```
 muestra los campos de email y contraseña y el boton de ingresar
@@ -449,6 +509,7 @@ muestra errores de validacion y no llama a la API si el email esta vacio
 muestra error de validacion si la contraseña tiene menos de 6 caracteres
 envia el login con Basic Auth (email:password en base64) y no como body JSON
 con rol ADMIN en el JWT, redirige a /dashboard-admin
+codifica las contraseñas Unicode en UTF-8 para HTTP Basic
 con solo rol USER en el JWT, redirige a /dashboard-user
 si la respuesta no trae header Authorization, muestra error y no redirige
 ante un 401 del backend, muestra 'Email o contraseña incorrectos.'
@@ -456,6 +517,8 @@ ante otro error del backend, muestra el mensaje que devuelve el servidor
 ```
 
 ## `page.test.jsx`
+
+_4 tests._
 
 La landing publica: redireccion por rol si ya hay sesion, y el menu hamburguesa mobile.
 
@@ -466,7 +529,21 @@ con rol USER autenticado, redirige a /dashboard-user
 el menu hamburguesa se abre y cierra en mobile
 ```
 
+## `register/page.test.jsx`
+
+_14 tests._
+
+El registro publico de visitantes desde la pantalla de login.
+
+```
+crea solo la cuenta con datos normalizados y permite iniciar sesión
+bloquea envíos repetidos mientras se crea la cuenta
+permite mostrar y ocultar las contraseñas
+```
+
 ## `store/authStore.test.js`
+
+_8 tests._
 
 ```
 setAuth decodifica las authorities del JWT (string separado por comas) a un array de roles
@@ -479,7 +556,22 @@ checkAuth cierra la sesion si el token de la cookie ya expiro
 checkAuth sin cookie deja la sesion como no autenticada pero hidratada
 ```
 
+## `store/themeStore.test.js`
+
+_4 tests._
+
+El store de tema claro/oscuro.
+
+```
+hidratar arranca en light si no hay nada guardado
+hidratar restaura el tema guardado en localStorage
+alternar cambia de light a dark y persiste la preferencia
+alternar dos veces vuelve a light
+```
+
 ## `utils/env.test.js`
+
+_3 tests._
 
 ```
 devuelve el valor de window.__ENV cuando está presente (runtime)
@@ -487,15 +579,28 @@ ignora window.__ENV si la clave pedida no está definida ahí
 no revienta si window.__ENV no existe
 ```
 
+## `utils/patenteValidation.test.js`
+
+_9 tests._
+
+Los formatos de patente aceptados segun el tipo de vehiculo.
+
+```
+rechaza una patente con formato de auto para una MOTO
+rechaza una patente con formato de moto para un AUTO
+es case-insensitive
+```
+
+
 ---
 
 # Totales
 
 | | Archivos | Tests |
 |---|---|---|
-| Backend | 23 | 160 |
-| Frontend | 13 | 91 |
-| **Total** | **36** | **251** |
+| Backend | 28 | 295 |
+| Frontend | 16 | 157 |
+| **Total** | **44** | **452** |
 
 Correr todo:
 
