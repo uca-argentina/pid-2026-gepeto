@@ -201,7 +201,7 @@ public class ReservaControllerTests {
         mockMvc.perform(post("/api/v1/reservas")
                         .with(securityContext(context))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(reservaJson(visitante.getId(), vehiculo.getId(), cochera.getId(), LocalDate.now())))
+                        .content(reservaJson(visitante.getId(), vehiculo.getId(), cochera.getId(), enUnaHora(), enUnaHora().plusHours(1))))
                 .andExpect(status().isBadRequest());
     }
 
@@ -217,7 +217,7 @@ public class ReservaControllerTests {
         mockMvc.perform(post("/api/v1/reservas")
                         .with(securityContext(context))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(reservaJson(visitante.getId(), vehiculo.getId(), cochera.getId(), LocalDate.now())))
+                        .content(reservaJson(visitante.getId(), vehiculo.getId(), cochera.getId(), enUnaHora(), enUnaHora().plusHours(1))))
                 .andExpect(status().isBadRequest());
     }
 
@@ -228,13 +228,15 @@ public class ReservaControllerTests {
         Visitante visitante = crearVisitante("30111222");
         Vehiculo vehiculo = crearVehiculo("ABC123", VehiculoTipo.AUTO, visitante);
         Cochera cochera = crearCochera("A-01", CocheraTipo.AUTO);
-        LocalDate fecha = LocalDate.now();
+        LocalDateTime desde = enUnaHora();
+        LocalDateTime hasta = desde.plusHours(1);
 
         Reserva existente = new Reserva();
         existente.setVisitante(visitante);
         existente.setVehiculo(vehiculo);
         existente.setCochera(cochera);
-        existente.setFecha(fecha);
+        existente.setDesde(desde);
+        existente.setHasta(hasta);
         existente.setEstado(ReservaEstado.CONFIRMADA);
         reservaRepository.save(existente);
 
@@ -245,7 +247,7 @@ public class ReservaControllerTests {
         mockMvc.perform(post("/api/v1/reservas")
                         .with(securityContext(context))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(reservaJson(otroVisitante.getId(), otroVehiculo.getId(), cochera.getId(), fecha)))
+                        .content(reservaJson(otroVisitante.getId(), otroVehiculo.getId(), cochera.getId(), desde, hasta)))
                 .andExpect(status().isBadRequest());
     }
 
@@ -261,7 +263,7 @@ public class ReservaControllerTests {
         mockMvc.perform(post("/api/v1/reservas")
                         .with(securityContext(context))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(reservaJson(visitante.getId(), vehiculo.getId(), cochera.getId(), LocalDate.now())))
+                        .content(reservaJson(visitante.getId(), vehiculo.getId(), cochera.getId(), enUnaHora(), enUnaHora().plusHours(1))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.estado").value("CONFIRMADA"))
                 .andExpect(jsonPath("$.vehiculo.patente").value("ABC123"))
@@ -280,7 +282,7 @@ public class ReservaControllerTests {
         mockMvc.perform(post("/api/v1/reservas")
                         .with(securityContext(context))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(reservaJson(visitante.getId(), vehiculo.getId(), cochera.getId(), LocalDate.now())))
+                        .content(reservaJson(visitante.getId(), vehiculo.getId(), cochera.getId(), enUnaHora(), enUnaHora().plusHours(1))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.estado").value("CONFIRMADA"));
     }
@@ -309,7 +311,8 @@ public class ReservaControllerTests {
         reserva.setVisitante(visitante);
         reserva.setVehiculo(vehiculo);
         reserva.setCochera(cochera);
-        reserva.setFecha(LocalDate.now());
+        reserva.setDesde(enUnaHora());
+        reserva.setHasta(enUnaHora().plusHours(1));
         reserva.setEstado(ReservaEstado.CONFIRMADA);
         reservaRepository.save(reserva);
 

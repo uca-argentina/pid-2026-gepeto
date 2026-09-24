@@ -17,7 +17,7 @@ import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -69,4 +69,14 @@ public class Reserva {
     @CreationTimestamp
     @Column(name = "fecha_creacion", nullable = false, updatable = false)
     private Instant fechaCreacion;
+
+    /** True si la franja esta corriendo en el instante dado. */
+    public boolean estaVigenteEn(LocalDateTime momento) {
+        return !momento.isBefore(desde) && momento.isBefore(hasta);
+    }
+
+    /** True si esta reserva se pisa con el rango [desde, hasta). */
+    public boolean seSolapaCon(LocalDateTime otroDesde, LocalDateTime otroHasta) {
+        return desde.isBefore(otroHasta) && hasta.isAfter(otroDesde);
+    }
 }

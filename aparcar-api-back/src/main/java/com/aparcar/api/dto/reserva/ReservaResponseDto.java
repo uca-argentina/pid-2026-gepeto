@@ -3,12 +3,13 @@ package com.aparcar.api.dto.reserva;
 import com.aparcar.api.entity.reserva.ReservaEstado;
 
 import java.time.Instant;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 public record ReservaResponseDto(
         UUID id,
-        LocalDate fecha,
+        LocalDateTime desde,
+        LocalDateTime hasta,
         VisitanteResponseDto visitante,
         VehiculoResponseDto vehiculo,
         CocheraResponseDto cochera,
