@@ -127,14 +127,17 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
   useEffect(() => {
     setValue("cocheraId", "");
     setCocheras([]);
-    if (!fecha || !vehiculoEncontrado) return;
+    if (!rangoValido || !vehiculoEncontrado) return;
 
+    // Solo las cocheras libres durante TODA la franja pedida.
     api
-      .get("/api/v1/cocheras/disponibles", { params: { fecha, tipoVehiculo: vehiculoEncontrado.tipo } })
+      .get("/api/v1/cocheras/disponibles", {
+        params: { desde, hasta, tipoVehiculo: vehiculoEncontrado.tipo },
+      })
       .then((res) => setCocheras(res.data))
       .catch(() => toast.error("No se pudieron cargar las cocheras disponibles."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fecha, vehiculoEncontrado]);
+  }, [desde, hasta, rangoValido, vehiculoEncontrado]);
 
   const onSubmit = async (data) => {
     if (!vehiculoEncontrado) {
@@ -154,10 +157,11 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
         visitanteId: esAdmin ? visitanteEncontrado.id : undefined,
         vehiculoId: vehiculoEncontrado.id,
         cocheraId: data.cocheraId,
-        fecha: data.fecha,
+        desde: data.desde,
+        hasta: data.hasta,
       });
       toast.success("Reserva creada correctamente");
-      reset({ patente: "", cocheraId: "", fecha: today() });
+      reset({ patente: "", cocheraId: "", desde: ahora(), hasta: enUnaHora() });
       setCocheras([]);
       cargarReservas();
       onOcupacionCambiada?.();
@@ -303,8 +307,10 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
                 ))}
               </select>
               {errors.cocheraId && <p className="mt-1 text-sm text-red-500">{errors.cocheraId.message}</p>}
-              {vehiculoEncontrado && fecha && cocheras.length === 0 && (
-                <p className="mt-1 text-sm text-ink/50">No hay cocheras disponibles para esa fecha.</p>
+              {vehiculoEncontrado && rangoValido && cocheras.length === 0 && (
+                <p className="mt-1 text-sm text-ink/50">
+                  No hay cocheras libres durante toda esa franja.
+                </p>
               )}
             </div>
           </div>
@@ -344,7 +350,7 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
                       {esAdmin ? `${r.visitante?.nombre} — ${r.vehiculo?.patente}` : r.vehiculo?.patente}
                     </p>
                     <p className="text-xs text-ink/60">
-                      Cochera {r.cochera?.numero} ({r.cochera?.sector}) · {r.fecha}
+                      Cochera {r.cochera?.numero} ({r.cochera?.sector}) · {formatearRango(r.desde, r.hasta)}
                     </p>
                   </div>
                   <div className="flex items-center gap-3">

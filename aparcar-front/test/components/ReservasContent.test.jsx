@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const { getMock, postMock, toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
@@ -45,7 +45,8 @@ describe("ReservasContent en modo admin", () => {
       reservas: [
         {
           id: "r1",
-          fecha: "2026-01-01",
+          desde: "2026-01-01T10:00",
+          hasta: "2026-01-01T12:00",
           estado: "CONFIRMADA",
           visitante: { nombre: "Juan Perez" },
           vehiculo: { patente: "ABC123" },

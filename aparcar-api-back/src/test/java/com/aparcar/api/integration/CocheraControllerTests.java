@@ -466,7 +466,8 @@ public class CocheraControllerTests {
         var context = getContext();
 
         mockMvc.perform(get("/api/v1/cocheras")
-                        .param("fecha", LocalDate.now().toString())
+                        .param("desde", DESDE)
+                        .param("hasta", HASTA)
                         .with(securityContext(context)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.numero == 'A-01')].disponibleEnFecha").value(true))

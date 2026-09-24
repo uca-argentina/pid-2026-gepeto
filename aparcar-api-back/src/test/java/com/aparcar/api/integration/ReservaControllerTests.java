@@ -23,7 +23,7 @@ import org.springframework.security.test.context.support.WithAnonymousUser;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Set;
 import java.util.UUID;
 
@@ -100,9 +100,16 @@ public class ReservaControllerTests {
         return cocheraRepository.save(cochera);
     }
 
-    private String reservaJson(UUID visitanteId, UUID vehiculoId, UUID cocheraId, LocalDate fecha) {
+    private String reservaJson(UUID visitanteId, UUID vehiculoId, UUID cocheraId,
+                               LocalDateTime desde, LocalDateTime hasta) {
         return "{\"visitanteId\":\"" + visitanteId + "\",\"vehiculoId\":\"" + vehiculoId
-                + "\",\"cocheraId\":\"" + cocheraId + "\",\"fecha\":\"" + fecha + "\"}";
+                + "\",\"cocheraId\":\"" + cocheraId + "\",\"desde\":\"" + desde
+                + "\",\"hasta\":\"" + hasta + "\"}";
+    }
+
+    /** Franja de referencia para los casos que no dependen del horario. */
+    private static LocalDateTime enUnaHora() {
+        return LocalDateTime.now().withNano(0).plusHours(1);
     }
 
     // ---- Seguridad ----
@@ -122,7 +129,7 @@ public class ReservaControllerTests {
 
     @Test
     @WithMockUser(authorities = "ADMIN")
-    @DisplayName("[Caja negra] POST /api/v1/reservas devuelve 400 si falta la fecha")
+    @DisplayName("[Caja negra] POST /api/v1/reservas devuelve 400 si falta la franja")
     void crearDevuelve400SiFaltaFecha() throws Exception {
         Visitante visitante = crearVisitante("30111222");
         Vehiculo vehiculo = crearVehiculo("ABC123", VehiculoTipo.AUTO, visitante);
@@ -139,7 +146,7 @@ public class ReservaControllerTests {
 
     @Test
     @WithMockUser(authorities = "ADMIN")
-    @DisplayName("[Caja negra] POST /api/v1/reservas devuelve 400 si la fecha es anterior a hoy")
+    @DisplayName("[Caja negra] POST /api/v1/reservas devuelve 400 si la franja ya termino")
     void crearDevuelve400SiFechaEsPasada() throws Exception {
         Visitante visitante = crearVisitante("30111222");
         Vehiculo vehiculo = crearVehiculo("ABC123", VehiculoTipo.AUTO, visitante);
@@ -149,7 +156,7 @@ public class ReservaControllerTests {
         mockMvc.perform(post("/api/v1/reservas")
                         .with(securityContext(context))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(reservaJson(visitante.getId(), vehiculo.getId(), cochera.getId(), LocalDate.now().minusDays(1))))
+                        .content(reservaJson(visitante.getId(), vehiculo.getId(), cochera.getId(), LocalDateTime.now().minusDays(2), LocalDateTime.now().minusDays(1))))
                 .andExpect(status().isBadRequest());
     }
 

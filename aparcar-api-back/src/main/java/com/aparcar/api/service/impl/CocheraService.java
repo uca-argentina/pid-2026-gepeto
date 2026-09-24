@@ -141,10 +141,9 @@ public class CocheraService implements ICocheraService {
     }
 
     @Override
-    public List<CocheraResponseDto> listarDisponibles(LocalDate fecha, VehiculoTipo tipoVehiculo) {
-        Set<UUID> ocupadas = reservaRepository.findByFechaAndEstado(fecha, ReservaEstado.CONFIRMADA).stream()
-                .map(reserva -> reserva.getCochera().getId())
-                .collect(Collectors.toSet());
+    public List<CocheraResponseDto> listarDisponibles(LocalDateTime desde, LocalDateTime hasta,
+                                                      VehiculoTipo tipoVehiculo) {
+        Set<UUID> ocupadas = ocupadasEnRango(desde, hasta);
 
         return cocheraRepository.findByEstado(CocheraEstado.HABILITADA).stream()
                 .filter(cochera -> !ocupadas.contains(cochera.getId()))
@@ -177,6 +176,19 @@ public class CocheraService implements ICocheraService {
 
     private CocheraResponseDto toResponseDto(Cochera cochera) {
         return toResponseDto(cochera, null);
+    }
+
+    /**
+     * Las cocheras con alguna reserva CONFIRMADA que pise el rango.
+     *
+     * <p>Una reserva cuya franja ya termino no entra: su rango no intersecta el
+     * pedido, asi que la cochera figura libre sola, sin depender de ninguna
+     * tarea de limpieza.
+     */
+    private Set<UUID> ocupadasEnRango(LocalDateTime desde, LocalDateTime hasta) {
+        return reservaRepository.findSolapadas(ReservaEstado.CONFIRMADA, desde, hasta).stream()
+                .map(reserva -> reserva.getCochera().getId())
+                .collect(Collectors.toSet());
     }
 
     private CocheraResponseDto toResponseDto(Cochera cochera, Boolean disponibleEnFecha) {
