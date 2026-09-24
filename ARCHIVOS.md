@@ -696,7 +696,6 @@ Convención: `test/` refleja la estructura de `app/`, `store/` y `utils/` (misma
 | `login/page.test.jsx` | `app/login/page.jsx`: validaciones, Basic Auth armado correctamente, redirección según rol (ADMIN vs USER), errores del backend |
 | `store/authStore.test.js` | `store/authStore.js`: decodificación de authorities del JWT, cookie, expiración, `logout`/`checkAuth` |
 | `utils/env.test.js` | `utils/env.js`: prioridad de `window.__ENV` sobre el valor de build |
-| `dashboard-admin/EstadoCocherasGrid.test.jsx` | Agrupación por tipo, cálculo de ocupadas/libres/deshabilitadas, estado de carga y error |
 | `dashboard-admin/VisitantesContent.test.jsx` | Alta de visitante + vehículo (dos POST encadenados), validaciones, errores de duplicados |
 | `dashboard-admin/cocheras/CocherasManagement.test.jsx` ✏️ | CRUD completo: filtros, alta, edición (con `window.confirm` al deshabilitar), baja (con confirmación), y la navegación de regreso al panel |
 | `dashboard-admin/usuarios/UserManagement.test.jsx` ✏️ | Alta de usuario, activar, editar roles, eliminar (con confirmación), y la navegación de regreso al panel |
@@ -772,13 +771,12 @@ y luego pueden ser gestionados por un administrador.
 
 | Tabla | Origen | Columnas principales | Entidad |
 |---|---|---|---|
-| `visitantes` | Liquibase | `id`, `nombre`, `documento`, `telefono`, `email`, `app_user_id` (único, sin FK física) | `Visitante.java` |
+| `visitantes` ✏️ | Liquibase | `id`, `nombre`, `documento`, `email`, `password`, `telefono`, `is_active`. Es a la vez la cuenta de login y la persona que reserva | `Visitante.java` |
 | `vehiculos` | Liquibase | `id`, `patente`, `tipo`, `visitante_id` | `Vehiculo.java` |
 | `cocheras` | Liquibase | `id`, `numero`, `sector`, `tipo`, `estado` | `Cochera.java` |
-| `reservas` | Liquibase | `id`, `fecha`, `visitante_id`, `vehiculo_id`, `cochera_id`, `estado`, `fecha_creacion` | `Reserva.java` |
-| `app_users` | Hibernate (`ddl-auto: update`) | `id`, `nombre`, `email`, `password`, `telefono`, `is_active` | `AppUser.java` |
-| `app_user_authorities` | Hibernate (`ddl-auto: update`) | `user_id`, `authority` | `AppUser.authorities` |
-| `otp_codes` | Hibernate (`ddl-auto: update`) | `id`, `token`, `user_id`, `expires_at`, `used` | `OneTimePassword.java` |
+| `reservas` ✏️ | Liquibase | `id`, `desde`, `hasta`, `visitante_id`, `vehiculo_id`, `cochera_id`, `estado`, `fecha_creacion` | `Reserva.java` |
+| `visitante_authorities` ✏️ | Liquibase | `visitante_id`, `authority` | `Visitante.authorities` |
+| `otp_codes` ✏️ | Liquibase | `id`, `token`, `user_id`, `expires_at`, `used` | `OneTimePassword.java` |
 | `databasechangelog` / `databasechangeloglock` | Liquibase | Internas de Liquibase | — |
 
 ---
