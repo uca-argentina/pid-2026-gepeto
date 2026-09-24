@@ -174,7 +174,7 @@ public class ReservaControllerTests {
         mockMvc.perform(post("/api/v1/reservas")
                         .with(securityContext(context))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(reservaJson(UUID.randomUUID(), vehiculo.getId(), cochera.getId(), LocalDate.now())))
+                        .content(reservaJson(UUID.randomUUID(), vehiculo.getId(), cochera.getId(), enUnaHora(), enUnaHora().plusHours(1))))
                 .andExpect(status().isNotFound());
     }
 
@@ -189,7 +189,7 @@ public class ReservaControllerTests {
         mockMvc.perform(post("/api/v1/reservas")
                         .with(securityContext(context))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(reservaJson(visitante.getId(), vehiculo.getId(), UUID.randomUUID(), LocalDate.now())))
+                        .content(reservaJson(visitante.getId(), vehiculo.getId(), UUID.randomUUID(), enUnaHora(), enUnaHora().plusHours(1))))
                 .andExpect(status().isNotFound());
     }
 
@@ -348,7 +348,7 @@ public class ReservaControllerTests {
         mockMvc.perform(post("/api/v1/reservas")
                         .with(securityContext(context))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(reservaJson(otro.getId(), vehiculo.getId(), cochera.getId(), LocalDate.now())))
+                        .content(reservaJson(otro.getId(), vehiculo.getId(), cochera.getId(), enUnaHora(), enUnaHora().plusHours(1))))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.visitante.id").value(dueño.getId().toString()));
     }

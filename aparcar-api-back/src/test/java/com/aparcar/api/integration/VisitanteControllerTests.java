@@ -21,7 +21,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Set;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -107,17 +107,21 @@ public class VisitanteControllerTests {
 
     @Test
     @WithMockUser(authorities = "ADMIN")
-    @DisplayName("[Regresion] el alta reserva para la fecha elegida y rechaza fechas pasadas sin crear datos")
-    void altaRespetaYValidaLaFechaElegida() throws Exception {
+    @DisplayName("[Regresion] el alta reserva la franja elegida y rechaza una ya vencida sin crear datos")
+    void altaRespetaYValidaLaFranjaElegida() throws Exception {
         Cochera cochera = crearCochera("A-01", CocheraTipo.AUTO);
         var context = getContext();
-        LocalDate futura = LocalDate.now().plusDays(7);
+        LocalDateTime desde = LocalDateTime.now().plusDays(7).withNano(0);
+        LocalDateTime hasta = desde.plusHours(3);
         String cuerpo = cuerpoAlta("30111222", "juan@test.com", "ABC123", cochera.getId());
 
+        // Una franja enteramente en el pasado no crea nada: ni cuenta, ni
+        // vehiculo, ni reserva. El alta es todo o nada.
         mockMvc.perform(post("/api/v1/visitantes/alta")
                         .with(securityContext(context))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(cuerpo.replace("}", ",\"fecha\":\"" + LocalDate.now().minusDays(1) + "\"}")))
+                        .content(cuerpo.replace("}", ",\"desde\":\"" + LocalDateTime.now().minusDays(2)
+                                + "\",\"hasta\":\"" + LocalDateTime.now().minusDays(1) + "\"}")))
                 .andExpect(status().isBadRequest());
         assertEquals(0, visitanteRepository.count());
         assertEquals(0, vehiculoRepository.count());
@@ -126,10 +130,11 @@ public class VisitanteControllerTests {
         mockMvc.perform(post("/api/v1/visitantes/alta")
                         .with(securityContext(context))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(cuerpo.replace("}", ",\"fecha\":\"" + futura + "\"}")))
+                        .content(cuerpo.replace("}", ",\"desde\":\"" + desde + "\",\"hasta\":\"" + hasta + "\"}")))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.reserva.fecha").value(futura.toString()));
-        assertEquals(futura, reservaRepository.findAll().getFirst().getFecha());
+                .andExpect(jsonPath("$.reserva.desde").value(desde.toString()))
+                .andExpect(jsonPath("$.reserva.hasta").value(hasta.toString()));
+        assertEquals(desde, reservaRepository.findAll().getFirst().getDesde());
     }
 
     // ---- Seguridad ----

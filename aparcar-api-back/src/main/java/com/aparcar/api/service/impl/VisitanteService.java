@@ -22,7 +22,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -72,7 +72,12 @@ public class VisitanteService implements IVisitanteService {
         reservaDto.setVisitanteId(visitante.getId());
         reservaDto.setVehiculoId(vehiculo.id());
         reservaDto.setCocheraId(dto.getCocheraId());
-        reservaDto.setFecha(dto.getFecha() != null ? dto.getFecha() : LocalDate.now());
+        // Por defecto el alta cubre desde ahora y por una hora: el admin esta
+        // registrando a alguien que acaba de llegar. Si manda la franja, manda.
+        LocalDateTime desde = dto.getDesde() != null ? dto.getDesde() : LocalDateTime.now();
+        LocalDateTime hasta = dto.getHasta() != null ? dto.getHasta() : desde.plusHours(1);
+        reservaDto.setDesde(desde);
+        reservaDto.setHasta(hasta);
         ReservaResponseDto reserva = reservaService.crear(reservaDto, visitante.getEmail(), true);
 
         return new VisitanteAltaResponseDto(toResponseDto(visitante), vehiculo, reserva);

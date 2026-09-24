@@ -208,7 +208,8 @@ public class ReservaService implements IReservaService {
 
         return new ReservaResponseDto(
                 reserva.getId(),
-                reserva.getFecha(),
+                reserva.getDesde(),
+                reserva.getHasta(),
                 visitanteDto,
                 vehiculoDto,
                 cocheraDto,

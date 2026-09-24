@@ -25,7 +25,7 @@ import org.springframework.security.test.context.support.WithAnonymousUser;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Set;
 import java.util.UUID;
 
@@ -67,6 +67,11 @@ public class CocheraControllerTests {
         visitanteRepository.deleteAll();
         cocheraRepository.deleteAll();
     }
+
+    // La disponibilidad se pide por franja. Se usa "de ahora a dentro de dos
+    // horas", que es la ventana que ocupan las reservas de fixture.
+    private static final String DESDE = LocalDateTime.now().withNano(0).toString();
+    private static final String HASTA = LocalDateTime.now().withNano(0).plusHours(2).toString();
 
     private Cochera crearCochera(String numero, CocheraTipo tipo, CocheraEstado estado) {
         Cochera cochera = new Cochera();
@@ -117,7 +122,8 @@ public class CocheraControllerTests {
     @DisplayName("[Caja negra] /disponibles es publico incluso para anonimos")
     void disponiblesEsPublicoParaAnonimos() throws Exception {
         mockMvc.perform(get("/api/v1/cocheras/disponibles")
-                        .param("fecha", LocalDate.now().toString()))
+                        .param("desde", DESDE)
+                        .param("hasta", HASTA))
                 .andExpect(status().isOk());
     }
 
@@ -313,7 +319,8 @@ public class CocheraControllerTests {
         vehiculoRepository.save(vehiculo);
 
         Reserva reserva = new Reserva();
-        reserva.setFecha(LocalDate.now());
+        reserva.setDesde(LocalDateTime.now());
+        reserva.setHasta(LocalDateTime.now().plusHours(2));
         reserva.setVisitante(visitante);
         reserva.setVehiculo(vehiculo);
         reserva.setCochera(cochera);
@@ -335,7 +342,8 @@ public class CocheraControllerTests {
         crearCochera("A-01", CocheraTipo.AUTO, CocheraEstado.DESHABILITADA);
 
         mockMvc.perform(get("/api/v1/cocheras/disponibles")
-                        .param("fecha", LocalDate.now().toString()))
+                        .param("desde", DESDE)
+                        .param("hasta", HASTA))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
     }
@@ -348,7 +356,8 @@ public class CocheraControllerTests {
         crearCochera("M-01", CocheraTipo.MOTO, CocheraEstado.HABILITADA);
 
         mockMvc.perform(get("/api/v1/cocheras/disponibles")
-                        .param("fecha", LocalDate.now().toString())
+                        .param("desde", DESDE)
+                        .param("hasta", HASTA)
                         .param("tipoVehiculo", "MOTO"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
@@ -456,7 +465,8 @@ public class CocheraControllerTests {
         vehiculoRepository.save(vehiculo);
 
         Reserva reserva = new Reserva();
-        reserva.setFecha(LocalDate.now());
+        reserva.setDesde(LocalDateTime.now());
+        reserva.setHasta(LocalDateTime.now().plusHours(2));
         reserva.setVisitante(visitante);
         reserva.setVehiculo(vehiculo);
         reserva.setCochera(ocupada);
