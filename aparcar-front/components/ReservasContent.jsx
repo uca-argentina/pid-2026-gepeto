@@ -6,18 +6,23 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
 import api from "@/app/api";
+import { ahora, enUnaHora, formatearRango } from "@/utils/franjaHoraria";
 
-const reservaSchema = z.object({
-  patente: z.string().min(1, "Ingresá una patente"),
-  cocheraId: z.string().min(1, "Selecciona una cochera"),
-  fecha: z.string().min(1, "Selecciona una fecha"),
-});
+const reservaSchema = z
+  .object({
+    patente: z.string().min(1, "Ingresá una patente"),
+    cocheraId: z.string().min(1, "Selecciona una cochera"),
+    desde: z.string().min(1, "Elegí desde cuándo"),
+    hasta: z.string().min(1, "Elegí hasta cuándo"),
+  })
+  .refine((d) => !d.desde || !d.hasta || d.hasta > d.desde, {
+    message: "El fin tiene que ser posterior al inicio",
+    path: ["hasta"],
+  });
 
 const inputClasses =
   "ui-input";
 const labelClasses = "ui-label";
-const today = () => new Date().toISOString().split("T")[0];
-
 function EstadoBadge({ estado }) {
   const isConfirmada = estado === "CONFIRMADA";
   return (
@@ -66,12 +71,15 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(reservaSchema),
-    defaultValues: { fecha: today(), patente: "" },
+    // La reserva arranca por defecto en este momento; el "hasta" se elige.
+    defaultValues: { desde: ahora(), hasta: enUnaHora(), patente: "" },
   });
 
   const patente = watch("patente");
   const cocheraId = watch("cocheraId");
-  const fecha = watch("fecha");
+  const desde = watch("desde");
+  const hasta = watch("hasta");
+  const rangoValido = Boolean(desde && hasta && hasta > desde);
 
   const vehiculoEncontrado = useMemo(() => {
     const normalizada = patente?.trim().toUpperCase();
