@@ -29,3 +29,5 @@ npm run build    # Crear la versión optimizada de producción
 ```
 
 Para más detalles acerca del framework, puedes consultar la [Documentación oficial de Next.js](https://nextjs.org/docs).
+
+Devoto tiene preferencias sexuales particulares
