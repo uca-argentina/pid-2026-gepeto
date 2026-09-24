@@ -55,21 +55,23 @@ export default function VisitantesContent({ onAltaCreada }) {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(visitanteSchema),
-    defaultValues: { tipoVehiculo: "AUTO", cocheraId: "", fecha: hoy() },
+    defaultValues: { tipoVehiculo: "AUTO", cocheraId: "", desde: ahora(), hasta: enUnaHora() },
   });
 
   const tipoVehiculo = watch("tipoVehiculo");
-  const fecha = watch("fecha");
+  const desde = watch("desde");
+  const hasta = watch("hasta");
+  const rangoValido = Boolean(desde && hasta && hasta > desde);
 
-  // La disponibilidad depende de la fecha y del tipo de vehículo.
+  // La disponibilidad depende de la franja y del tipo de vehículo.
   useEffect(() => {
     let vigente = true;
     setValue("cocheraId", "");
     setCocheras([]);
-    if (!tipoVehiculo || !fecha) return;
+    if (!tipoVehiculo || !rangoValido) return;
 
     api
-      .get("/api/v1/cocheras/disponibles", { params: { fecha, tipoVehiculo } })
+      .get("/api/v1/cocheras/disponibles", { params: { desde, hasta, tipoVehiculo } })
       .then((res) => {
         if (vigente) setCocheras(res.data);
       })
@@ -77,7 +79,7 @@ export default function VisitantesContent({ onAltaCreada }) {
         if (vigente) toast.error("No se pudieron cargar las cocheras disponibles.");
       });
     return () => { vigente = false; };
-  }, [tipoVehiculo, fecha, setValue]);
+  }, [tipoVehiculo, desde, hasta, rangoValido, setValue]);
 
   const onSubmit = async (data) => {
     try {

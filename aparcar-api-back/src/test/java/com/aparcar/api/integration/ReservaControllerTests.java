@@ -358,7 +358,7 @@ public class ReservaControllerTests {
         mockMvc.perform(post("/api/v1/reservas")
                         .with(securityContext(context))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(reservaJson(otro.getId(), ajeno.getId(), cochera.getId(), LocalDate.now())))
+                        .content(reservaJson(otro.getId(), ajeno.getId(), cochera.getId(), enUnaHora(), enUnaHora().plusHours(1))))
                 .andExpect(status().isBadRequest());
     }
 
@@ -416,9 +416,10 @@ public class ReservaControllerTests {
         // La reserva no se borro...
         assertEquals(1, reservaRepository.count());
 
-        // ...y la cochera volvio a aparecer como disponible para hoy.
+        // ...y la cochera volvio a aparecer como libre en esa misma franja.
         mockMvc.perform(get("/api/v1/cocheras/disponibles")
-                        .param("fecha", LocalDate.now().toString())
+                        .param("desde", enUnaHora().toString())
+                        .param("hasta", enUnaHora().plusHours(1).toString())
                         .param("tipoVehiculo", "AUTO")
                         .with(securityContext(context)))
                 .andExpect(status().isOk())
@@ -475,12 +476,226 @@ public class ReservaControllerTests {
                 reservaRepository.findById(ajena.getId()).orElseThrow().getEstado());
     }
 
+    // ---- Franja horaria: superposicion entre usuarios ----
+
+    // El caso central del pedido: dos visitantes distintos no pueden terminar
+    // con la misma cochera al mismo tiempo.
+    @Test
+    @WithMockUser(authorities = "ADMIN")
+    @DisplayName("[Caja negra] dos visitantes no pueden pisarse la misma cochera en franjas que se solapan")
+    void dosVisitantesNoPuedenPisarseLaMismaCochera() throws Exception {
+        Visitante uno = crearVisitante("30111222");
+        Visitante otro = crearVisitante("30111333");
+        Vehiculo autoUno = crearVehiculo("ABC123", VehiculoTipo.AUTO, uno);
+        Vehiculo autoOtro = crearVehiculo("XYZ999", VehiculoTipo.AUTO, otro);
+        Cochera cochera = crearCochera("A-01", CocheraTipo.AUTO);
+        var context = getContext();
+
+        LocalDateTime desde = enUnaHora();
+
+        // El primero toma dos horas.
+        mockMvc.perform(post("/api/v1/reservas")
+                        .with(securityContext(context))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reservaJson(uno.getId(), autoUno.getId(), cochera.getId(),
+                                desde, desde.plusHours(2))))
+                .andExpect(status().isCreated());
+
+        // El segundo arranca una hora despues: se pisan por una hora.
+        mockMvc.perform(post("/api/v1/reservas")
+                        .with(securityContext(context))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reservaJson(otro.getId(), autoOtro.getId(), cochera.getId(),
+                                desde.plusHours(1), desde.plusHours(3))))
+                .andExpect(status().isBadRequest());
+
+        assertEquals(1, reservaRepository.count());
+    }
+
+    // La contracara: si no se pisan, tienen que poder convivir. Sin esto, una
+    // validacion demasiado estricta dejaria la cochera inutilizable el resto
+    // del dia.
+    @Test
+    @WithMockUser(authorities = "ADMIN")
+    @DisplayName("[Caja negra] dos visitantes pueden usar la misma cochera en franjas consecutivas")
+    void dosVisitantesPuedenUsarLaMismaCocheraEnFranjasConsecutivas() throws Exception {
+        Visitante uno = crearVisitante("30111222");
+        Visitante otro = crearVisitante("30111333");
+        Vehiculo autoUno = crearVehiculo("ABC123", VehiculoTipo.AUTO, uno);
+        Vehiculo autoOtro = crearVehiculo("XYZ999", VehiculoTipo.AUTO, otro);
+        Cochera cochera = crearCochera("A-01", CocheraTipo.AUTO);
+        var context = getContext();
+
+        LocalDateTime desde = enUnaHora();
+
+        mockMvc.perform(post("/api/v1/reservas")
+                        .with(securityContext(context))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reservaJson(uno.getId(), autoUno.getId(), cochera.getId(),
+                                desde, desde.plusHours(2))))
+                .andExpect(status().isCreated());
+
+        // Arranca exactamente cuando termina la anterior: no se pisan.
+        mockMvc.perform(post("/api/v1/reservas")
+                        .with(securityContext(context))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reservaJson(otro.getId(), autoOtro.getId(), cochera.getId(),
+                                desde.plusHours(2), desde.plusHours(4))))
+                .andExpect(status().isCreated());
+
+        assertEquals(2, reservaRepository.count());
+    }
+
+    // "Se puede reservar el tiempo que se desee": varios dias seguidos.
+    @Test
+    @WithMockUser(authorities = "ADMIN")
+    @DisplayName("[Caja negra] se puede reservar una franja de varios dias")
+    void sePuedeReservarUnaFranjaDeVariosDias() throws Exception {
+        Visitante visitante = crearVisitante("30111222");
+        Vehiculo vehiculo = crearVehiculo("ABC123", VehiculoTipo.AUTO, visitante);
+        Cochera cochera = crearCochera("A-01", CocheraTipo.AUTO);
+        var context = getContext();
+
+        LocalDateTime desde = enUnaHora();
+        LocalDateTime hasta = desde.plusDays(5);
+
+        mockMvc.perform(post("/api/v1/reservas")
+                        .with(securityContext(context))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reservaJson(visitante.getId(), vehiculo.getId(), cochera.getId(), desde, hasta)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.desde").value(desde.toString()))
+                .andExpect(jsonPath("$.hasta").value(hasta.toString()));
+    }
+
+    // La cochera se libera sola: una reserva ya vencida no impide reservar de
+    // nuevo, sin que haga falta cancelarla ni que corra ninguna tarea.
+    @Test
+    @WithMockUser(authorities = "ADMIN")
+    @DisplayName("[Caja negra] una reserva ya terminada deja la cochera libre para una franja nueva")
+    void unaReservaTerminadaLiberaLaCochera() throws Exception {
+        Visitante visitante = crearVisitante("30111222");
+        Vehiculo vehiculo = crearVehiculo("ABC123", VehiculoTipo.AUTO, visitante);
+        Cochera cochera = crearCochera("A-01", CocheraTipo.AUTO);
+        var context = getContext();
+
+        // Reserva de ayer, todavia marcada como CONFIRMADA en la base.
+        Reserva vencida = new Reserva();
+        vencida.setVisitante(visitante);
+        vencida.setVehiculo(vehiculo);
+        vencida.setCochera(cochera);
+        vencida.setDesde(LocalDateTime.now().minusDays(1).minusHours(2));
+        vencida.setHasta(LocalDateTime.now().minusDays(1));
+        vencida.setEstado(ReservaEstado.CONFIRMADA);
+        reservaRepository.save(vencida);
+
+        // La cochera figura libre para una franja futura...
+        mockMvc.perform(get("/api/v1/cocheras/disponibles")
+                        .param("desde", enUnaHora().toString())
+                        .param("hasta", enUnaHora().plusHours(1).toString())
+                        .param("tipoVehiculo", "AUTO")
+                        .with(securityContext(context)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].numero").value("A-01"));
+
+        // ...y se puede reservar de verdad.
+        mockMvc.perform(post("/api/v1/reservas")
+                        .with(securityContext(context))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reservaJson(visitante.getId(), vehiculo.getId(), cochera.getId(),
+                                enUnaHora(), enUnaHora().plusHours(1))))
+                .andExpect(status().isCreated());
+    }
+
+    // La disponibilidad es "libre durante TODO el rango", no "libre en algun
+    // momento": una cochera tomada en el medio no puede ofrecerse.
+    @Test
+    @WithMockUser(authorities = "ADMIN")
+    @DisplayName("[Caja negra] /disponibles excluye una cochera ocupada durante parte de la franja")
+    void disponiblesExcluyeCocheraOcupadaParcialmente() throws Exception {
+        Visitante visitante = crearVisitante("30111222");
+        Vehiculo vehiculo = crearVehiculo("ABC123", VehiculoTipo.AUTO, visitante);
+        Cochera ocupada = crearCochera("A-01", CocheraTipo.AUTO);
+        crearCochera("A-02", CocheraTipo.AUTO);
+        var context = getContext();
+
+        LocalDateTime desde = enUnaHora();
+
+        mockMvc.perform(post("/api/v1/reservas")
+                        .with(securityContext(context))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reservaJson(visitante.getId(), vehiculo.getId(), ocupada.getId(),
+                                desde.plusHours(1), desde.plusHours(2))))
+                .andExpect(status().isCreated());
+
+        // Se pide una ventana de 3 horas que contiene a la reserva existente.
+        mockMvc.perform(get("/api/v1/cocheras/disponibles")
+                        .param("desde", desde.toString())
+                        .param("hasta", desde.plusHours(3).toString())
+                        .param("tipoVehiculo", "AUTO")
+                        .with(securityContext(context)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1))
+                .andExpect(jsonPath("$[0].numero").value("A-02"));
+    }
+
+    // Un mismo auto no puede ocupar dos cocheras a la vez, aunque las dos esten
+    // libres.
+    @Test
+    @WithMockUser(authorities = "ADMIN")
+    @DisplayName("[Caja negra] el mismo vehiculo no puede reservar dos cocheras en franjas que se solapan")
+    void elMismoVehiculoNoPuedeOcuparDosCocherasALaVez() throws Exception {
+        Visitante visitante = crearVisitante("30111222");
+        Vehiculo vehiculo = crearVehiculo("ABC123", VehiculoTipo.AUTO, visitante);
+        Cochera primera = crearCochera("A-01", CocheraTipo.AUTO);
+        Cochera segunda = crearCochera("A-02", CocheraTipo.AUTO);
+        var context = getContext();
+
+        LocalDateTime desde = enUnaHora();
+
+        mockMvc.perform(post("/api/v1/reservas")
+                        .with(securityContext(context))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reservaJson(visitante.getId(), vehiculo.getId(), primera.getId(),
+                                desde, desde.plusHours(2))))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(post("/api/v1/reservas")
+                        .with(securityContext(context))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reservaJson(visitante.getId(), vehiculo.getId(), segunda.getId(),
+                                desde.plusHours(1), desde.plusHours(3))))
+                .andExpect(status().isBadRequest());
+
+        assertEquals(1, reservaRepository.count());
+    }
+
+    @Test
+    @WithMockUser(authorities = "ADMIN")
+    @DisplayName("[Caja negra] POST /api/v1/reservas devuelve 400 si el fin es anterior al inicio")
+    void crearDevuelve400SiElFinEsAnteriorAlInicio() throws Exception {
+        Visitante visitante = crearVisitante("30111222");
+        Vehiculo vehiculo = crearVehiculo("ABC123", VehiculoTipo.AUTO, visitante);
+        Cochera cochera = crearCochera("A-01", CocheraTipo.AUTO);
+        var context = getContext();
+
+        mockMvc.perform(post("/api/v1/reservas")
+                        .with(securityContext(context))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(reservaJson(visitante.getId(), vehiculo.getId(), cochera.getId(),
+                                enUnaHora().plusHours(2), enUnaHora())))
+                .andExpect(status().isBadRequest());
+
+        assertEquals(0, reservaRepository.count());
+    }
+
     private Reserva crearReserva(Visitante visitante, Vehiculo vehiculo, Cochera cochera) {
         Reserva reserva = new Reserva();
         reserva.setVisitante(visitante);
         reserva.setVehiculo(vehiculo);
         reserva.setCochera(cochera);
-        reserva.setFecha(LocalDate.now());
+        reserva.setDesde(enUnaHora());
+        reserva.setHasta(enUnaHora().plusHours(1));
         reserva.setEstado(ReservaEstado.CONFIRMADA);
         return reservaRepository.save(reserva);
     }
