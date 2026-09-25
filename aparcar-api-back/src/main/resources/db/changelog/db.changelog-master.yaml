@@ -9,3 +9,5 @@ databaseChangeLog:
       file: db/changelog/004-unificar-visitante-cuenta.yaml
   - include:
       file: db/changelog/005-identidad-visitante-unica.yaml
+  - include:
+      file: db/changelog/006-reservas-por-franja-horaria.yaml

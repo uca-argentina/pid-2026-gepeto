@@ -6,18 +6,29 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
 import api from "@/app/api";
+import {
+  MODALIDAD_ETIQUETA,
+  PASO_MINUTOS,
+  alBloqueLocal,
+  formatearRango,
+  franjaPorDefecto,
+} from "@/utils/franjaHoraria";
 
-const reservaSchema = z.object({
-  patente: z.string().min(1, "Ingresá una patente"),
-  cocheraId: z.string().min(1, "Selecciona una cochera"),
-  fecha: z.string().min(1, "Selecciona una fecha"),
-});
+const reservaSchema = z
+  .object({
+    patente: z.string().min(1, "Ingresá una patente"),
+    cocheraId: z.string().min(1, "Selecciona una cochera"),
+    desde: z.string().min(1, "Elegí desde cuándo"),
+    hasta: z.string().min(1, "Elegí hasta cuándo"),
+  })
+  .refine((d) => !d.desde || !d.hasta || d.hasta > d.desde, {
+    message: "El fin tiene que ser posterior al inicio",
+    path: ["hasta"],
+  });
 
 const inputClasses =
   "ui-input";
 const labelClasses = "ui-label";
-const today = () => new Date().toISOString().split("T")[0];
-
 function EstadoBadge({ estado }) {
   const isConfirmada = estado === "CONFIRMADA";
   return (
@@ -66,12 +77,15 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(reservaSchema),
-    defaultValues: { fecha: today(), patente: "" },
+    // La reserva arranca por defecto en este momento; el "hasta" se elige.
+    defaultValues: { ...franjaPorDefecto(), patente: "" },
   });
 
   const patente = watch("patente");
   const cocheraId = watch("cocheraId");
-  const fecha = watch("fecha");
+  const desde = watch("desde");
+  const hasta = watch("hasta");
+  const rangoValido = Boolean(desde && hasta && hasta > desde);
 
   const vehiculoEncontrado = useMemo(() => {
     const normalizada = patente?.trim().toUpperCase();
@@ -127,14 +141,17 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
   useEffect(() => {
     setValue("cocheraId", "");
     setCocheras([]);
-    if (!fecha || !vehiculoEncontrado) return;
+    if (!rangoValido || !vehiculoEncontrado) return;
 
+    // Solo las cocheras libres durante TODA la franja pedida.
     api
-      .get("/api/v1/cocheras/disponibles", { params: { fecha, tipoVehiculo: vehiculoEncontrado.tipo } })
+      .get("/api/v1/cocheras/disponibles", {
+        params: { desde, hasta, tipoVehiculo: vehiculoEncontrado.tipo },
+      })
       .then((res) => setCocheras(res.data))
       .catch(() => toast.error("No se pudieron cargar las cocheras disponibles."));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fecha, vehiculoEncontrado]);
+  }, [desde, hasta, rangoValido, vehiculoEncontrado]);
 
   const onSubmit = async (data) => {
     if (!vehiculoEncontrado) {
@@ -154,10 +171,11 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
         visitanteId: esAdmin ? visitanteEncontrado.id : undefined,
         vehiculoId: vehiculoEncontrado.id,
         cocheraId: data.cocheraId,
-        fecha: data.fecha,
+        desde: data.desde,
+        hasta: data.hasta,
       });
       toast.success("Reserva creada correctamente");
-      reset({ patente: "", cocheraId: "", fecha: today() });
+      reset({ patente: "", cocheraId: "", ...franjaPorDefecto() });
       setCocheras([]);
       cargarReservas();
       onOcupacionCambiada?.();
@@ -168,7 +186,7 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
 
   const cancelarReserva = async (reserva) => {
     const confirmado = window.confirm(
-      `¿Seguro que querés cancelar la reserva de la cochera ${reserva.cochera?.numero} del ${reserva.fecha}?`
+      `¿Seguro que querés cancelar la reserva de la cochera ${reserva.cochera?.numero} (${formatearRango(reserva.desde, reserva.hasta)})?`
     );
     if (!confirmado) {
       return;
@@ -192,8 +210,8 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
         <h1 className="text-3xl font-extrabold tracking-tight text-ink mb-2">Nueva reserva</h1>
         <p className="text-sm text-ink/60">
           {esAdmin
-            ? "Ingresá la patente del vehículo y elegí una cochera disponible para la fecha."
-            : "Elegí uno de tus vehículos y una cochera disponible para la fecha."}
+            ? "Ingresá la patente, elegí desde y hasta cuándo, y una cochera libre en esa franja."
+            : "Elegí uno de tus vehículos, desde y hasta cuándo, y una cochera libre en esa franja."}
         </p>
       </div>
 
@@ -253,15 +271,43 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
             </div>
 
             <div>
-              <label className={labelClasses} htmlFor="reserva-fecha">Fecha</label>
+              <label className={labelClasses} htmlFor="reserva-desde">Desde</label>
+              {/* step de 15 min: el navegador ofrece los bloques y marca como
+                  inválido cualquier horario intermedio. Igual se baja al bloque
+                  en onChange, porque el step no frena a quien escribe a mano. */}
               <input
-                id="reserva-fecha"
-                type="date"
-                min={today()}
-                {...register("fecha")}
+                id="reserva-desde"
+                type="datetime-local"
+                step={PASO_MINUTOS * 60}
+                {...register("desde")}
+                onChange={(e) =>
+                  setValue("desde", alBloqueLocal(e.target.value), { shouldValidate: true })
+                }
                 className={inputClasses}
               />
-              {errors.fecha && <p className="mt-1 text-sm text-red-500">{errors.fecha.message}</p>}
+              {errors.desde && <p className="mt-1 text-sm text-red-500">{errors.desde.message}</p>}
+            </div>
+
+            <div>
+              <label className={labelClasses} htmlFor="reserva-hasta">Hasta</label>
+              <input
+                id="reserva-hasta"
+                type="datetime-local"
+                step={PASO_MINUTOS * 60}
+                min={desde}
+                {...register("hasta")}
+                onChange={(e) =>
+                  setValue("hasta", alBloqueLocal(e.target.value), { shouldValidate: true })
+                }
+                className={inputClasses}
+              />
+              {errors.hasta && <p className="mt-1 text-sm text-red-500">{errors.hasta.message}</p>}
+              {/* Se avisa al instante: si se espera al submit, el error que
+                  aparece es el de la cochera (que quedó deshabilitada), y el
+                  problema real —la franja dada vuelta— queda invisible. */}
+              {desde && hasta && hasta <= desde && !errors.hasta && (
+                <p className="mt-1 text-sm text-red-500">El fin tiene que ser posterior al inicio</p>
+              )}
             </div>
 
             <div className="sm:col-span-2">
@@ -270,14 +316,14 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
                 id="reserva-cocheraId"
                 {...register("cocheraId")}
                 className={inputClasses}
-                disabled={!vehiculoEncontrado || !fecha}
+                disabled={!vehiculoEncontrado || !rangoValido}
               >
                 <option value="">
-                  {vehiculoEncontrado && fecha
+                  {vehiculoEncontrado && rangoValido
                     ? "Seleccioná una cochera"
                     : esAdmin
-                    ? "Ingresá primero una patente válida y una fecha"
-                    : "Elegí primero un vehículo y una fecha"}
+                    ? "Ingresá primero una patente válida y la franja"
+                    : "Elegí primero un vehículo y la franja"}
                 </option>
                 {cocheras.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -286,8 +332,10 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
                 ))}
               </select>
               {errors.cocheraId && <p className="mt-1 text-sm text-red-500">{errors.cocheraId.message}</p>}
-              {vehiculoEncontrado && fecha && cocheras.length === 0 && (
-                <p className="mt-1 text-sm text-ink/50">No hay cocheras disponibles para esa fecha.</p>
+              {vehiculoEncontrado && rangoValido && cocheras.length === 0 && (
+                <p className="mt-1 text-sm text-ink/50">
+                  No hay cocheras libres durante toda esa franja.
+                </p>
               )}
             </div>
           </div>
@@ -327,8 +375,13 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
                       {esAdmin ? `${r.visitante?.nombre} — ${r.vehiculo?.patente}` : r.vehiculo?.patente}
                     </p>
                     <p className="text-xs text-ink/60">
-                      Cochera {r.cochera?.numero} ({r.cochera?.sector}) · {r.fecha}
+                      Cochera {r.cochera?.numero} ({r.cochera?.sector}) · {formatearRango(r.desde, r.hasta)}
                     </p>
+                    {/* La modalidad la calcula el backend a partir de la
+                        duración, así que el listado no la vuelve a deducir. */}
+                    {r.modalidad && (
+                      <p className="franja-modalidad-badge">{MODALIDAD_ETIQUETA[r.modalidad] ?? r.modalidad}</p>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <EstadoBadge estado={r.estado} />

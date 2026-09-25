@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -51,8 +51,11 @@ public class CocheraController {
             @RequestParam(required = false) String sector,
             @RequestParam(required = false) CocheraTipo tipo,
             @RequestParam(required = false) CocheraEstado estado,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha) {
-        return ResponseEntity.ok(cocheraService.listar(sector, tipo, estado, fecha));
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime desde,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime hasta) {
+        return ResponseEntity.ok(cocheraService.listar(sector, tipo, estado, desde, hasta));
     }
 
     @GetMapping("/{id}")
@@ -71,10 +74,15 @@ public class CocheraController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Cocheras libres durante toda la franja pedida. El rango es semiabierto:
+     * una cochera cuya reserva termina justo en "desde" cuenta como libre.
+     */
     @GetMapping("/disponibles")
     public ResponseEntity<List<CocheraResponseDto>> listarDisponibles(
-            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime desde,
+            @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime hasta,
             @RequestParam(required = false) VehiculoTipo tipoVehiculo) {
-        return ResponseEntity.ok(cocheraService.listarDisponibles(fecha, tipoVehiculo));
+        return ResponseEntity.ok(cocheraService.listarDisponibles(desde, hasta, tipoVehiculo));
     }
 }

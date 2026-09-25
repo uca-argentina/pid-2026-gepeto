@@ -172,7 +172,10 @@ describe("CocherasManagement", () => {
     expect(screen.getByText("—")).toBeInTheDocument();
   });
 
-  it("al elegir una fecha, pide al backend con ese parametro y muestra Libre/Ocupada", async () => {
+  // El filtro sigue siendo por día, pero el backend razona por rango: se
+  // traduce al día completo para que "disponible el 15" siga significando
+  // "sin ninguna reserva ese día".
+  it("al elegir una fecha, pide al backend el dia completo como rango y muestra Libre/Ocupada", async () => {
     mockCocheras(
       [cochera({ disponibleEnFecha: null })],
       [cochera({ disponibleEnFecha: false })]
@@ -186,7 +189,12 @@ describe("CocherasManagement", () => {
     await waitFor(() =>
       expect(getMock).toHaveBeenCalledWith(
         "/api/v1/cocheras",
-        expect.objectContaining({ params: expect.objectContaining({ fecha: "2026-06-15" }) })
+        expect.objectContaining({
+          params: expect.objectContaining({
+            desde: "2026-06-15T00:00",
+            hasta: "2026-06-15T23:59",
+          }),
+        })
       )
     );
     expect(await screen.findByText("Ocupada")).toBeInTheDocument();

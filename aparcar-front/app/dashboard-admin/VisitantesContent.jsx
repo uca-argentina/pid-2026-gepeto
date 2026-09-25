@@ -7,6 +7,7 @@ import * as z from "zod";
 import { toast } from "sonner";
 import api from "@/app/api";
 import { formatoPatenteValido, MENSAJE_FORMATO_INVALIDO } from "@/utils/patenteValidation";
+import { PASO_MINUTOS, alBloqueLocal, franjaPorDefecto } from "@/utils/franjaHoraria";
 
 const visitanteSchema = z
   .object({
@@ -19,9 +20,17 @@ const visitanteSchema = z
       message: "Selecciona un tipo de vehículo",
     }),
     cocheraId: z.string().min(1, "Selecciona una cochera"),
-    fecha: z.string().min(1, "Selecciona una fecha"),
+    desde: z.string().min(1, "Elegí desde cuándo"),
+    hasta: z.string().min(1, "Elegí hasta cuándo"),
   })
   .superRefine((data, ctx) => {
+    if (data.desde && data.hasta && data.hasta <= data.desde) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["hasta"],
+        message: "El fin tiene que ser posterior al inicio",
+      });
+    }
     if (!formatoPatenteValido(data.patente, data.tipoVehiculo)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -34,10 +43,9 @@ const visitanteSchema = z
 const inputClasses =
   "ui-input";
 const labelClasses = "ui-label";
-const hoy = () => new Date().toISOString().split("T")[0];
 
 // Da de alta un visitante: crea la cuenta, su vehículo y la reserva para la
-// fecha elegida en una sola llamada. El backend lo resuelve
+// franja elegida en una sola llamada. El backend lo resuelve
 // en una transacción, así que o entra todo o no entra nada — antes esto eran
 // dos llamadas sueltas y si la segunda fallaba quedaba un visitante huérfano.
 //
@@ -55,21 +63,23 @@ export default function VisitantesContent({ onAltaCreada }) {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(visitanteSchema),
-    defaultValues: { tipoVehiculo: "AUTO", cocheraId: "", fecha: hoy() },
+    defaultValues: { tipoVehiculo: "AUTO", cocheraId: "", ...franjaPorDefecto() },
   });
 
   const tipoVehiculo = watch("tipoVehiculo");
-  const fecha = watch("fecha");
+  const desde = watch("desde");
+  const hasta = watch("hasta");
+  const rangoValido = Boolean(desde && hasta && hasta > desde);
 
-  // La disponibilidad depende de la fecha y del tipo de vehículo.
+  // La disponibilidad depende de la franja y del tipo de vehículo.
   useEffect(() => {
     let vigente = true;
     setValue("cocheraId", "");
     setCocheras([]);
-    if (!tipoVehiculo || !fecha) return;
+    if (!tipoVehiculo || !rangoValido) return;
 
     api
-      .get("/api/v1/cocheras/disponibles", { params: { fecha, tipoVehiculo } })
+      .get("/api/v1/cocheras/disponibles", { params: { desde, hasta, tipoVehiculo } })
       .then((res) => {
         if (vigente) setCocheras(res.data);
       })
@@ -77,7 +87,7 @@ export default function VisitantesContent({ onAltaCreada }) {
         if (vigente) toast.error("No se pudieron cargar las cocheras disponibles.");
       });
     return () => { vigente = false; };
-  }, [tipoVehiculo, fecha, setValue]);
+  }, [tipoVehiculo, desde, hasta, rangoValido, setValue]);
 
   const onSubmit = async (data) => {
     try {
@@ -89,13 +99,14 @@ export default function VisitantesContent({ onAltaCreada }) {
         patente: data.patente,
         tipoVehiculo: data.tipoVehiculo,
         cocheraId: data.cocheraId,
-        fecha: data.fecha,
+        desde: data.desde,
+        hasta: data.hasta,
       });
 
       toast.success(
         `Visitante dado de alta y cochera reservada. Su contraseña inicial es su documento (${data.documento}).`
       );
-      reset({ tipoVehiculo: "AUTO", cocheraId: "", fecha: hoy() });
+      reset({ tipoVehiculo: "AUTO", cocheraId: "", ...franjaPorDefecto() });
       onAltaCreada?.();
     } catch (err) {
       toast.error(
@@ -111,7 +122,7 @@ export default function VisitantesContent({ onAltaCreada }) {
         Nuevo visitante
       </h1>
       <p className="text-sm text-ink/60 mb-8">
-        Cargá sus datos y su vehículo, y elegí la fecha y la cochera de la reserva. Queda con
+        Cargá sus datos y su vehículo, y elegí la franja y la cochera de la reserva. Queda con
         cuenta creada y su documento como contraseña inicial.
       </p>
 
@@ -169,13 +180,40 @@ export default function VisitantesContent({ onAltaCreada }) {
                   {errors.tipoVehiculo && <p className="mt-1 text-sm text-red-500">{errors.tipoVehiculo.message}</p>}
                 </div>
                 <div>
-                  <label className={labelClasses} htmlFor="alta-fecha">Fecha</label>
-                  <input id="alta-fecha" type="date" min={hoy()} {...register("fecha")} className={inputClasses} />
-                  {errors.fecha && <p className="mt-1 text-sm text-red-500">{errors.fecha.message}</p>}
+                  <label className={labelClasses} htmlFor="alta-desde">Desde</label>
+                  <input
+                    id="alta-desde"
+                    type="datetime-local"
+                    step={PASO_MINUTOS * 60}
+                    {...register("desde")}
+                    onChange={(e) =>
+                      setValue("desde", alBloqueLocal(e.target.value), { shouldValidate: true })
+                    }
+                    className={inputClasses}
+                  />
+                  {errors.desde && <p className="mt-1 text-sm text-red-500">{errors.desde.message}</p>}
+                </div>
+                <div>
+                  <label className={labelClasses} htmlFor="alta-hasta">Hasta</label>
+                  <input
+                    id="alta-hasta"
+                    type="datetime-local"
+                    step={PASO_MINUTOS * 60}
+                    min={desde}
+                    {...register("hasta")}
+                    onChange={(e) =>
+                      setValue("hasta", alBloqueLocal(e.target.value), { shouldValidate: true })
+                    }
+                    className={inputClasses}
+                  />
+                  {errors.hasta && <p className="mt-1 text-sm text-red-500">{errors.hasta.message}</p>}
+                  {desde && hasta && hasta <= desde && (
+                    <p className="mt-1 text-sm text-red-500">El fin tiene que ser posterior al inicio</p>
+                  )}
                 </div>
                 <div className="sm:col-span-2">
                   <label className={labelClasses} htmlFor="alta-cocheraId">Cochera</label>
-                  <select id="alta-cocheraId" {...register("cocheraId")} className={inputClasses} disabled={!fecha || !tipoVehiculo}>
+                  <select id="alta-cocheraId" {...register("cocheraId")} className={inputClasses} disabled={!rangoValido || !tipoVehiculo}>
                     <option value="">Seleccioná una cochera</option>
                     {cocheras.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -184,9 +222,9 @@ export default function VisitantesContent({ onAltaCreada }) {
                     ))}
                   </select>
                   {errors.cocheraId && <p className="mt-1 text-sm text-red-500">{errors.cocheraId.message}</p>}
-                  {fecha && cocheras.length === 0 && (
+                  {rangoValido && cocheras.length === 0 && (
                     <p className="mt-1 text-sm text-ink/50">
-                      No hay cocheras disponibles para esa fecha y tipo de vehículo.
+                      No hay cocheras libres durante toda esa franja para ese tipo de vehículo.
                     </p>
                   )}
                 </div>

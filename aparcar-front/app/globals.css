@@ -77,6 +77,9 @@
   .ui-primary:active:not(:disabled) { transform: translateY(1px); }
   .dark .ui-primary { background: var(--color-accent); color: var(--color-brand); }
   .dark .ui-primary:hover:not(:disabled) { background: #8bdeff; }
+
+  .franja-modalidad-badge { display: inline-block; margin-top: 4px; border-radius: 999px; background: var(--color-bg); padding: 1px 8px; color: var(--color-muted); font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; }
+
   .theme-toggle { border: 1px solid var(--color-line); background: var(--color-surface); box-shadow: var(--shadow-card); }
   .theme-switcher { position: fixed; top: 19px; right: 16px; z-index: 50; }
   body:has(.dashboard-shell, .auth-layout) .theme-switcher { position: absolute; }

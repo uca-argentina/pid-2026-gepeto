@@ -14,6 +14,7 @@ import com.aparcar.api.entity.auth.AppAuthority;
 import com.aparcar.api.entity.auth.Visitante;
 import com.aparcar.api.entity.reserva.CocheraEstado;
 import com.aparcar.api.entity.reserva.CocheraTipo;
+import com.aparcar.api.entity.reserva.ModalidadReserva;
 import com.aparcar.api.entity.reserva.ReservaEstado;
 import com.aparcar.api.entity.reserva.VehiculoTipo;
 import com.aparcar.api.exception.NotFoundException;
@@ -29,7 +30,7 @@ import org.mockito.Mock;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Instant;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -96,11 +97,13 @@ public class VisitanteServiceTests {
     private static ReservaResponseDto unaReserva() {
         return new ReservaResponseDto(
                 UUID.randomUUID(),
-                LocalDate.now(),
+                LocalDateTime.now(),
+                LocalDateTime.now().plusHours(1),
                 new VisitanteResponseDto(UUID.randomUUID(), "Juan Perez", "30111222", null, "juan@mail.com"),
                 new VehiculoResponseDto(VEHICULO_ID, "ABC123", VehiculoTipo.AUTO, UUID.randomUUID()),
                 new CocheraResponseDto(COCHERA_ID, "A-01", "Planta Baja", CocheraTipo.AUTO, CocheraEstado.HABILITADA, null),
                 ReservaEstado.CONFIRMADA,
+                ModalidadReserva.FRANJA,
                 Instant.now());
     }
 
@@ -171,22 +174,27 @@ public class VisitanteServiceTests {
         ArgumentCaptor<ReservaRequestDto> captor = ArgumentCaptor.forClass(ReservaRequestDto.class);
         verify(reservaService).crear(captor.capture(), any(), anyBoolean());
 
-        assertEquals(LocalDate.now(), captor.getValue().getFecha());
+        // Sin franja explicita, el alta arranca ahora y dura una hora.
+        assertEquals(60, java.time.Duration.between(
+                captor.getValue().getDesde(), captor.getValue().getHasta()).toMinutes());
         assertEquals(COCHERA_ID, captor.getValue().getCocheraId());
         assertEquals(VEHICULO_ID, captor.getValue().getVehiculoId());
     }
 
     @Test
-    @DisplayName("altaConReserva usa la fecha elegida al crear la reserva")
-    void altaReservaParaLaFechaElegida() {
-        LocalDate fecha = LocalDate.now().plusDays(7);
-        dto.setFecha(fecha);
+    @DisplayName("altaConReserva usa la franja elegida al crear la reserva")
+    void altaReservaParaLaFranjaElegida() {
+        LocalDateTime desde = LocalDateTime.now().plusDays(7);
+        LocalDateTime hasta = desde.plusHours(3);
+        dto.setDesde(desde);
+        dto.setHasta(hasta);
 
         visitanteService.altaConReserva(dto);
 
         ArgumentCaptor<ReservaRequestDto> captor = ArgumentCaptor.forClass(ReservaRequestDto.class);
         verify(reservaService).crear(captor.capture(), any(), anyBoolean());
-        assertEquals(fecha, captor.getValue().getFecha());
+        assertEquals(desde, captor.getValue().getDesde());
+        assertEquals(hasta, captor.getValue().getHasta());
     }
 
     // El alta es todo o nada: si la cochera ya estaba tomada, la excepcion sale

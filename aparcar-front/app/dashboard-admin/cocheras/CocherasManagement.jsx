@@ -136,7 +136,14 @@ export default function CocherasManagement() {
       if (filtroSector.trim()) params.sector = filtroSector.trim();
       if (filtroTipo !== "TODOS") params.tipo = filtroTipo;
       if (filtroEstado !== "TODOS") params.estado = filtroEstado;
-      if (filtroFecha) params.fecha = filtroFecha;
+      // El filtro sigue siendo por día, pero la disponibilidad se calcula por
+      // rango: se pregunta por el día entero, de 00:00 a 00:00 del siguiente.
+      // Así "disponible el 24" significa "sin ninguna reserva ese día", que es
+      // lo que significaba antes de que existieran las franjas.
+      if (filtroFecha) {
+        params.desde = `${filtroFecha}T00:00`;
+        params.hasta = `${filtroFecha}T23:59`;
+      }
 
       const response = await api.get("/api/v1/cocheras", { params });
 

@@ -2,13 +2,12 @@ package com.aparcar.api.dto.reserva;
 
 import com.aparcar.api.entity.reserva.VehiculoTipo;
 import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.FutureOrPresent;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
@@ -50,6 +49,11 @@ public class VisitanteAltaDto {
     private UUID cocheraId;
 
     // Si se omite, se conserva el alta para hoy de los clientes existentes.
-    @FutureOrPresent(message = "La fecha no puede ser anterior a hoy")
-    private LocalDate fecha;
+    /**
+     * Franja de la reserva que se crea junto con el alta. Si no vienen, el
+     * servicio usa "desde ahora y por una hora".
+     */
+    private LocalDateTime desde;
+
+    private LocalDateTime hasta;
 }

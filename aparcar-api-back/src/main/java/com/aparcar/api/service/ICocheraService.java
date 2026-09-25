@@ -8,7 +8,7 @@ import com.aparcar.api.entity.reserva.VehiculoTipo;
 import com.aparcar.api.exception.NotFoundException;
 import com.aparcar.api.exception.ValidationException;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -44,7 +44,8 @@ public interface ICocheraService {
      * calculado (sin reserva CONFIRMADA para esa fecha); si no se indica
      * fecha, ese campo queda en null.
      */
-    List<CocheraResponseDto> listar(String sector, CocheraTipo tipo, CocheraEstado estado, LocalDate fecha);
+    List<CocheraResponseDto> listar(String sector, CocheraTipo tipo, CocheraEstado estado,
+                                    LocalDateTime desde, LocalDateTime hasta);
 
     /**
      * @throws NotFoundException Si no existe una cochera con ese id.
@@ -68,5 +69,6 @@ public interface ICocheraService {
      * indica tipoVehiculo, solo devuelve las compatibles (ver regla de
      * compatibilidad en {@link IReservaService}).
      */
-    List<CocheraResponseDto> listarDisponibles(LocalDate fecha, VehiculoTipo tipoVehiculo);
+    List<CocheraResponseDto> listarDisponibles(LocalDateTime desde, LocalDateTime hasta,
+                                               VehiculoTipo tipoVehiculo);
 }

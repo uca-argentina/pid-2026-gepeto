@@ -17,7 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -86,19 +86,18 @@ public class CocheraService implements ICocheraService {
     }
 
     @Override
-    public List<CocheraResponseDto> listar(String sector, CocheraTipo tipo, CocheraEstado estado, LocalDate fecha) {
+    public List<CocheraResponseDto> listar(String sector, CocheraTipo tipo, CocheraEstado estado,
+                                           LocalDateTime desde, LocalDateTime hasta) {
         List<Cochera> cocheras = cocheraRepository.buscar(blankToNull(sector), tipo, estado);
 
-        if (fecha == null) {
+        if (desde == null || hasta == null) {
             return cocheras.stream().map(cochera -> toResponseDto(cochera, null)).toList();
         }
 
-        Set<UUID> ocupadasEnFecha = reservaRepository.findByFechaAndEstado(fecha, ReservaEstado.CONFIRMADA).stream()
-                .map(reserva -> reserva.getCochera().getId())
-                .collect(Collectors.toSet());
+        Set<UUID> ocupadas = ocupadasEnRango(desde, hasta);
 
         return cocheras.stream()
-                .map(cochera -> toResponseDto(cochera, !ocupadasEnFecha.contains(cochera.getId())))
+                .map(cochera -> toResponseDto(cochera, !ocupadas.contains(cochera.getId())))
                 .toList();
     }
 
@@ -142,10 +141,9 @@ public class CocheraService implements ICocheraService {
     }
 
     @Override
-    public List<CocheraResponseDto> listarDisponibles(LocalDate fecha, VehiculoTipo tipoVehiculo) {
-        Set<UUID> ocupadas = reservaRepository.findByFechaAndEstado(fecha, ReservaEstado.CONFIRMADA).stream()
-                .map(reserva -> reserva.getCochera().getId())
-                .collect(Collectors.toSet());
+    public List<CocheraResponseDto> listarDisponibles(LocalDateTime desde, LocalDateTime hasta,
+                                                      VehiculoTipo tipoVehiculo) {
+        Set<UUID> ocupadas = ocupadasEnRango(desde, hasta);
 
         return cocheraRepository.findByEstado(CocheraEstado.HABILITADA).stream()
                 .filter(cochera -> !ocupadas.contains(cochera.getId()))
@@ -178,6 +176,19 @@ public class CocheraService implements ICocheraService {
 
     private CocheraResponseDto toResponseDto(Cochera cochera) {
         return toResponseDto(cochera, null);
+    }
+
+    /**
+     * Las cocheras con alguna reserva CONFIRMADA que pise el rango.
+     *
+     * <p>Una reserva cuya franja ya termino no entra: su rango no intersecta el
+     * pedido, asi que la cochera figura libre sola, sin depender de ninguna
+     * tarea de limpieza.
+     */
+    private Set<UUID> ocupadasEnRango(LocalDateTime desde, LocalDateTime hasta) {
+        return reservaRepository.findSolapadas(ReservaEstado.CONFIRMADA, desde, hasta).stream()
+                .map(reserva -> reserva.getCochera().getId())
+                .collect(Collectors.toSet());
     }
 
     private CocheraResponseDto toResponseDto(Cochera cochera, Boolean disponibleEnFecha) {

@@ -23,13 +23,16 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
 public class ReservaService implements IReservaService {
+    /** Las reservas se toman de a bloques de 15 minutos. */
+    private static final int MINUTOS_POR_BLOQUE = 15;
+
     private final ReservaRepository reservaRepository;
     private final VisitanteRepository visitanteRepository;
     private final VehiculoRepository vehiculoRepository;
@@ -50,11 +53,14 @@ public class ReservaService implements IReservaService {
         Cochera cochera = cocheraRepository.findById(dto.getCocheraId())
                 .orElseThrow(() -> new NotFoundException("Cochera no encontrada."));
 
+        validarRango(dto.getDesde(), dto.getHasta());
         validarCompatibilidad(cochera, vehiculo);
-        validarDisponibilidad(cochera, dto.getFecha());
+        validarDisponibilidad(cochera, dto.getDesde(), dto.getHasta());
+        validarVehiculoLibre(vehiculo, dto.getDesde(), dto.getHasta());
 
         Reserva reserva = new Reserva();
-        reserva.setFecha(dto.getFecha());
+        reserva.setDesde(dto.getDesde());
+        reserva.setHasta(dto.getHasta());
         reserva.setVisitante(visitante);
         reserva.setVehiculo(vehiculo);
         reserva.setCochera(cochera);
@@ -96,6 +102,10 @@ public class ReservaService implements IReservaService {
             throw new ValidationException("La reserva ya estaba cancelada.");
         }
 
+        if (reserva.getEstado() == ReservaEstado.FINALIZADA || !reserva.getHasta().isAfter(LocalDateTime.now())) {
+            throw new ValidationException("La reserva ya termino, no se puede cancelar.");
+        }
+
         reserva.setEstado(ReservaEstado.CANCELADA);
 
         return toResponseDto(reservaRepository.save(reserva));
@@ -131,12 +141,60 @@ public class ReservaService implements IReservaService {
         }
     }
 
-    private void validarDisponibilidad(Cochera cochera, LocalDate fecha) {
-        boolean ocupada = reservaRepository.existsByCocheraIdAndFechaAndEstado(
-                cochera.getId(), fecha, ReservaEstado.CONFIRMADA);
+    /**
+     * La franja tiene que tener duracion positiva y no puede estar entera en el
+     * pasado (reservar algo ya terminado no tiene sentido y ademas seria
+     * invisible: nunca ocuparia la cochera).
+     *
+     * <p>Se permite un "desde" pasado para que el admin pueda registrar a
+     * alguien que entro hace un rato, y para que el formulario, que arranca en
+     * "ahora", no falle por los segundos que tarda el usuario en enviarlo.
+     */
+    private void validarRango(LocalDateTime desde, LocalDateTime hasta) {
+        // La reserva se toma en bloques de 15 minutos. Se valida en el backend
+        // y no solo en el tablero del frontend: si la regla vive unicamente en
+        // la UI, cualquier cliente que pegue a la API la saltea.
+        validarBloqueDe15(desde, "El inicio");
+        validarBloqueDe15(hasta, "El fin");
+
+        if (!hasta.isAfter(desde)) {
+            throw new ValidationException("El fin de la reserva tiene que ser posterior al inicio.");
+        }
+        if (!hasta.isAfter(LocalDateTime.now())) {
+            throw new ValidationException("La reserva no puede terminar en el pasado.");
+        }
+    }
+
+    private void validarBloqueDe15(LocalDateTime momento, String cual) {
+        if (momento.getMinute() % MINUTOS_POR_BLOQUE != 0
+                || momento.getSecond() != 0
+                || momento.getNano() != 0) {
+            throw new ValidationException(
+                    "%s de la reserva tiene que caer en un bloque de %d minutos."
+                            .formatted(cual, MINUTOS_POR_BLOQUE));
+        }
+    }
+
+    /**
+     * Nadie puede pisarle la cochera a otro. Se compara contra las reservas
+     * CONFIRMADAS: las canceladas y las ya finalizadas no ocupan.
+     */
+    private void validarDisponibilidad(Cochera cochera, LocalDateTime desde, LocalDateTime hasta) {
+        boolean ocupada = reservaRepository.existeSolapadaEnCochera(
+                cochera.getId(), ReservaEstado.CONFIRMADA, desde, hasta);
         if (ocupada) {
             throw new ValidationException(
-                    "La cochera %s ya tiene una reserva confirmada para el %s.".formatted(cochera.getNumero(), fecha));
+                    "La cochera %s ya esta reservada en ese horario.".formatted(cochera.getNumero()));
+        }
+    }
+
+    /** Un mismo vehiculo no puede estar ocupando dos cocheras a la vez. */
+    private void validarVehiculoLibre(Vehiculo vehiculo, LocalDateTime desde, LocalDateTime hasta) {
+        boolean comprometido = reservaRepository.existeSolapadaEnVehiculo(
+                vehiculo.getId(), ReservaEstado.CONFIRMADA, desde, hasta);
+        if (comprometido) {
+            throw new ValidationException(
+                    "El vehiculo %s ya tiene otra reserva en ese horario.".formatted(vehiculo.getPatente()));
         }
     }
 
@@ -169,11 +227,13 @@ public class ReservaService implements IReservaService {
 
         return new ReservaResponseDto(
                 reserva.getId(),
-                reserva.getFecha(),
+                reserva.getDesde(),
+                reserva.getHasta(),
                 visitanteDto,
                 vehiculoDto,
                 cocheraDto,
                 reserva.getEstado(),
+                reserva.getModalidad(),
                 reserva.getFechaCreacion());
     }
 }

@@ -3,6 +3,8 @@
 Que prueba cada archivo de test del proyecto, caso por caso. Ver `ARCHIVOS.md` para que hace cada archivo de codigo en general, y `AparcAR-Manual-Completo.pdf` para la explicacion conceptual de por que el proyecto testea asi (caja blanca vs caja negra, la trampa de MockMvc, los tests de regresion).
 
 > Este archivo se mantiene a mano. Si agregas o borras un test, actualizalo: los totales del final tienen que seguir cerrando.
+>
+> Los conteos por archivo salen de lo que reportan los runners (Surefire y Vitest), no de contar metodos: un test parametrizado cuenta como un test por cada fila de datos.
 
 ---
 
@@ -10,316 +12,640 @@ Que prueba cada archivo de test del proyecto, caso por caso. Ver `ARCHIVOS.md` p
 
 ## `AparcarApiApplicationTests.java`
 
+_1 tests._
+
+_1 tests._
+
+_1 tests._
+
+_1 tests._
+
 ```
 contextLoads   (sin @DisplayName)
 ```
 
 ## `component/OTPCleanupTests.java`
 
+_1 tests._
+
+_1 tests._
+
+_1 tests._
+
+_1 tests._
+
 ```
-otpCleanup deletes all expired OTPs
+otpCleanupDeletesAllExpiredOTPs   (sin @DisplayName)
+```
+
+## `component/ReservasVencidasTests.java`
+
+_4 tests._
+
+Caja blanca de la tarea que marca como FINALIZADA las reservas vencidas. Ojo con lo que **no** hace: no es lo que libera la cochera (eso sale del solapamiento de rangos, que funciona aunque la tarea nunca corra), solo mantiene el estado legible.
+
+```
+marcaLasVencidasComoFinalizadas   (sin @DisplayName)
+soloConsideraLasConfirmadas   (sin @DisplayName)
+noEscribeSiNoHayVencidas   (sin @DisplayName)
+marcaTodasLasVencidas   (sin @DisplayName)
 ```
 
 ## `component/RevokedUserCacheTests.java`
 
+_2 tests._
+
+_2 tests._
+
+_2 tests._
+
+_2 tests._
+
 ```
-RevokedUserCache revokes and checks revoked users
-RevokedUserCache rejects nulls
+testRevoke   (sin @DisplayName)
+cacheRejectsNulls   (sin @DisplayName)
 ```
 
 ## `component/SpringEmailSenderTests.java`
 
+_2 tests._
+
+_2 tests._
+
+_2 tests._
+
+_2 tests._
+
 ```
-sendPlainTextEmail should send email successfully
-sendPlainTextEmail should throw RuntimeException on error
+sendPlainTextEmailShouldSendEmailSuccessfully   (sin @DisplayName)
+sendPlainTextEmailShouldThrowRuntimeExceptionOnError   (sin @DisplayName)
+```
+
+## `config/ZonaHorariaConfigTests.java`
+
+_3 tests._
+
+Caja blanca de la zona horaria. Existen por un bug concreto: el contenedor arrancaba en UTC mientras el navegador mandaba hora local, y una reserva de las 16 a las 17 llegaba a un backend que creia que eran las 19, asi que la rechazaba por "terminada en el pasado".
+
+```
+fijaLaZonaConfigurada   (sin @DisplayName)
+corrigeUnArranqueEnUtc   (sin @DisplayName)
+respetaOtraZonaConfigurada   (sin @DisplayName)
+```
+
+## `entity/ModalidadReservaTests.java`
+
+_10 tests._
+
+_10 tests._
+
+```
+laModalidadSaleDeLaDuracion   (sin @DisplayName)
+elHorarioDeArranqueNoCambiaLaModalidad   (sin @DisplayName)
+unaFranjaSinDatosNoRompe   (sin @DisplayName)
+```
+
+## `entity/ReservaSolapamientoTests.java`
+
+_20 tests._
+
+Caja blanca del predicado de solapamiento, que es donde vive toda la regla de "dos reservas no se pisan". Ataca los bordes directamente, sin servicio ni base: un `<=` de mas y dos reservas consecutivas dejarian de poder existir; uno de menos y se permitiria pisar un minuto.
+
+```
+seSolapaConCubreLosBordes   (sin @DisplayName)
+reservasConsecutivasNoSePisan   (sin @DisplayName)
+elSolapamientoEsSimetrico   (sin @DisplayName)
+unaFranjaTerminadaNoOcupaMas   (sin @DisplayName)
+estaVigenteEnCubreLosBordes   (sin @DisplayName)
 ```
 
 ## `filters/JWTGeneratorFilterTests.java`
 
+_4 tests._
+
+_4 tests._
+
+_4 tests._
+
+_4 tests._
+
 Caja blanca. El filtro que arma el JWT, probado en aislamiento con mocks.
 
 ```
-shouldNotFilter devuelve false solo para /login
-doFilterInternal no agrega header Authorization si no hay autenticación
-doFilterInternal genera un JWT con email y authorities cuando hay autenticación
-El JWT expira 8 horas después de emitido
+shouldNotFilterOnlyAppliesToLogin   (sin @DisplayName)
+doesNotSetHeaderWhenNoAuthentication   (sin @DisplayName)
+generatesJwtWithEmailAndAuthoritiesWhenAuthenticated   (sin @DisplayName)
+jwtExpiresEightHoursAfterIssued   (sin @DisplayName)
 ```
 
 ## `filters/RateLimitFilterTests.java`
 
+_5 tests._
+
+_5 tests._
+
+_5 tests._
+
+_5 tests._
+
 Caja blanca. El limitador de intentos: 5 por IP por minuto, buckets independientes.
 
 ```
-shouldNotFilter deja pasar rutas que no son login/register/forgot-password
-shouldNotFilter aplica rate limit a login, register y forgot-password
-permite las primeras 5 requests de una misma IP
-la 6ta request de la misma IP en la ventana recibe 429 y no llega al resto de la cadena
-dos IPs distintas tienen buckets independientes
+shouldNotFilterSkipsUnrelatedPaths   (sin @DisplayName)
+shouldFilterAppliesToSensitiveEndpoints   (sin @DisplayName)
+allowsFirstFiveRequestsFromSameIp   (sin @DisplayName)
+rejectsSixthRequestWithTooManyRequests   (sin @DisplayName)
+differentIpsHaveIndependentBuckets   (sin @DisplayName)
 ```
 
 ## `integration/AuthControllerTests.java`
 
+_5 tests._
+
+_5 tests._
+
+_5 tests._
+
+_5 tests._
+
 ```
-/register validates input
-/register creates inactive user
-/login returns username
-/forgot-password sends OTP
-/reset-password resets password with valid OTP
+tearDown   (sin @DisplayName)
+registerValidatesInput   (sin @DisplayName)
+registerCreatesActiveUser   (sin @DisplayName)
+loginReturnsUsername   (sin @DisplayName)
+forgotPasswordSendsOTP   (sin @DisplayName)
+resetPasswordWithValidOTP   (sin @DisplayName)
 ```
 
 ## `integration/CocheraControllerTests.java`
 
+_39 tests._
+
+_39 tests._
+
+_39 tests._
+
+_39 tests._
+
 Caja negra. CRUD completo de cocheras de punta a punta, contra base H2 real.
 
 ```
-[Caja negra] endpoints de gestión devuelven 401 para usuarios anónimos
-[Caja negra] /disponibles es publico incluso para anonimos
-[Caja negra] endpoints de gestión devuelven 403 para USER sin rol ADMIN
-[Caja negra] POST /api/v1/cocheras devuelve 400 si falta el numero
-[Caja negra] POST /api/v1/cocheras devuelve 201 y crea la cochera con datos validos
-[Caja negra] POST /api/v1/cocheras devuelve 400 si el numero ya existe
-[Caja negra] GET /api/v1/cocheras devuelve todas las cocheras
-[Caja negra] GET /api/v1/cocheras/{id} devuelve 404 si no existe
-[Caja negra] GET /api/v1/cocheras/{id} devuelve 200 con la cochera cuando existe
-[Caja negra] PUT /api/v1/cocheras/{id} devuelve 404 si no existe
-[Caja negra] PUT /api/v1/cocheras/{id} devuelve 200 y actualiza los datos
-[Caja negra] PUT /api/v1/cocheras/{id} devuelve 400 si el nuevo numero ya esta en uso
-[Caja negra] DELETE /api/v1/cocheras/{id} devuelve 404 si no existe
-[Caja negra] DELETE /api/v1/cocheras/{id} devuelve 204 cuando no tiene reservas
-[Caja negra] DELETE /api/v1/cocheras/{id} devuelve 400 si tiene reservas asociadas
-[Caja negra] /disponibles excluye cocheras deshabilitadas
-[Caja negra] /disponibles filtra por tipoVehiculo compatible
+gestionDevuelve401ParaAnonimos   (sin @DisplayName)
+disponiblesEsPublicoParaAnonimos   (sin @DisplayName)
+gestionDevuelve403ParaUsuarioSinAdmin   (sin @DisplayName)
+crearDevuelve400SiFaltaNumero   (sin @DisplayName)
+crearDevuelve201ConDatosValidos   (sin @DisplayName)
+crearDevuelve400SiNumeroYaExiste   (sin @DisplayName)
+listarDevuelveTodasLasCocheras   (sin @DisplayName)
+obtenerPorIdDevuelve404SiNoExiste   (sin @DisplayName)
+obtenerPorIdDevuelve200CuandoExiste   (sin @DisplayName)
+editarDevuelve404SiNoExiste   (sin @DisplayName)
+editarDevuelve200YActualiza   (sin @DisplayName)
+editarDevuelve400SiNumeroYaEstaEnUso   (sin @DisplayName)
+eliminarDevuelve404SiNoExiste   (sin @DisplayName)
+eliminarDevuelve204CuandoNoTieneReservas   (sin @DisplayName)
+eliminarDevuelve400SiTieneReservasAsociadas   (sin @DisplayName)
+disponiblesExcluyeCocherasDeshabilitadas   (sin @DisplayName)
+disponiblesFiltraPorTipoVehiculoCompatible   (sin @DisplayName)
+listarConFiltrosIndependientes   (sin @DisplayName)
+listarFiltraPorTipo   (sin @DisplayName)
+listarFiltraPorSectorParcial   (sin @DisplayName)
+listarSinFechaDevuelveDisponibleEnFechaNull   (sin @DisplayName)
+listarConFechaMarcaDisponibilidad   (sin @DisplayName)
+crearEnLoteDevuelve401ParaAnonimos   (sin @DisplayName)
+crearEnLoteDevuelve403ParaUsuarioSinAdmin   (sin @DisplayName)
+crearEnLoteCreaTodasLasCocherasDelLote   (sin @DisplayName)
+[Caja negra] POST /api/v1/cocheras/bulk no crea ninguna si una cochera del lote es invalida (todo-o-nada)
+crearEnLoteDevuelve400SiNumeroYaExisteEnLaBase   (sin @DisplayName)
+listarSectoresDevuelve401ParaAnonimos   (sin @DisplayName)
+listarSectoresDevuelve403ParaUsuarioSinAdmin   (sin @DisplayName)
+listarSectoresDevuelveSectoresDistintos   (sin @DisplayName)
 ```
 
 ## `integration/DashboardAccessSecurityTests.java`
 
+_9 tests._
+
+_9 tests._
+
+_9 tests._
+
+_9 tests._
+
 Caja negra. La matriz de permisos: que rol puede pegarle a que endpoint.
 
 ```
-GET /api/v1/visitantes, /vehiculos y /reservas devuelven 401 para anónimos
-GET /api/v1/visitantes, /vehiculos y /reservas devuelven 200 para rol USER (los necesita dashboard-user)
+sharedEndpointsRejectAnonymousUsers   (sin @DisplayName)
+GET /api/v1/vehiculos y /reservas devuelven 200 para rol USER (los necesita dashboard-user)
+visitantesCatalogIsAdminOnly   (sin @DisplayName)
 GET /api/v1/visitantes, /vehiculos y /reservas devuelven 200 para rol ADMIN (los necesita dashboard-admin)
-GET /api/v1/cocheras/disponibles es público
-GET /api/v1/usuarios devuelve 401 para anónimos
+cocherasDisponiblesIsPublic   (sin @DisplayName)
+usuariosRejectsAnonymousUsers   (sin @DisplayName)
 GET /api/v1/usuarios devuelve 403 para rol USER (esta pantalla es solo de ADMIN)
-GET /api/v1/usuarios devuelve 200 para rol ADMIN
+usuariosAllowsAdminRole   (sin @DisplayName)
 El 403 devuelve el mismo formato JSON que el 401 (no un 404 ni un body vacío)
 ```
 
 ## `integration/LoginFlowTests.java`
 
+_4 tests._
+
+_4 tests._
+
+_4 tests._
+
+_4 tests._
+
 Caja negra contra un servidor embebido real (no MockMvc). Ver la nota al pie sobre `getServletPath()`.
 
 ```
-login con credenciales válidas devuelve 200 y un JWT con el email y las authorities del usuario
-login con un usuario que solo tiene rol USER devuelve un JWT con una sola authority
-login con email inexistente devuelve 401 sin JWT
-en el perfil de test/dev, una contraseña incorrecta devuelve 401 sin JWT
+loginWithValidCredentialsReturnsJwtWithClaims   (sin @DisplayName)
+loginWithUserOnlyRoleReturnsJwtWithSingleAuthority   (sin @DisplayName)
+loginWithNonExistentEmailReturnsUnauthorized   (sin @DisplayName)
+loginRejectsWrongPasswordInDevProfile   (sin @DisplayName)
+```
+
+## `integration/RegistrationFlowTests.java`
+
+_1 tests._
+
+Caja negra del registro contra un servidor embebido real.
+
+```
+registerLoginAndAccessOwnProfileWithRealJwt   (sin @DisplayName)
+```
+
+## `integration/RegistrationTests.java`
+
+_9 tests._
+
+Caja negra del alta publica de visitantes.
+
+```
+anonymousRegistrationCreatesOnlyActiveUserVisibleToAdmin   (sin @DisplayName)
+rejectsExistingEmailRegardlessOfCaseAndSpaces   (sin @DisplayName)
+rejectsExistingDocumentEvenForInactiveAccounts   (sin @DisplayName)
+rejectsInvalidInput   (sin @DisplayName)
+rejectsPasswordsOverBcryptByteLimit   (sin @DisplayName)
 ```
 
 ## `integration/ReservaControllerTests.java`
 
-Caja negra. Las reglas de negocio de reservas contra DB real.
+_27 tests._
+
+Caja negra. Las reglas de negocio de reservas contra DB real, incluida la **superposicion de franjas entre usuarios distintos** y la liberacion automatica de la cochera al vencer.
 
 ```
-[Caja negra] endpoints de reservas devuelven 401 para anonimos
-[Caja negra] POST /api/v1/reservas devuelve 400 si falta la fecha
-[Caja negra] POST /api/v1/reservas devuelve 400 si la fecha es anterior a hoy
-[Caja negra] POST /api/v1/reservas devuelve 404 si el visitante no existe
-[Caja negra] POST /api/v1/reservas devuelve 404 si la cochera no existe
-[Caja negra] POST /api/v1/reservas devuelve 400 si el vehiculo no pertenece al visitante indicado
-[Caja negra] POST /api/v1/reservas devuelve 400 si el tipo de cochera no es compatible
-[Caja negra] POST /api/v1/reservas devuelve 400 si la cochera ya tiene una reserva confirmada ese dia
-[Caja negra] POST /api/v1/reservas devuelve 201 y queda CONFIRMADA cuando todo es valido
-[Caja negra] POST /api/v1/reservas permite reservar una cochera ACCESIBLE con cualquier tipo de vehiculo
-[Caja negra] GET /api/v1/reservas/{id} devuelve 404 si no existe
-[Caja negra] GET /api/v1/reservas devuelve todas las reservas cargadas
+devuelve401ParaAnonimos   (sin @DisplayName)
+crearDevuelve400SiFaltaFecha   (sin @DisplayName)
+crearDevuelve400SiFechaEsPasada   (sin @DisplayName)
+crearDevuelve404SiVisitanteNoExiste   (sin @DisplayName)
+crearDevuelve404SiCocheraNoExiste   (sin @DisplayName)
+crearDevuelve400SiVehiculoNoPerteneceAlVisitante   (sin @DisplayName)
+crearDevuelve400SiTiposNoSonCompatibles   (sin @DisplayName)
+crearDevuelve400SiCocheraYaEstaReservada   (sin @DisplayName)
+crearDevuelve201YQuedaConfirmada   (sin @DisplayName)
+crearPermiteCocheraAccesibleConCualquierVehiculo   (sin @DisplayName)
+obtenerPorIdDevuelve404SiNoExiste   (sin @DisplayName)
+listarDevuelveTodasLasReservas   (sin @DisplayName)
+crearIgnoraElVisitanteIdAjenoCuandoEsUser   (sin @DisplayName)
+crearDevuelve400SiUnUserUsaElVehiculoDeOtro   (sin @DisplayName)
+listarDevuelveSoloLasPropiasAUnVisitante   (sin @DisplayName)
+obtenerPorIdDevuelve403SiLaReservaEsDeOtro   (sin @DisplayName)
+cancelarLiberaLaCocheraSinBorrarLaReserva   (sin @DisplayName)
+cancelarDosVecesDevuelve400   (sin @DisplayName)
+unVisitantePuedeCancelarSuPropiaReserva   (sin @DisplayName)
+unVisitanteNoPuedeCancelarLaReservaDeOtro   (sin @DisplayName)
+dosVisitantesNoPuedenPisarseLaMismaCochera   (sin @DisplayName)
+dosVisitantesPuedenUsarLaMismaCocheraEnFranjasConsecutivas   (sin @DisplayName)
+sePuedeReservarUnaFranjaDeVariosDias   (sin @DisplayName)
+unaReservaTerminadaLiberaLaCochera   (sin @DisplayName)
+disponiblesExcluyeCocheraOcupadaParcialmente   (sin @DisplayName)
+elMismoVehiculoNoPuedeOcuparDosCocherasALaVez   (sin @DisplayName)
+crearDevuelve400SiElFinEsAnteriorAlInicio   (sin @DisplayName)
 ```
 
 ## `integration/UserControllerTests.java`
 
+_10 tests._
+
+_10 tests._
+
+_10 tests._
+
+_10 tests._
+
 ```
-/users/** should return 401 Unauthorized for anonymous users
-/users/** should return 403 Forbidden for regular users
-/users/activate returns 400 Bad Request for invalid email
-/users/activate returns 200 OK for valid email
-/users/inactive returns 200 OK with a set of inactive users
-DELETE /users returns 400 Bad Request for caller email equal to deleted email
-DELETE /users returns 200 OK for valid email
-PUT /api/v1/usuarios/{id} actualiza nombre, telefono y authorities
-PUT /api/v1/usuarios/{id} devuelve 404 si el usuario no existe
-PUT /api/v1/usuarios/{id} devuelve 401 para anonimos
+shouldReturnUnauthorizedForAnonymousUsers   (sin @DisplayName)
+shouldReturnForbiddenForRegularUsers   (sin @DisplayName)
+activateShouldReturnBadRequestForInvalidEmail   (sin @DisplayName)
+activateShouldReturnOkForValidEmail   (sin @DisplayName)
+inactiveShouldReturnOkWithASetOfInactiveUsers   (sin @DisplayName)
+deleteShouldReturnBadRequestForInvalidEmail   (sin @DisplayName)
+deleteShouldReturnOkForValidEmail   (sin @DisplayName)
+updateUserUpdatesEditableFields   (sin @DisplayName)
+updateUserReturnsNotFoundForUnknownId   (sin @DisplayName)
+updateUserRejectsAnonymousUsers   (sin @DisplayName)
 ```
 
 ## `integration/VehiculoControllerTests.java`
 
+_18 tests._
+
+_18 tests._
+
+_18 tests._
+
+_18 tests._
+
 Caja negra. Alta, formato de patente, y la edicion/borrado con control de propietario.
 
 ```
-[Caja negra] endpoints de vehiculos devuelven 401 para anonimos
-[Caja negra] POST /api/v1/vehiculos devuelve 400 si la patente tiene formato invalido
-[Caja negra] POST /api/v1/vehiculos devuelve 404 si el visitante no existe
-[Caja negra] POST /api/v1/vehiculos devuelve 201 y normaliza la patente a mayusculas
-[Caja negra] POST /api/v1/vehiculos devuelve 400 si la patente ya existe
-[Caja negra] GET /api/v1/vehiculos sin filtro devuelve todos los vehiculos
-[Caja negra] GET /api/v1/vehiculos?visitanteId filtra solo los de ese visitante
-[Caja negra] GET /api/v1/vehiculos/{id} devuelve 404 si no existe
-[Caja negra] GET /api/v1/vehiculos/{id} devuelve 200 con el vehiculo cuando existe
-[Caja negra] PUT /api/v1/vehiculos/{id} devuelve 403 si no es el dueño
-[Caja negra] PUT /api/v1/vehiculos/{id} permite al dueño editar su vehiculo
-[Caja negra] DELETE /api/v1/vehiculos/{id} devuelve 204 cuando no tiene reservas
+devuelve401ParaAnonimos   (sin @DisplayName)
+crearDevuelve400SiPatenteTieneFormatoInvalido   (sin @DisplayName)
+crearDevuelve404SiVisitanteNoExiste   (sin @DisplayName)
+crearDevuelve201YNormalizaPatente   (sin @DisplayName)
+crearDevuelve400SiPatenteYaExiste   (sin @DisplayName)
+crearIgnoraElVisitanteIdCuandoEsUser   (sin @DisplayName)
+listarSinFiltroDevuelveTodosAlAdmin   (sin @DisplayName)
+listarConFiltroDevuelveSoloLosDeEseVisitante   (sin @DisplayName)
+listarDevuelveSoloLosPropiosAUnVisitante   (sin @DisplayName)
+obtenerPorIdDevuelve404SiNoExiste   (sin @DisplayName)
+obtenerPorIdDevuelve200CuandoExiste   (sin @DisplayName)
+editarDevuelve403SiNoEsElDueño   (sin @DisplayName)
+editarPermiteAlDueñoEditarSuVehiculo   (sin @DisplayName)
+eliminarDevuelve204CuandoNoTieneReservas   (sin @DisplayName)
+[Caja negra] POST /api/v1/vehiculos acepta formato anterior de MOTO (123ABC)
+[Caja negra] POST /api/v1/vehiculos acepta formato Mercosur de MOTO (A123BCD)
+crearDevuelve400SiPatenteEsDeAutoParaMoto   (sin @DisplayName)
+crearDevuelve400SiPatenteEsDeMotoParaAuto   (sin @DisplayName)
 ```
 
 ## `integration/VisitanteControllerTests.java`
 
-Caja negra. Foco en los endpoints `/me` de autoservicio.
+_19 tests._
+
+Caja negra. Foco en el alta operativa del admin y en los endpoints `/me` de autoservicio.
 
 ```
-[Caja negra] endpoints de visitantes devuelven 401 para anonimos
-[Caja negra] POST /api/v1/visitantes devuelve 400 si falta el nombre
-[Caja negra] POST /api/v1/visitantes devuelve 201 con datos validos
-[Caja negra] POST /api/v1/visitantes devuelve 400 si el documento ya existe
-[Caja negra] GET /api/v1/visitantes/{id} devuelve 404 si no existe
-[Caja negra] GET /api/v1/visitantes/me devuelve 404 si la cuenta todavia no cargo su perfil
-[Caja negra] GET /api/v1/visitantes/me devuelve el perfil vinculado a la cuenta autenticada
-[Caja negra] POST /api/v1/visitantes/me crea el perfil vinculado a la cuenta autenticada
-[Caja negra] POST /api/v1/visitantes/me devuelve 400 si la cuenta ya tiene un perfil cargado
-[Caja negra] POST /api/v1/visitantes/me devuelve 400 si el documento ya esta en uso por otro visitante
-[Caja negra] PUT /api/v1/visitantes/me actualiza telefono y email
-[Caja negra] PUT /api/v1/visitantes/me devuelve 401 para anonimos
+altaRespetaYValidaLaFranjaElegida   (sin @DisplayName)
+devuelve401ParaAnonimos   (sin @DisplayName)
+unUserNoPuedeListarNiDarDeAlta   (sin @DisplayName)
+altaDevuelve400SiFaltaNombre   (sin @DisplayName)
+altaDevuelve400SiFaltaEmail   (sin @DisplayName)
+altaCreaCuentaVehiculoYReserva   (sin @DisplayName)
+altaDejaLaCuentaListaParaIniciarSesion   (sin @DisplayName)
+altaDevuelve400SiDocumentoYaExiste   (sin @DisplayName)
+altaDevuelve400SiEmailYaExiste   (sin @DisplayName)
+altaNoDejaCuentaHuerfanaSiFallaLaReserva   (sin @DisplayName)
+obtenerPorIdDevuelve404SiNoExiste   (sin @DisplayName)
+obtenerPropioDevuelveLosDatosDeLaCuenta   (sin @DisplayName)
+actualizarPropioActualizaTelefonoYEmail   (sin @DisplayName)
+actualizarPropioDevuelve400SiElEmailYaEstaEnUso   (sin @DisplayName)
+cambiarPasswordPropiaFuncionaDePuntaAPunta   (sin @DisplayName)
+cambiarPasswordDevuelve400SiLaActualNoCoincide   (sin @DisplayName)
+cambiarPasswordDevuelve400SiLaNuevaEsMuyCorta   (sin @DisplayName)
+cambiarPasswordDevuelve401ParaAnonimos   (sin @DisplayName)
+actualizarPropioDevuelve401ParaAnonimos   (sin @DisplayName)
 ```
 
-## `security/AppUserDetailsServiceTests.java`
+## `security/VisitanteDetailsServiceTests.java`
 
-Caja blanca. El puente AppUser -> UserDetails.
+_2 tests._
+
+Caja blanca. El puente Visitante -> UserDetails.
 
 ```
-loadUserByUsername mapea las authorities del AppUser a GrantedAuthority
-loadUserByUsername lanza UsernameNotFoundException si el email no existe
+loadUserByUsernameMapsAuthorities   (sin @DisplayName)
+loadUserByUsernameThrowsWhenUserNotFound   (sin @DisplayName)
 ```
 
 ## `security/authenticationProvider/DevAuthenticationProviderTests.java`
 
+_4 tests._
+
+_4 tests._
+
+_4 tests._
+
+_4 tests._
+
 Caja blanca. Desde el cambio de seguridad, **dev/test tambien valida la contraseña**.
 
 ```
-autentica exitosamente cuando la contraseña matchea el hash
-rechaza con BadCredentialsException cuando la contraseña no matchea
-rechaza con BadCredentialsException cuando el email no existe
+authenticatesWhenPasswordMatches   (sin @DisplayName)
+rejectsWhenPasswordDoesNotMatch   (sin @DisplayName)
+rejectsWithBadCredentialsWhenUserDoesNotExist   (sin @DisplayName)
 supports() solo acepta UsernamePasswordAuthenticationToken
 ```
 
 ## `security/authenticationProvider/ProdAuthenticationProviderTests.java`
 
+_3 tests._
+
+_3 tests._
+
+_3 tests._
+
+_3 tests._
+
 Caja blanca. Rechaza con `BadCredentialsException` tanto si la clave no matchea como si el email no existe, para no filtrar que emails estan registrados.
 
 ```
-autentica exitosamente cuando la contraseña matchea el hash
-rechaza con BadCredentialsException cuando la contraseña no matchea
+authenticatesWhenPasswordMatches   (sin @DisplayName)
+rejectsWhenPasswordDoesNotMatch   (sin @DisplayName)
 rechaza con BadCredentialsException (no UsernameNotFoundException) cuando el email no existe
 ```
 
 ## `service/AuthServiceTests.java`
 
+_11 tests._
+
+_11 tests._
+
+_11 tests._
+
+_11 tests._
+
 ```
-register throws ValidationException when email already registered
-register successfully creates a new user
-createAndSendOTP throws NotFoundException when user not found
-createAndSendOTP successfully creates and sends OTP
-resetPassword throws NotFoundException when user not found
-resetPassword throws OTPException when OTP is invalid
-resetPassword throws OTPException when OTP is expired
-resetPassword successfully resets the user's password
+concurrentEmailConflictReturnsValidationError   (sin @DisplayName)
+concurrentDocumentConflictReturnsValidationError   (sin @DisplayName)
+registerThrowsValidationExceptionWhenEmailAlreadyRegistered   (sin @DisplayName)
+registerThrowsValidationExceptionWhenDocumentoAlreadyRegistered   (sin @DisplayName)
+registerSuccessfullyCreatesNewUser   (sin @DisplayName)
+createAndSendOTPThrowsNotFoundExceptionWhenUserNotFound   (sin @DisplayName)
+createAndSendOTPSuccessfullyCreatesAndSendsOTP   (sin @DisplayName)
+resetPasswordThrowsNotFoundExceptionWhenUserNotFound   (sin @DisplayName)
+resetPasswordThrowsOTPExceptionWhenOTPIsInvalid   (sin @DisplayName)
+resetPasswordThrowsOTPExceptionWhenOTPIsExpired   (sin @DisplayName)
+resetPasswordSuccessfullyResetsUserPassword   (sin @DisplayName)
 ```
 
 ## `service/CocheraServiceTests.java`
 
+_22 tests._
+
+_22 tests._
+
+_22 tests._
+
+_22 tests._
+
 Incluye la cancelacion automatica de reservas al deshabilitar una cochera.
 
 ```
-crear lanza ValidationException si ya existe una cochera con ese numero
-crear guarda la cochera cuando el numero no esta repetido
-obtenerPorId lanza NotFoundException si no existe
-obtenerPorId devuelve la cochera cuando existe
-editar lanza NotFoundException si no existe
-editar lanza ValidationException si el nuevo numero ya esta en uso por otra cochera
-editar permite guardar sin chequear duplicados si el numero no cambia
-eliminar lanza NotFoundException si no existe
-eliminar lanza ValidationException si la cochera tiene reservas asociadas
-eliminar borra la cochera cuando no tiene reservas asociadas
-listarDisponibles excluye cocheras con una reserva confirmada en esa fecha
-listarDisponibles filtra por tipo exacto de vehiculo cuando se indica
-listarDisponibles incluye cocheras ACCESIBLE sin importar el tipo de vehiculo
-editar cancela las reservas CONFIRMADA de la cochera al pasarla a DESHABILITADA
+crearLanzaValidationExceptionSiNumeroYaExiste   (sin @DisplayName)
+crearGuardaCocheraCuandoNumeroNoEstaRepetido   (sin @DisplayName)
+obtenerPorIdLanzaNotFoundExceptionSiNoExiste   (sin @DisplayName)
+obtenerPorIdDevuelveLaCocheraCuandoExiste   (sin @DisplayName)
+editarLanzaNotFoundExceptionSiNoExiste   (sin @DisplayName)
+editarLanzaValidationExceptionSiNumeroYaEstaEnUso   (sin @DisplayName)
+editarPermiteGuardarSiNumeroNoCambia   (sin @DisplayName)
+eliminarLanzaNotFoundExceptionSiNoExiste   (sin @DisplayName)
+eliminarLanzaValidationExceptionSiTieneReservas   (sin @DisplayName)
+eliminarBorraLaCocheraCuandoNoTieneReservas   (sin @DisplayName)
+listarDisponiblesExcluyeCocherasReservadas   (sin @DisplayName)
+listarDisponiblesFiltraPorTipoExacto   (sin @DisplayName)
+listarDisponiblesIncluyeAccesibleParaCualquierTipo   (sin @DisplayName)
+editarCancelaReservasConfirmadasAlDeshabilitar   (sin @DisplayName)
+listarSinFiltrosDevuelveTodasConDisponibleEnFechaNull   (sin @DisplayName)
+listarTrataSectorEnBlancoComoNull   (sin @DisplayName)
+listarConFechaMarcaOcupadaCorrectamente   (sin @DisplayName)
+crearEnLoteLanzaValidationExceptionSiListaVacia   (sin @DisplayName)
+crearEnLoteLanzaValidationExceptionSiNumeroRepetidoEnElLote   (sin @DisplayName)
+crearEnLoteLanzaValidationExceptionSiNumeroYaExisteEnLaBase   (sin @DisplayName)
+crearEnLoteGuardaTodasLasCocherasCuandoSonValidas   (sin @DisplayName)
+listarSectoresDelegaEnElRepository   (sin @DisplayName)
 ```
 
 ## `service/ReservaServiceTests.java`
 
-Las mismas reglas que `ReservaControllerTests`, pero con mocks y aisladas del repositorio.
+_32 tests._
+
+Las mismas reglas que `ReservaControllerTests`, pero con mocks y aisladas del repositorio. Incluye la validacion de la franja horaria: rango invertido, duracion cero, franja ya vencida, y el vehiculo comprometido en otra cochera.
 
 ```
-crear lanza NotFoundException si el visitante no existe
-crear lanza ValidationException si el vehiculo no pertenece al visitante
-crear lanza ValidationException si el tipo de cochera no es compatible con el vehiculo
-crear permite una cochera ACCESIBLE para cualquier tipo de vehiculo
-crear lanza ValidationException si la cochera ya tiene una reserva confirmada ese dia
-crear guarda la reserva como CONFIRMADA cuando todas las validaciones pasan
+crearLanzaNotFoundExceptionSiVisitanteNoExiste   (sin @DisplayName)
+crearLanzaValidationExceptionSiVehiculoNoPerteneceAlVisitante   (sin @DisplayName)
+crearLanzaValidationExceptionSiTiposNoSonCompatibles   (sin @DisplayName)
+crearPermiteCocheraAccesibleParaCualquierVehiculo   (sin @DisplayName)
+crearLanzaValidationExceptionSiCocheraYaEstaReservada   (sin @DisplayName)
+crearGuardaReservaConfirmadaCuandoTodoEsValido   (sin @DisplayName)
+crearIgnoraElVisitanteIdDelDtoSiNoEsAdmin   (sin @DisplayName)
+crearLanzaValidationExceptionSiAdminNoIndicaVisitante   (sin @DisplayName)
+listarDevuelveTodasParaAdmin   (sin @DisplayName)
+listarDevuelveSoloLasPropiasParaVisitante   (sin @DisplayName)
+obtenerPorIdNiegaElAccesoAUnaReservaAjena   (sin @DisplayName)
+obtenerPorIdDejaAlAdminVerCualquierReserva   (sin @DisplayName)
+cancelarPasaLaReservaACancelada   (sin @DisplayName)
+cancelarNiegaElAccesoAUnaReservaAjena   (sin @DisplayName)
+cancelarDejaAlAdminDarDeBajaCualquierReserva   (sin @DisplayName)
+cancelarLanzaValidationExceptionSiYaEstabaCancelada   (sin @DisplayName)
+cancelarLanzaNotFoundExceptionSiNoExiste   (sin @DisplayName)
+crearRechazaFranjaInvertida   (sin @DisplayName)
+crearRechazaFranjaDeDuracionCero   (sin @DisplayName)
+crearRechazaFranjaEnteramenteVencida   (sin @DisplayName)
+crearAceptaInicioPasadoConFinFuturo   (sin @DisplayName)
+crearRechazaVehiculoComprometidoEnOtraCochera   (sin @DisplayName)
+crearConsultaSolapamientoSoloContraConfirmadas   (sin @DisplayName)
+cancelarRechazaUnaReservaYaTerminada   (sin @DisplayName)
+crearRechazaInicioFueraDeBloque   (sin @DisplayName)
+crearRechazaFinFueraDeBloque   (sin @DisplayName)
+crearRechazaHorarioConSegundos   (sin @DisplayName)
+crearAceptaLosCuatroBloques   (sin @DisplayName)
+crearAceptaUnaReservaDeUnBloque   (sin @DisplayName)
 ```
 
 ## `service/UserServiceTests.java`
 
-Incluye el borrado seguro: desvincula el visitante propio antes de borrar la cuenta.
+_10 tests._
+
+Incluye el borrado seguro: se bloquea si el visitante tiene reservas registradas, y se llevan sus vehiculos junto con la cuenta.
 
 ```
-activateUser throws NotFoundException when user not found
-activateUser activates user successfully
-getInactiveUsers returns set of inactive user emails
-deleteUser throws RuntimeException when caller email is null
-deleteUser throws NotFoundException when user not found
-deleteUser throws ValidationException when user tries to delete themselves
-deleteUser desvincula el visitante propio antes de borrar la cuenta, para no violar la FK
-deleteUser no toca visitantes cuando la cuenta no tiene ninguno vinculado
+activateUserThrowsNotFoundExceptionWhenUserNotFound   (sin @DisplayName)
+activateUserSuccessfully   (sin @DisplayName)
+getInactiveUsersReturnsSetOfInactiveUserEmails   (sin @DisplayName)
+deleteUserThrowsRuntimeExceptionWhenCallerEmailIsNull   (sin @DisplayName)
+deleteUserThrowsNotFoundExceptionWhenUserNotFound   (sin @DisplayName)
+deleteUserThrowsValidationExceptionWhenUserTriesToDeleteThemselves   (sin @DisplayName)
+deleteUserThrowsWhenVisitanteHasReservas   (sin @DisplayName)
+deleteUserDeletesOwnVehiclesAlongWithTheAccount   (sin @DisplayName)
+updateUserRejectsDocumentoAlreadyInUse   (sin @DisplayName)
+updateUserUpdatesDataAndRoles   (sin @DisplayName)
 ```
 
 ## `service/VehiculoServiceTests.java`
 
+_16 tests._
+
+_16 tests._
+
+_16 tests._
+
+_16 tests._
+
 Incluye `verificarPropietario`: un USER solo toca sus propios vehiculos, un ADMIN todos.
 
 ```
-crear lanza NotFoundException si el visitante no existe
-crear lanza ValidationException si ya existe un vehiculo con esa patente
-crear normaliza la patente a mayusculas antes de guardar
-obtenerPorId lanza NotFoundException si el vehiculo no existe
-listarPorVisitante devuelve solo los vehiculos de ese visitante
-editar lanza AccessDeniedException si quien pide no es ADMIN ni el dueño
-editar permite al ADMIN modificar un vehiculo que no es suyo
-eliminar lanza ValidationException si el vehiculo tiene reservas asociadas
+crearLanzaNotFoundExceptionSiVisitanteNoExiste   (sin @DisplayName)
+crearLanzaValidationExceptionSiPatenteYaExiste   (sin @DisplayName)
+crearNormalizaPatenteAMayusculas   (sin @DisplayName)
+obtenerPorIdLanzaNotFoundExceptionSiNoExiste   (sin @DisplayName)
+listarPorVisitanteDevuelveVehiculosDelVisitante   (sin @DisplayName)
+editarLanzaAccessDeniedExceptionSiNoEsElDueño   (sin @DisplayName)
+editarPermiteAlAdminModificarCualquierVehiculo   (sin @DisplayName)
+eliminarLanzaValidationExceptionSiTieneReservas   (sin @DisplayName)
+crearAceptaAmbosFormatosParaAuto   (sin @DisplayName)
+crearAceptaAmbosFormatosParaMoto   (sin @DisplayName)
+crear acepta ambos formatos vigentes de patente para CARGA (mismo esquema que AUTO)
+crearRechazaFormatoDeAutoParaMoto   (sin @DisplayName)
+crearRechazaFormatoDeMotoParaAuto   (sin @DisplayName)
 ```
 
 ## `service/VisitanteServiceTests.java`
 
-Incluye el flujo `/me`: obtener, crear y actualizar el perfil propio.
+_20 tests._
+
+Incluye el alta operativa atomica (cuenta + vehiculo + reserva) y el cambio de contraseña propio.
 
 ```
-crear lanza ValidationException si ya existe un visitante con el mismo documento
-crear guarda el visitante cuando el documento no esta repetido
-obtenerPorId lanza NotFoundException si el visitante no existe
-obtenerPorId devuelve el visitante cuando existe
-listar devuelve todos los visitantes
-obtenerPropio lanza NotFoundException si la cuenta no tiene un visitante vinculado
-obtenerPropio devuelve el visitante vinculado a la cuenta autenticada
-crearPropio lanza ValidationException si la cuenta ya tiene un visitante cargado
-crearPropio lanza ValidationException si el documento ya esta en uso por otro visitante
-crearPropio crea el visitante vinculado a la cuenta autenticada
-actualizarPropio lanza NotFoundException si la cuenta no tiene un visitante vinculado
-actualizarPropio actualiza telefono y email sin tocar nombre ni documento
+altaLanzaValidationExceptionSiDocumentoYaExiste   (sin @DisplayName)
+altaLanzaValidationExceptionSiEmailYaExiste   (sin @DisplayName)
+altaUsaElDocumentoComoContraseñaInicial   (sin @DisplayName)
+altaCreaLaCuentaActivaYConRolUser   (sin @DisplayName)
+altaCargaElVehiculoANombreDelVisitanteCreado   (sin @DisplayName)
+altaReservaLaCocheraParaHoy   (sin @DisplayName)
+altaReservaParaLaFranjaElegida   (sin @DisplayName)
+altaPropagaElErrorDeLaReserva   (sin @DisplayName)
+obtenerPorIdLanzaNotFoundExceptionSiNoExiste   (sin @DisplayName)
+obtenerPorIdDevuelveVisitanteCuandoExiste   (sin @DisplayName)
+listarDevuelveTodosLosVisitantes   (sin @DisplayName)
+obtenerPropioLanzaNotFoundExceptionSiNoExisteLaCuenta   (sin @DisplayName)
+obtenerPropioDevuelveLosDatosDeLaCuenta   (sin @DisplayName)
+actualizarPropioLanzaNotFoundExceptionSiNoExisteLaCuenta   (sin @DisplayName)
+actualizarPropioActualizaTelefonoYEmail   (sin @DisplayName)
+actualizarPropioRechazaUnEmailYaEnUso   (sin @DisplayName)
+cambiarPasswordRechazaSiLaActualNoCoincide   (sin @DisplayName)
+cambiarPasswordRechazaSiLaNuevaEsIgualALaActual   (sin @DisplayName)
+cambiarPasswordGuardaLaNuevaHasheada   (sin @DisplayName)
+cambiarPasswordLanzaNotFoundExceptionSiNoExisteLaCuenta   (sin @DisplayName)
 ```
+
 
 ---
 
 # Frontend (`aparcar-front/test/`)
 
 ## `api.test.jsx`
+
+_6 tests._
+
+_6 tests._
+
+_6 tests._
+
+_6 tests._
 
 Los dos interceptores de `app/api.jsx`, incluida la **regresion del bug del login doble**.
 
@@ -334,6 +660,14 @@ ante un error que no es 401, no toca la cookie ni redirige
 
 ## `components/LogoutButton.test.jsx`
 
+_1 tests._
+
+_1 tests._
+
+_1 tests._
+
+_1 tests._
+
 El boton de cerrar sesion: limpia el store y navega a `/login`.
 
 ```
@@ -342,7 +676,9 @@ cierra la sesión y navega a /login
 
 ## `components/ReservasContent.test.jsx`
 
-Reserva por patente, y la **regresion del bug de cache de vehiculos al hacer foco**. El componente lo comparten los dos dashboards.
+_31 tests._
+
+El formulario de reserva, que comparten los dos dashboards. Cubre la **franja horaria** (arranque por defecto en el momento actual, rango invertido, varios dias) y la **regresion del bug de cache de vehiculos al hacer foco**.
 
 ```
 muestra el mensaje de vacio cuando no hay reservas cargadas
@@ -350,59 +686,134 @@ lista las reservas existentes con su estado
 al escribir una patente registrada, muestra el nombre del visitante y el tipo de vehiculo
 al escribir una patente que no existe, avisa que no se encontro ningun vehiculo
 la cochera queda deshabilitada hasta encontrar un vehiculo por patente
-al resolver un vehiculo (con fecha ya cargada por defecto), pide las cocheras disponibles de ese tipo
+al resolver un vehiculo (con la franja ya cargada por defecto), pide las cocheras disponibles de ese tipo
 el foco en el campo de patente vuelve a pedir vehiculos y visitantes
-confirmar la reserva envia el visitanteId/vehiculoId resueltos por patente, junto con cochera y fecha
+confirmar la reserva envia el visitanteId/vehiculoId resueltos por patente, junto con cochera y franja
 el boton de confirmar reserva esta deshabilitado hasta elegir una cochera
+cancela con POST /api/v1/reservas/{id}/cancelar
+pide confirmacion y no hace nada si se cancela el dialogo
+avisa que la ocupacion cambio
+no ofrece cancelar una reserva que ya esta cancelada
+el visitante tambien puede cancelar desde su dashboard
+si el backend rechaza la cancelacion, muestra su mensaje
+no pide el catalogo de visitantes
+ofrece sus propias patentes en un desplegable en vez de un campo libre
+si todavia no cargo ningun vehiculo, explica que hace falta uno para reservar
+no manda visitanteId al reservar
+lista solo la patente, sin el nombre del visitante
+arranca en el bloque de 15 en curso y propone una hora de duracion
+los campos declaran el paso de 15 minutos
+un horario fuera de bloque se baja al bloque en curso
+pide las cocheras libres mandando desde y hasta
+cambiar la franja vuelve a consultar disponibilidad
+avisa al instante si la franja queda invertida
+muestra la franja de cada reserva en el listado, no una fecha suelta
+muestra los dos dias cuando la franja cruza la medianoche
+muestra la modalidad que manda el backend
+traduce las tres modalidades
+una reserva sin modalidad no rompe el listado
+```
+
+## `components/ThemeToggle.test.jsx`
+
+_2 tests._
+
+El boton de cambio de tema.
+
+```
+se hidrata al montar y muestra el ícono de luna en modo claro
+al hacer click, alterna a oscuro y aplica la clase al <html>
+```
+
+## `dashboard-admin/PanelOperativo.test.jsx`
+
+_1 tests._
+
+_1 tests._
+
+_1 tests._
+
+_1 tests._
+
+El panel operativo del ADMIN. **Regresion del bug de la reserva que no se agregaba**: que el panel incluya el formulario de reservas, que el admin pueda crear una, y que la cuadricula de ocupacion se refresque despues.
+
+```
+muestra unicamente el alta de visitante, no la grilla vieja ni el formulario de reservas
+```
+
+## `dashboard-admin/VisitantesContent.test.jsx`
+
+_12 tests._
+
+El alta operativa del admin: crea cuenta, vehiculo y reserva en una sola llamada, con su franja.
+
+```
+consulta disponibilidad y reserva para la franja elegida, limpiando la cochera anterior
+ignora la respuesta de disponibilidad de una franja que ya cambio
+el horario elegido siempre cae en un bloque de 15 minutos
+muestra errores si se envia el formulario vacio
+exige el email porque es con lo que el visitante inicia sesion
+rechaza una patente con formato invalido
+rechaza una patente de moto cuando el tipo elegido sigue siendo AUTO
+pide las cocheras disponibles de hoy para el tipo de vehiculo elegido
+manda cuenta, vehiculo y cochera en una sola llamada
+avisa que la contraseña inicial es el documento
+avisa al padre para que refresque ocupacion y reservas
+si el alta falla (ej. documento duplicado), muestra el error del backend
 ```
 
 ## `dashboard-admin/cocheras/CocherasManagement.test.jsx`
 
+_24 tests._
+
+ABM de cocheras con sus filtros. El filtro por fecha se traduce al dia completo como rango.
+
 ```
 muestra la navegación de regreso al panel
 carga y lista las cocheras existentes
-filtra por sector
-filtra por tipo
-crea una cochera nueva y refresca la lista
+combina tipo y estado sin sector y recupera todas las cocheras al limpiar filtros
+una respuesta anterior no reemplaza los resultados del filtro actual
+el dropdown de sector se arma con los sectores reales, sin repetidos
+filtra por sector pidiendole al backend, no en el cliente
+filtra por tipo pidiendole al backend
+sin fecha seleccionada, la columna de disponibilidad muestra un guion
+al elegir una fecha, pide al backend el dia completo como rango y muestra Libre/Ocupada
+crea una cochera nueva y refresca la lista y los sectores
 muestra errores de validacion si falta numero o sector
 al editar, precarga el formulario con los datos de la fila elegida
 al deshabilitar una cochera antes HABILITADA, pide confirmacion; si se cancela, no llama a PUT
 al deshabilitar y confirmar, llama a PUT con el nuevo estado
 eliminar pide confirmacion, y si se cancela no llama a DELETE
 eliminar, si se confirma, llama a DELETE y refresca la lista
-```
-
-## `dashboard-admin/EstadoCocherasGrid.test.jsx`
-
-```
-muestra el estado de carga mientras llegan los datos
-muestra el mensaje de vacio cuando no hay cocheras cargadas
-agrupa las cocheras por tipo y solo muestra columnas con al menos una
-marca como ocupada una cochera habilitada que no aparece en /disponibles
-una cochera DESHABILITADA se muestra como tal y no cuenta como ocupada
-si falla la carga, muestra un toast de error
-```
-
-## `dashboard-admin/PanelOperativo.test.jsx`
-
-El panel operativo del ADMIN. **Regresion del bug de la reserva que no se agregaba**: que el panel incluya el formulario de reservas, que el admin pueda crear una, y que la cuadricula de ocupacion se refresque despues.
-
-```
-incluye el formulario de nueva reserva, no solo el alta de visitante
-el admin crea una reserva resolviendo el visitante por patente
-al crear la reserva refresca la cuadricula de ocupacion
+el alta usa un dropdown de sector con las opciones reales del backend
+elegir '+ Otro' en el alta muestra un input de texto libre para el sector nuevo
+sin ningun sector cargado todavia, el alta arranca directo en modo texto libre
+el lote arranca con una sola fila y permite agregar mas
+no permite quitar la ultima fila del lote
+envia el lote completo a POST /api/v1/cocheras/bulk
+si el backend rechaza el lote completo, muestra su mensaje y no limpia el formulario
+muestra errores de validacion por fila si falta el numero
 ```
 
 ## `dashboard-admin/usuarios/UserManagement.test.jsx`
 
+_13 tests._
+
+_13 tests._
+
+_13 tests._
+
+_13 tests._
+
 ```
 muestra la navegación de regreso al panel
 carga y lista los usuarios existentes
-un usuario inactivo muestra el badge Inactivo y el boton Activar
+conserva el boton Activar para usuarios inactivos sin mostrar la columna Estado
 un usuario activo no muestra el boton Activar
 activar un usuario llama a POST /users/activate con su email
 muestra errores de validacion al crear un usuario con datos invalidos
 crea un usuario con datos validos
+no deja crear una cuenta sin documento
 al editar, precarga nombre, telefono y los roles marcados
 editar sin ningun rol marcado muestra el error de validacion
 guarda los cambios de edicion con PUT /api/v1/usuarios/{id}
@@ -410,38 +821,44 @@ eliminar pide confirmacion y llama a DELETE /users con el email
 eliminar cancelado no llama a DELETE
 ```
 
-## `dashboard-admin/VisitantesContent.test.jsx`
-
-```
-muestra errores si se envia el formulario vacio
-rechaza una patente con formato invalido
-crea el visitante y despues el vehiculo con el visitanteId devuelto
-si falla la creacion del visitante (ej. documento duplicado), no intenta crear el vehiculo
-si falla la creacion del vehiculo (ej. patente duplicada), muestra el error del backend
-```
-
 ## `dashboard-user/MiPerfilContent.test.jsx`
 
-Autoregistro del visitante y la **gestion completa de sus datos y vehiculos** (editar perfil, editar y eliminar vehiculos).
+_20 tests._
+
+Los datos propios del visitante y la **gestion completa de sus vehiculos**, mas el cambio de contraseña.
 
 ```
 muestra el estado de carga inicialmente
-si la cuenta todavia no tiene perfil (404), muestra el formulario de autoregistro
-si ya tiene perfil, muestra sus datos y sus vehiculos
-si ya tiene perfil pero ningun vehiculo, avisa que todavia no cargo ninguno
-un error que no es 404 al cargar el perfil muestra un toast de error
-muestra errores de validacion al enviar el formulario de autoregistro vacio
-crea el perfil propio y pasa a mostrar la vista de datos guardados
-si falla la creacion del perfil (ej. cuenta ya tiene uno), muestra el error del backend
+no ofrece ningun formulario de autoregistro: el perfil viene con la cuenta
+muestra sus datos y sus vehiculos
+pide sus vehiculos sin mandar visitanteId
+si todavia no tiene ningun vehiculo, avisa que no cargo ninguno
+un error al cargar el perfil muestra un toast de error
 agregar un vehiculo con patente invalida muestra el error de formato
-agrega un vehiculo propio y refresca la lista
+agregar un vehiculo con patente de auto para un tipo MOTO muestra el error especifico de moto
+agrega un vehiculo propio sin mandar visitanteId y refresca la lista
 el boton 'Editar mis datos' precarga telefono y email actuales
 guarda los cambios de telefono/email con PUT /api/v1/visitantes/me
+no deja vaciar el email, porque es con lo que se inicia sesion
 edita un vehiculo existente con PUT /api/v1/vehiculos/{id}
 elimina un vehiculo con confirmacion
+el formulario esta oculto hasta tocar 'Cambiar contraseña'
+manda la actual y la nueva a PUT /api/v1/visitantes/me/password
+exige la contraseña actual
+rechaza una contraseña nueva de menos de 8 caracteres
+avisa si la repeticion no coincide
+si el backend rechaza el cambio, muestra su mensaje
 ```
 
 ## `login/page.test.jsx`
+
+_10 tests._
+
+_10 tests._
+
+_10 tests._
+
+_10 tests._
 
 ```
 muestra los campos de email y contraseña y el boton de ingresar
@@ -449,6 +866,7 @@ muestra errores de validacion y no llama a la API si el email esta vacio
 muestra error de validacion si la contraseña tiene menos de 6 caracteres
 envia el login con Basic Auth (email:password en base64) y no como body JSON
 con rol ADMIN en el JWT, redirige a /dashboard-admin
+codifica las contraseñas Unicode en UTF-8 para HTTP Basic
 con solo rol USER en el JWT, redirige a /dashboard-user
 si la respuesta no trae header Authorization, muestra error y no redirige
 ante un 401 del backend, muestra 'Email o contraseña incorrectos.'
@@ -456,6 +874,14 @@ ante otro error del backend, muestra el mensaje que devuelve el servidor
 ```
 
 ## `page.test.jsx`
+
+_4 tests._
+
+_4 tests._
+
+_4 tests._
+
+_4 tests._
 
 La landing publica: redireccion por rol si ya hay sesion, y el menu hamburguesa mobile.
 
@@ -466,7 +892,27 @@ con rol USER autenticado, redirige a /dashboard-user
 el menu hamburguesa se abre y cierra en mobile
 ```
 
+## `register/page.test.jsx`
+
+_14 tests._
+
+El registro publico de visitantes desde la pantalla de login.
+
+```
+crea solo la cuenta con datos normalizados y permite iniciar sesión
+bloquea envíos repetidos mientras se crea la cuenta
+permite mostrar y ocultar las contraseñas
+```
+
 ## `store/authStore.test.js`
+
+_8 tests._
+
+_8 tests._
+
+_8 tests._
+
+_8 tests._
 
 ```
 setAuth decodifica las authorities del JWT (string separado por comas) a un array de roles
@@ -479,7 +925,28 @@ checkAuth cierra la sesion si el token de la cookie ya expiro
 checkAuth sin cookie deja la sesion como no autenticada pero hidratada
 ```
 
+## `store/themeStore.test.js`
+
+_4 tests._
+
+El store de tema claro/oscuro.
+
+```
+hidratar arranca en light si no hay nada guardado
+hidratar restaura el tema guardado en localStorage
+alternar cambia de light a dark y persiste la preferencia
+alternar dos veces vuelve a light
+```
+
 ## `utils/env.test.js`
+
+_3 tests._
+
+_3 tests._
+
+_3 tests._
+
+_3 tests._
 
 ```
 devuelve el valor de window.__ENV cuando está presente (runtime)
@@ -487,15 +954,28 @@ ignora window.__ENV si la clave pedida no está definida ahí
 no revienta si window.__ENV no existe
 ```
 
+## `utils/patenteValidation.test.js`
+
+_9 tests._
+
+Los formatos de patente aceptados segun el tipo de vehiculo.
+
+```
+rechaza una patente con formato de auto para una MOTO
+rechaza una patente con formato de moto para un AUTO
+es case-insensitive
+```
+
+
 ---
 
 # Totales
 
 | | Archivos | Tests |
 |---|---|---|
-| Backend | 23 | 160 |
-| Frontend | 13 | 91 |
-| **Total** | **36** | **251** |
+| Backend | 29 | 313 |
+| Frontend | 16 | 162 |
+| **Total** | **45** | **475** |
 
 Correr todo:
 

@@ -1,0 +1,116 @@
+databaseChangeLog:
+  # La reserva deja de ser "por dia" y pasa a ser una franja [desde, hasta).
+  #
+  # Las reservas que ya existen se conservan: se las interpreta como el dia
+  # entero que ocupaban, que es exactamente lo que significaban con el modelo
+  # anterior (una reserva por cochera y por fecha bloqueaba todo el dia).
+
+  - changeSet:
+      id: 006-agregar-desde-hasta
+      author: claude
+      changes:
+        - addColumn:
+            tableName: reservas
+            columns:
+              - column:
+                  name: desde
+                  type: timestamp
+              - column:
+                  name: hasta
+                  type: timestamp
+
+  # Backfill antes de poner NOT NULL, para no romper las filas existentes.
+  #
+  # Va en dos versiones porque la aritmetica de fechas no es portable: prod usa
+  # Postgres y los tests corren sobre H2, y cada uno la escribe distinto.
+  - changeSet:
+      id: 006-backfill-desde-hasta-postgres
+      author: claude
+      dbms: postgresql
+      changes:
+        - update:
+            tableName: reservas
+            columns:
+              - column:
+                  name: desde
+                  valueComputed: "CAST(fecha AS timestamp)"
+              - column:
+                  name: hasta
+                  valueComputed: "CAST(fecha AS timestamp) + INTERVAL '1 day'"
+            where: desde IS NULL
+
+  - changeSet:
+      id: 006-backfill-desde-hasta-h2
+      author: claude
+      dbms: h2
+      changes:
+        - update:
+            tableName: reservas
+            columns:
+              - column:
+                  name: desde
+                  valueComputed: "CAST(fecha AS timestamp)"
+              - column:
+                  name: hasta
+                  valueComputed: "DATEADD('DAY', 1, CAST(fecha AS timestamp))"
+            where: desde IS NULL
+
+  - changeSet:
+      id: 006-desde-hasta-obligatorios
+      author: claude
+      changes:
+        - addNotNullConstraint:
+            tableName: reservas
+            columnName: desde
+            columnDataType: timestamp
+        - addNotNullConstraint:
+            tableName: reservas
+            columnName: hasta
+            columnDataType: timestamp
+
+  - changeSet:
+      id: 006-eliminar-fecha
+      author: claude
+      changes:
+        - dropColumn:
+            tableName: reservas
+            columnName: fecha
+
+  # La consulta de solapamiento filtra por cochera y estado y despues compara
+  # los extremos del rango; este indice es el que evita escanear toda la tabla
+  # cada vez que alguien pide las cocheras libres.
+  - changeSet:
+      id: 006-indice-solapamiento
+      author: claude
+      changes:
+        - createIndex:
+            tableName: reservas
+            indexName: idx_reservas_cochera_estado_rango
+            columns:
+              - column:
+                  name: cochera_id
+              - column:
+                  name: estado
+              - column:
+                  name: desde
+              - column:
+                  name: hasta
+
+  # Mismo motivo, para la regla de "un vehiculo no puede estar en dos lugares
+  # a la vez".
+  - changeSet:
+      id: 006-indice-solapamiento-vehiculo
+      author: claude
+      changes:
+        - createIndex:
+            tableName: reservas
+            indexName: idx_reservas_vehiculo_estado_rango
+            columns:
+              - column:
+                  name: vehiculo_id
+              - column:
+                  name: estado
+              - column:
+                  name: desde
+              - column:
+                  name: hasta

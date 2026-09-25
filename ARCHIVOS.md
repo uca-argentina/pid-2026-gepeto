@@ -37,6 +37,29 @@ Convenciones:
 
 Resumen de lo nuevo, para no tener que leer todo el archivo buscando las marcas.
 
+**Reservas por franja horaria** 🆕
+
+- Una reserva dejó de ser "por día" y pasó a ser un rango `[desde, hasta)`. Se puede reservar el tiempo que se quiera, incluidos varios días.
+- **Las reservas se toman en bloques de 15 minutos.** El cliente elige un horario de inicio y desde ahí la duración se arma sumando de a 15. La regla se valida en el backend y no solo en el tablero: si viviera únicamente en la UI, cualquier cliente que pegue a la API podría reservar de 14:07 a 15:23.
+- **Las reservas se toman en bloques de 15 minutos.** Los campos `Desde` y `Hasta` declaran `step` de 15 min, así que el navegador ofrece los bloques y marca como inválido cualquier horario intermedio. Igual el valor se baja al bloque en `onChange` (`alBloqueLocal`), porque el `step` no frena a quien escribe a mano.
+- El arranque por defecto es el **bloque en curso**, redondeando hacia abajo: si son las 14:07 arranca 14:00, no 14:15, porque si no los ocho minutos en los que el auto ya está estacionado quedarían sin cubrir.
+
+**El sistema detecta la modalidad** 🆕
+
+- `ModalidadReserva.java` 🆕 clasifica cada reserva en **por franja horaria**, **media jornada** (12 h o más) o **jornada completa** (24 h o más), deducido de la duración y no del horario de arranque: media jornada es medio día de estadía, empiece a las 8 o a las 15.
+- **No se guarda en la base**: es una lectura de la franja. Si el predio decide que media jornada son 6 h y no 12, las reservas viejas se reinterpretan solas en vez de quedar etiquetadas con un criterio viejo.
+- Viaja en `ReservaResponseDto`, así que el listado la muestra sin volver a deducirla — si la calculara por su cuenta, backend y pantalla podrían discrepar al cambiar un umbral.
+- **Toda la regla de "no se pisan" es una sola condición**, en `ReservaRepository`: `r.desde < :hasta AND r.hasta > :desde`. Es el test estándar de intersección de intervalos semiabiertos: cubre los cuatro casos de superposición y deja pasar el borde que hay que permitir — si una reserva termina justo cuando arranca la siguiente, no se pisan y la cochera se puede volver a entregar en ese instante.
+- **Las cocheras se liberan solas.** Sale de lo mismo: una reserva vencida ya no intersecta ningún rango futuro, así que deja de ocupar en el instante exacto en que termina, sin depender de que corra ninguna tarea.
+- `ReservasVencidas.java` 🆕 marca las vencidas como `FINALIZADA`, pero es **solo informativo**: mantiene el listado legible. Si el proceso se cae un fin de semana, nadie se queda sin poder reservar.
+- Un mismo vehículo no puede ocupar dos cocheras a la vez, aunque las dos estén libres.
+- El formulario arranca el "desde" en el momento actual y deja elegir día y hora del "hasta", en los dos dashboards.
+
+**⚠️ Zona horaria**
+
+- `ZonaHorariaConfig.java` 🆕 fija la zona de la aplicación (`app.zona-horaria`, por defecto `America/Argentina/Buenos_Aires`).
+- Hace falta porque las franjas se guardan como `LocalDateTime`, un reloj de pared sin zona. Es el modelo correcto para un predio —"de 10 a 12" son las 10 y las 12 *del lugar*— pero solo funciona si backend y navegador coinciden en cuál es ese reloj. Sin esto el contenedor arrancaba en UTC mientras el navegador mandaba hora local: una reserva de las 16 a las 17 llegaba a un servidor que creía que eran las 19 y la rechazaba por "terminada en el pasado".
+
 **Integración continua**
 
 - `.github/workflows/ci.yml` 🆕: GitHub Actions corre los checks en cada pull request a `main` o `dev`.
@@ -164,6 +187,7 @@ Piezas reutilizables e inyectables.
 | `IEmailSender.java` | Contrato para enviar emails |
 | `IRevokedUserCache.java` | Contrato para el cache de JWT revocados |
 | `OTPCleanup.java` | Tarea programada que elimina códigos OTP vencidos |
+| `ReservasVencidas.java` 🆕 | Tarea programada que pasa a `FINALIZADA` las reservas cuya franja terminó. **No es lo que libera la cochera**: eso sale del solapamiento de rangos y funciona aunque esta tarea nunca corra. Solo mantiene el listado legible |
 | `impl/RevokedUserCache.java` | Implementación del cache de usuarios revocados usando Caffeine |
 | `impl/SpringEmailSender.java` | Implementación del envío de emails con `JavaMailSender` |
 
@@ -181,6 +205,7 @@ Configuración general de Spring.
 | `SchedulingConfig.java` | Configura tareas `@Scheduled` |
 | `WebClientConfig.java` | Configura el bean de `WebClient` |
 | `WebConfig.java` | Maneja headers `X-Forwarded-*` |
+| `ZonaHorariaConfig.java` 🆕 | Fija la zona horaria de la aplicación (`app.zona-horaria`, por defecto `America/Argentina/Buenos_Aires`). Sin esto el contenedor arranca en UTC y las franjas, que son reloj de pared, quedan desfasadas respecto del navegador |
 | `middleware/DevExceptionHandler.java` ✏️ | Convierte excepciones a respuestas JSON detalladas en desarrollo. Agregado el handler de `AccessDeniedException` 🆕, que devuelve 403 con el mensaje del service (ej. "No podés modificar un vehículo que no es tuyo") |
 | `middleware/ProdExceptionHandler.java` ✏️ | Manejo de errores para producción, con el mismo handler de `AccessDeniedException` |
 
@@ -219,7 +244,7 @@ Todo lo que el backend sabe hacer hoy. La columna "Quién puede" sale de `DevSec
 | `GET /api/v1/cocheras/{id}` | Una cochera por id | ADMIN |
 | `PUT /api/v1/cocheras/{id}` | Edita; al deshabilitarla, cancela sus reservas CONFIRMADAS | ADMIN |
 | `DELETE /api/v1/cocheras/{id}` | Borra; falla con 400 si tiene reservas | ADMIN |
-| `GET /api/v1/cocheras/disponibles` | Cocheras libres para una fecha y tipo de vehículo | **Público** |
+| `GET /api/v1/cocheras/disponibles` ✏️ | Cocheras libres **durante toda la franja** `desde`/`hasta`, filtradas por tipo de vehículo. Ojo: es "libre en todo el rango", no "libre en algún momento" | **Público** |
 | `POST /api/v1/visitantes` | Alta de visitante (documento único) | Autenticado |
 | `GET /api/v1/visitantes` | Lista de visitantes | Autenticado |
 | `GET /api/v1/visitantes/{id}` | Un visitante por id | Autenticado |
@@ -231,7 +256,7 @@ Todo lo que el backend sabe hacer hoy. La columna "Quién puede" sale de `DevSec
 | `GET /api/v1/vehiculos/{id}` | Un vehículo por id | Autenticado |
 | `PUT /api/v1/vehiculos/{id}` 🆕 | Edita patente y tipo | Dueño o ADMIN |
 | `DELETE /api/v1/vehiculos/{id}` 🆕 | Borra; falla con 400 si tiene reservas | Dueño o ADMIN |
-| `POST /api/v1/reservas` | Crea la reserva aplicando las reglas de negocio | Autenticado |
+| `POST /api/v1/reservas` ✏️ | Crea la reserva sobre la franja `desde`/`hasta`, aplicando las reglas de negocio y el control de superposición | Autenticado |
 | `GET /api/v1/reservas` | Lista todas las reservas | Autenticado |
 | `GET /api/v1/reservas/{id}` | Una reserva por id | Autenticado |
 | `GET /docs` | Swagger UI: la API documentada e interactiva | Público |
@@ -272,7 +297,7 @@ Objetos usados para entrada y salida de información de la API.
 
 | Archivo | Qué hace |
 |---|---|
-| `VisitanteRequestDto.java` | Datos recibidos para crear un visitante |
+| `VisitanteAltaDto.java` ✏️ | Alta operativa del admin: los datos del visitante, su vehículo y la franja de la reserva, todo junto, porque se crean en una sola transacción |
 | `VisitanteResponseDto.java` | Datos devueltos de un visitante |
 | `VehiculoRequestDto.java` | Datos recibidos para crear un vehículo |
 | `VehiculoUpdateDto.java` 🆕 | Body de `PUT /api/v1/vehiculos/{id}`: patente y tipo. Valida el formato de patente con regex (`AAA000` o `AA000AA`) |
@@ -294,7 +319,7 @@ Entidades JPA que representan los datos persistidos.
 | Archivo | Qué hace |
 |---|---|
 | `AppAuthority.java` | Enum de roles internos: `USER` y `ADMIN` |
-| `AppUser.java` | Entidad de los usuarios internos que pueden iniciar sesión |
+| `Visitante.java` ✏️ | Entidad única del sistema: es a la vez la cuenta con la que se inicia sesión y la persona que reserva. Antes eran dos (`AppUser` y `Visitante`), unidas por un vínculo opcional que producía "visitantes fantasma" |
 | `InactiveUsersDto.java` | Wrapper con emails de usuarios inactivos |
 | `OneTimePassword.java` | Entidad de códigos OTP para recuperación de contraseña |
 
@@ -308,8 +333,9 @@ Entidades JPA que representan los datos persistidos.
 | `Cochera.java` | Entidad de cocheras |
 | `CocheraTipo.java` | Enum `AUTO`, `MOTO`, `ACCESIBLE`, `CARGA` |
 | `CocheraEstado.java` | Estado operativo de una cochera |
-| `Reserva.java` | Entidad de reservas |
-| `ReservaEstado.java` | Enum `CONFIRMADA`, `CANCELADA` |
+| `Reserva.java` ✏️ | Entidad de reservas. La `fecha` (un día) se reemplazó por la franja `desde`/`hasta`. Expone `seSolapaCon(desde, hasta)` y `estaVigenteEn(momento)`, que es donde está escrita la regla de superposición |
+| `ModalidadReserva.java` 🆕 | Enum `FRANJA`, `MEDIA_JORNADA`, `JORNADA_COMPLETA`, deducido de la duración de la franja. No se persiste |
+| `ReservaEstado.java` ✏️ | Enum `CONFIRMADA`, `CANCELADA`, `FINALIZADA` 🆕. `FINALIZADA` la pone una tarea programada cuando pasa el `hasta`; es informativa, la disponibilidad no depende de ella |
 
 ---
 
@@ -357,7 +383,7 @@ Acceso a datos usando Spring Data JPA.
 
 | Archivo | Qué hace |
 |---|---|
-| `AppUserRepository.java` ✏️ | Acceso a `AppUser`; utiliza `UUID` como tipo de ID y permite buscar usuarios por email |
+| `VisitanteRepository.java` ✏️ | Acceso a `Visitante`, que es a la vez cuenta y visitante. Usa `UUID` como id y busca por email o documento |
 | `CocheraRepository.java` | Acceso a cocheras |
 | `OneTimePasswordRepository.java` | Acceso a códigos OTP |
 | `ReservaRepository.java` ✏️ | Acceso a reservas y consultas relacionadas con disponibilidad. Agregado `existsByVehiculoId` 🆕, que usa `VehiculoService.eliminar` para no borrar un vehículo con reservas |
@@ -372,7 +398,7 @@ Autenticación y autorización.
 
 | Archivo | Qué hace |
 |---|---|
-| `AppUserDetailsService.java` | Carga un `AppUser` por email para Spring Security |
+| `VisitanteDetailsService.java` ✏️ | Carga un `Visitante` por email para Spring Security |
 | `CustomBasicAuthenticationEntryPoint.java` | Respuesta devuelta cuando una ruta requiere autenticación (401) |
 | `CustomAccessDeniedHandler.java` 🆕 | Respuesta devuelta cuando el usuario está autenticado pero no tiene el rol (403). Devuelve JSON con el mismo formato que el 401 (`timestamp`, `status`, `error`, `message`, `path`, `client_ip`) y deja un `log.warn` con la IP. Se registra en las dos security configs con `.exceptionHandling(...)` |
 | `authenticationProvider/DevAuthenticationProvider.java` ✏️ | Autenticación de desarrollo y test. **Cambio importante: ahora valida la contraseña con BCrypt**, igual que producción. Antes autenticaba con cualquier contraseña siempre que el email existiera. Además traduce `UsernameNotFoundException` a `BadCredentialsException`, para no filtrar qué emails están registrados |
@@ -421,8 +447,8 @@ Lógica de negocio.
 | Archivo | Qué hace |
 |---|---|
 | `IAuthService.java` / `impl/AuthService.java` | Registro, login y recuperación de contraseña |
-| `ICocheraService.java` / `impl/CocheraService.java` | Gestión y disponibilidad de cocheras |
-| `IReservaService.java` / `impl/ReservaService.java` | Lógica de reservas y validación de compatibilidad/disponibilidad |
+| `ICocheraService.java` / `impl/CocheraService.java` ✏️ | Gestión de cocheras. La disponibilidad pasó a calcularse por rango: una cochera figura libre solo si no tiene ninguna reserva confirmada que pise la franja pedida |
+| `IReservaService.java` / `impl/ReservaService.java` ✏️ | Lógica de reservas. Valida compatibilidad de tipos y, ahora, la franja: que el fin sea posterior al inicio, que no esté enteramente vencida, que la cochera esté libre en todo el rango y que el vehículo no esté comprometido en otra |
 | `IUserService.java` / `impl/UserService.java` ✏️ | Gestión administrativa de usuarios: listar, editar, activar y eliminar. Al eliminar, desvincula primero el visitante propio de la cuenta (si tiene uno) antes de borrarla |
 | `IVehiculoService.java` / `impl/VehiculoService.java` ✏️ | Gestión de vehículos. Agregados `editar` y `eliminar` 🆕, los dos con `verificarPropietario`: un ADMIN pasa siempre; un USER solo si el `appUser` del visitante dueño coincide con el email del que pide, y si no, `AccessDeniedException`. `eliminar` además bloquea si el vehículo tiene reservas |
 | `IVisitanteService.java` / `impl/VisitanteService.java` ✏️ | Gestión de visitantes, más `obtenerPropio(email)`, `crearPropio(email, dto)` y ahora `actualizarPropio(email, dto)` 🆕: el visitante carga y edita sus propios datos, vinculados a su cuenta |
@@ -461,11 +487,14 @@ Un administrador puede posteriormente modificar sus authorities, activarlos o el
 | `db.changelog-master.yaml` | Lista de migraciones Liquibase |
 | `001-initial-schema.yaml` | Migración inicial actualmente vacía |
 | `002-visitantes-vehiculos-cocheras-reservas.yaml` | Crea tablas de visitantes, vehículos, cocheras y reservas |
-| `003-visitante-app-user.yaml` 🆕 | Agrega `visitantes.app_user_id` (único, sin FK física a propósito — ver nota abajo) para que un visitante pueda vincularse a su propia cuenta de login |
+| `003-visitante-app-user.yaml` | Agregaba `visitantes.app_user_id` para vincular un visitante a su cuenta de login. Quedó sin efecto: `004` unificó las dos entidades |
+| `004-unificar-visitante-cuenta.yaml` | Fusiona visitante y cuenta en una sola tabla `visitantes`, y elimina `app_users`. Un documento es una persona es una cuenta |
+| `005-identidad-visitante-unica.yaml` | Índices de PostgreSQL para que el email sea único sin distinguir mayúsculas |
+| `006-reservas-por-franja-horaria.yaml` 🆕 | Convierte la reserva por día en una franja `desde`/`hasta`. Las reservas existentes se conservan como el día completo que ocupaban, que es lo que significaban antes. Crea los índices `(cochera_id, estado, desde, hasta)` y su equivalente por vehículo, que son los que sostienen la consulta de solapamiento. El backfill va en dos versiones porque la aritmética de fechas no es portable: prod usa Postgres y los tests H2 |
 
-### Por qué `003` no tiene foreign key física hacia `app_users`
+### Por qué `003` no tenía foreign key física hacia `app_users` (histórico)
 
-`app_users` no la crea Liquibase — la crea Hibernate con `ddl-auto: update`, que corre **después** de Liquibase. Una FK en `003` hacia esa tabla se rompe en cualquier base nueva (los tests con H2, o el primer `docker compose up` de otra persona) porque `app_users` todavía no existe cuando corre esta migración. Se detectó al escribir los tests: pasaba en la Postgres de desarrollo (porque esa tabla ya existía de arranques anteriores) pero fallaba siempre en H2. La relación la valida JPA (`@OneToOne` en `Visitante.java`), no la base.
+`app_users` no la crea Liquibase — la crea Hibernate con `ddl-auto: update`, que corre **después** de Liquibase. Una FK en `003` hacia esa tabla se rompe en cualquier base nueva (los tests con H2, o el primer `docker compose up` de otra persona) porque `app_users` todavía no existe cuando corre esta migración. Se detectó al escribir los tests: pasaba en la Postgres de desarrollo (porque esa tabla ya existía de arranques anteriores) pero fallaba siempre en H2. La relación la validaba JPA, no la base. Hoy la nota es solo histórica —`004` eliminó `app_users`— pero la lección sigue valiendo: una migración no puede depender de una tabla que crea Hibernate después.
 
 ---
 
@@ -489,16 +518,19 @@ Convención de esta sección: 🆕 = clase de test agregada al sumar cobertura d
 | `integration/CocheraControllerTests.java` | **Caja negra.** CRUD completo de `/api/v1/cocheras`: seguridad (401/403), validaciones, alta/edición/borrado y `/disponibles` de punta a punta |
 | `integration/DashboardAccessSecurityTests.java` 🆕 | **Caja negra.** Matriz de qué rol puede pegarle a qué endpoint: `/api/v1/visitantes`, `/vehiculos` y `/reservas` exigen solo estar autenticado (los usan ambos dashboards, sin importar el rol), `/api/v1/usuarios` exige ADMIN, `/api/v1/cocheras/disponibles` es público |
 | `integration/LoginFlowTests.java` ✏️ | **Caja negra**, contra un servidor real embebido (no MockMvc — ver el porqué en el comentario de la clase). Login real con HTTP Basic: verifica el JWT devuelto (email, authorities) y los 401. Actualizado: ahora comprueba que **una contraseña incorrecta devuelve 401 también en dev/test**, porque el `DevAuthenticationProvider` pasó a validarla |
-| `integration/ReservaControllerTests.java` 🆕 | **Caja negra.** Reglas de negocio de `/api/v1/reservas` contra DB real (no mocks): vehículo que no pertenece al visitante, incompatibilidad de tipos, doble reserva del mismo día, cochera ACCESIBLE acepta cualquier vehículo |
+| `integration/ReservaControllerTests.java` ✏️ | **Caja negra.** Reglas de negocio de `/api/v1/reservas` contra DB real (no mocks): vehículo que no pertenece al visitante, incompatibilidad de tipos, cochera ACCESIBLE acepta cualquier vehículo, y toda la **franja horaria** — dos visitantes que se pisan, dos que usan la misma cochera en franjas consecutivas, reserva de varios días, y una reserva vencida que deja la cochera libre sin cancelarla |
 | `integration/UserControllerTests.java` ✏️ | Tests de `/users/**` y `/api/v1/usuarios/**`. Agregué los casos de `PUT /api/v1/usuarios/{id}` (actualiza campos, 404 si no existe, 401 anónimo) |
 | `integration/VehiculoControllerTests.java` ✏️ | **Caja negra.** `/api/v1/vehiculos`: formato de patente, normalización a mayúsculas, patente/visitante duplicado o inexistente, filtro por `visitanteId`, y los casos nuevos de `PUT`/`DELETE` con control de propietario (403 si no sos el dueño) |
 | `integration/VisitanteControllerTests.java` ✏️ | **Caja negra.** `/api/v1/visitantes`, con foco en `/me` (el visitante carga y edita su propio perfil): 404 sin perfil, alta, documento duplicado, cuenta que ya tiene un perfil cargado, y la actualización por `PUT /me` |
-| `security/AppUserDetailsServiceTests.java` 🆕 | **Caja blanca.** El puente AppUser → UserDetails: mapea authorities correctamente, lanza `UsernameNotFoundException` si el email no existe |
+| `security/VisitanteDetailsServiceTests.java` ✏️ | **Caja blanca.** El puente `Visitante` → `UserDetails`: mapea authorities correctamente y lanza `UsernameNotFoundException` si el email no existe |
 | `security/authenticationProvider/DevAuthenticationProviderTests.java` ✏️ | **Caja blanca.** Reescrito: ya no documenta el viejo comportamiento inseguro. Ahora verifica que dev/test **valida la contraseña contra el hash** y rechaza con `BadCredentialsException` tanto si no matchea como si el email no existe |
 | `security/authenticationProvider/ProdAuthenticationProviderTests.java` 🆕 | **Caja blanca.** El que sí valida contraseña (perfil prod real): rechaza con `BadCredentialsException` tanto si la contraseña no matchea como si el usuario no existe (para no filtrar cuáles emails están registrados) |
 | `service/AuthServiceTests.java` | Tests unitarios de `AuthService` |
 | `service/CocheraServiceTests.java` | Tests de cocheras, incluye la cancelación automática de reservas al deshabilitar una cochera |
-| `service/ReservaServiceTests.java` | Tests unitarios de reservas (con mocks): mismas reglas que `ReservaControllerTests` pero aisladas del repositorio |
+| `service/ReservaServiceTests.java` ✏️ | Tests unitarios de reservas (con mocks): mismas reglas que `ReservaControllerTests` pero aisladas del repositorio. Sumadas las validaciones de franja: rango invertido, duración cero, franja ya vencida, inicio en el pasado con fin futuro (que sí es válido) y vehículo comprometido en otra cochera |
+| `entity/ReservaSolapamientoTests.java` 🆕 | **Caja blanca** del predicado de solapamiento, que es donde vive toda la regla. Ataca los bordes sin pasar por el servicio ni la base: franja contigua, contenida, idéntica, y las que se pisan por seis minutos. Un `<=` de más y dos reservas consecutivas dejarían de poder existir; uno de menos y se permitiría pisar |
+| `component/ReservasVencidasTests.java` 🆕 | **Caja blanca** de la tarea que marca las vencidas como `FINALIZADA` |
+| `config/ZonaHorariaConfigTests.java` 🆕 | **Caja blanca** de la zona horaria. Incluye el caso que rompía: arrancar la JVM en UTC y comprobar que la corrección la deja en hora local |
 | `service/UserServiceTests.java` ✏️ | Tests de gestión de usuarios. Agregué los casos de `deleteUser`: desvincula el visitante propio antes de borrar la cuenta (evita romper la FK `fk_visitante_app_user`), y no hace nada si no hay ninguno vinculado |
 | `service/VehiculoServiceTests.java` ✏️ | Tests de vehículos. Agregados los casos de `editar` y `eliminar`: control de propietario, patente duplicada al editar, y el bloqueo al borrar un vehículo con reservas |
 | `service/VisitanteServiceTests.java` ✏️ | Tests de visitantes, incluido todo el flujo `/me`: `obtenerPropio`, `crearPropio` y `actualizarPropio` — 404 sin perfil, cuenta que ya tiene uno, documento duplicado, alta correcta vinculada a la cuenta, y edición del teléfono/email propios |
@@ -560,7 +592,6 @@ Sección para usuarios con rol `ADMIN`.
 |---|---|
 | `page.jsx` ✏️ | Entrada del dashboard ADMIN, protegida con `requireAuth(["ADMIN"])`. Server Component: solo valida el rol y arma la barra de navegación (`/cocheras`, `/usuarios`, `LogoutButton`). El contenido lo delega en `PanelOperativo` |
 | `PanelOperativo.jsx` 🆕 | Agrupa las tres secciones operativas del panel: la cuadrícula de ocupación, el alta de visitantes y **el formulario de reservas**. Existe como componente de cliente aparte porque `page.jsx` es Server Component y no puede tener estado: acá vive el contador que le avisa a la cuadrícula que se creó una reserva y tiene que recargarse |
-| `EstadoCocherasGrid.jsx` ✏️ | Cuadrícula visual de ocupación: agrupa las cocheras por tipo (motos, autos, remolques, accesibles) y marca cada una como libre/ocupada/deshabilitada comparando `/api/v1/cocheras` contra `/api/v1/cocheras/disponibles` del día. Acepta una prop `refreshKey` 🆕: cuando cambia, vuelve a pedir los datos, para no quedar mostrando una cochera como libre después de reservarla |
 | `VisitantesContent.jsx` | Alta de visitante + vehículo hecha por el admin (formulario completo) |
 
 ### `app/dashboard-admin/cocheras/`
@@ -675,7 +706,6 @@ Convención: `test/` refleja la estructura de `app/`, `store/` y `utils/` (misma
 | `login/page.test.jsx` | `app/login/page.jsx`: validaciones, Basic Auth armado correctamente, redirección según rol (ADMIN vs USER), errores del backend |
 | `store/authStore.test.js` | `store/authStore.js`: decodificación de authorities del JWT, cookie, expiración, `logout`/`checkAuth` |
 | `utils/env.test.js` | `utils/env.js`: prioridad de `window.__ENV` sobre el valor de build |
-| `dashboard-admin/EstadoCocherasGrid.test.jsx` | Agrupación por tipo, cálculo de ocupadas/libres/deshabilitadas, estado de carga y error |
 | `dashboard-admin/VisitantesContent.test.jsx` | Alta de visitante + vehículo (dos POST encadenados), validaciones, errores de duplicados |
 | `dashboard-admin/cocheras/CocherasManagement.test.jsx` ✏️ | CRUD completo: filtros, alta, edición (con `window.confirm` al deshabilitar), baja (con confirmación), y la navegación de regreso al panel |
 | `dashboard-admin/usuarios/UserManagement.test.jsx` ✏️ | Alta de usuario, activar, editar roles, eliminar (con confirmación), y la navegación de regreso al panel |
@@ -751,13 +781,12 @@ y luego pueden ser gestionados por un administrador.
 
 | Tabla | Origen | Columnas principales | Entidad |
 |---|---|---|---|
-| `visitantes` | Liquibase | `id`, `nombre`, `documento`, `telefono`, `email`, `app_user_id` (único, sin FK física) | `Visitante.java` |
+| `visitantes` ✏️ | Liquibase | `id`, `nombre`, `documento`, `email`, `password`, `telefono`, `is_active`. Es a la vez la cuenta de login y la persona que reserva | `Visitante.java` |
 | `vehiculos` | Liquibase | `id`, `patente`, `tipo`, `visitante_id` | `Vehiculo.java` |
 | `cocheras` | Liquibase | `id`, `numero`, `sector`, `tipo`, `estado` | `Cochera.java` |
-| `reservas` | Liquibase | `id`, `fecha`, `visitante_id`, `vehiculo_id`, `cochera_id`, `estado`, `fecha_creacion` | `Reserva.java` |
-| `app_users` | Hibernate (`ddl-auto: update`) | `id`, `nombre`, `email`, `password`, `telefono`, `is_active` | `AppUser.java` |
-| `app_user_authorities` | Hibernate (`ddl-auto: update`) | `user_id`, `authority` | `AppUser.authorities` |
-| `otp_codes` | Hibernate (`ddl-auto: update`) | `id`, `token`, `user_id`, `expires_at`, `used` | `OneTimePassword.java` |
+| `reservas` ✏️ | Liquibase | `id`, `desde`, `hasta`, `visitante_id`, `vehiculo_id`, `cochera_id`, `estado`, `fecha_creacion` | `Reserva.java` |
+| `visitante_authorities` ✏️ | Liquibase | `visitante_id`, `authority` | `Visitante.authorities` |
+| `otp_codes` ✏️ | Liquibase | `id`, `token`, `user_id`, `expires_at`, `used` | `OneTimePassword.java` |
 | `databasechangelog` / `databasechangeloglock` | Liquibase | Internas de Liquibase | — |
 
 ---
