@@ -443,6 +443,12 @@ supports() solo acepta UsernamePasswordAuthenticationToken
 
 _3 tests._
 
+_3 tests._
+
+_3 tests._
+
+_3 tests._
+
 Caja blanca. Rechaza con `BadCredentialsException` tanto si la clave no matchea como si el email no existe, para no filtrar que emails estan registrados.
 
 ```
@@ -452,6 +458,12 @@ rechaza con BadCredentialsException (no UsernameNotFoundException) cuando el ema
 ```
 
 ## `service/AuthServiceTests.java`
+
+_11 tests._
+
+_11 tests._
+
+_11 tests._
 
 _11 tests._
 
@@ -470,6 +482,12 @@ resetPasswordSuccessfullyResetsUserPassword   (sin @DisplayName)
 ```
 
 ## `service/CocheraServiceTests.java`
+
+_22 tests._
+
+_22 tests._
+
+_22 tests._
 
 _22 tests._
 
@@ -502,7 +520,7 @@ listarSectoresDelegaEnElRepository   (sin @DisplayName)
 
 ## `service/ReservaServiceTests.java`
 
-_24 tests._
+_32 tests._
 
 Las mismas reglas que `ReservaControllerTests`, pero con mocks y aisladas del repositorio. Incluye la validacion de la franja horaria: rango invertido, duracion cero, franja ya vencida, y el vehiculo comprometido en otra cochera.
 
@@ -531,6 +549,11 @@ crearAceptaInicioPasadoConFinFuturo   (sin @DisplayName)
 crearRechazaVehiculoComprometidoEnOtraCochera   (sin @DisplayName)
 crearConsultaSolapamientoSoloContraConfirmadas   (sin @DisplayName)
 cancelarRechazaUnaReservaYaTerminada   (sin @DisplayName)
+crearRechazaInicioFueraDeBloque   (sin @DisplayName)
+crearRechazaFinFueraDeBloque   (sin @DisplayName)
+crearRechazaHorarioConSegundos   (sin @DisplayName)
+crearAceptaLosCuatroBloques   (sin @DisplayName)
+crearAceptaUnaReservaDeUnBloque   (sin @DisplayName)
 ```
 
 ## `service/UserServiceTests.java`
@@ -553,6 +576,12 @@ updateUserUpdatesDataAndRoles   (sin @DisplayName)
 ```
 
 ## `service/VehiculoServiceTests.java`
+
+_16 tests._
+
+_16 tests._
+
+_16 tests._
 
 _16 tests._
 
@@ -612,6 +641,12 @@ cambiarPasswordLanzaNotFoundExceptionSiNoExisteLaCuenta   (sin @DisplayName)
 
 _6 tests._
 
+_6 tests._
+
+_6 tests._
+
+_6 tests._
+
 Los dos interceptores de `app/api.jsx`, incluida la **regresion del bug del login doble**.
 
 ```
@@ -627,6 +662,12 @@ ante un error que no es 401, no toca la cookie ni redirige
 
 _1 tests._
 
+_1 tests._
+
+_1 tests._
+
+_1 tests._
+
 El boton de cerrar sesion: limpia el store y navega a `/login`.
 
 ```
@@ -635,7 +676,7 @@ cierra la sesión y navega a /login
 
 ## `components/ReservasContent.test.jsx`
 
-_26 tests._
+_31 tests._
 
 El formulario de reserva, que comparten los dos dashboards. Cubre la **franja horaria** (arranque por defecto en el momento actual, rango invertido, varios dias) y la **regresion del bug de cache de vehiculos al hacer foco**.
 
@@ -660,12 +701,17 @@ ofrece sus propias patentes en un desplegable en vez de un campo libre
 si todavia no cargo ningun vehiculo, explica que hace falta uno para reservar
 no manda visitanteId al reservar
 lista solo la patente, sin el nombre del visitante
-arranca con el desde en el momento actual y el hasta una hora despues
+arranca en el bloque de 15 en curso y propone una hora de duracion
+los campos declaran el paso de 15 minutos
+un horario fuera de bloque se baja al bloque en curso
 pide las cocheras libres mandando desde y hasta
-permite estirar la franja a varios dias y vuelve a consultar disponibilidad
-avisa si la franja queda invertida y no consulta disponibilidad con ella
+cambiar la franja vuelve a consultar disponibilidad
+avisa al instante si la franja queda invertida
 muestra la franja de cada reserva en el listado, no una fecha suelta
 muestra los dos dias cuando la franja cruza la medianoche
+muestra la modalidad que manda el backend
+traduce las tres modalidades
+una reserva sin modalidad no rompe el listado
 ```
 
 ## `components/ThemeToggle.test.jsx`
@@ -683,6 +729,12 @@ al hacer click, alterna a oscuro y aplica la clase al <html>
 
 _1 tests._
 
+_1 tests._
+
+_1 tests._
+
+_1 tests._
+
 El panel operativo del ADMIN. **Regresion del bug de la reserva que no se agregaba**: que el panel incluya el formulario de reservas, que el admin pueda crear una, y que la cuadricula de ocupacion se refresque despues.
 
 ```
@@ -697,8 +749,8 @@ El alta operativa del admin: crea cuenta, vehiculo y reserva en una sola llamada
 
 ```
 consulta disponibilidad y reserva para la franja elegida, limpiando la cochera anterior
-ignora respuestas de disponibilidad de una franja anterior y deshabilita la cochera sin franja
-avisa al instante si la franja esta invertida, sin llamar al backend
+ignora la respuesta de disponibilidad de una franja que ya cambio
+el horario elegido siempre cae en un bloque de 15 minutos
 muestra errores si se envia el formulario vacio
 exige el email porque es con lo que el visitante inicia sesion
 rechaza una patente con formato invalido
@@ -744,6 +796,12 @@ muestra errores de validacion por fila si falta el numero
 ```
 
 ## `dashboard-admin/usuarios/UserManagement.test.jsx`
+
+_13 tests._
+
+_13 tests._
+
+_13 tests._
 
 _13 tests._
 
@@ -796,6 +854,12 @@ si el backend rechaza el cambio, muestra su mensaje
 
 _10 tests._
 
+_10 tests._
+
+_10 tests._
+
+_10 tests._
+
 ```
 muestra los campos de email y contraseña y el boton de ingresar
 muestra errores de validacion y no llama a la API si el email esta vacio
@@ -810,6 +874,12 @@ ante otro error del backend, muestra el mensaje que devuelve el servidor
 ```
 
 ## `page.test.jsx`
+
+_4 tests._
+
+_4 tests._
+
+_4 tests._
 
 _4 tests._
 
@@ -835,6 +905,12 @@ permite mostrar y ocultar las contraseñas
 ```
 
 ## `store/authStore.test.js`
+
+_8 tests._
+
+_8 tests._
+
+_8 tests._
 
 _8 tests._
 

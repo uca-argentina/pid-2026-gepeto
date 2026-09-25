@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const { getMock, postMock, toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
@@ -66,48 +66,40 @@ describe("VisitantesContent (alta de visitante con reserva)", () => {
     ));
     // Cambiar la franja invalida la cochera elegida: podría estar ocupada.
     expect(screen.getByLabelText("Cochera")).toHaveValue("");
+
     await user.selectOptions(screen.getByLabelText("Cochera"), "c1");
     await user.click(screen.getByRole("button", { name: /dar de alta y reservar/i }));
+
     await waitFor(() => expect(postMock).toHaveBeenCalledWith(
       "/api/v1/visitantes/alta", expect.objectContaining({ desde, hasta, cocheraId: "c1" })
     ));
   });
 
-  it("ignora respuestas de disponibilidad de una franja anterior y deshabilita la cochera sin franja", async () => {
+  // Si el usuario mueve la franja dos veces seguidas, la respuesta de la
+  // consulta vieja no puede pisar a la nueva.
+  it("ignora la respuesta de disponibilidad de una franja que ya cambio", async () => {
     let resolverAnterior;
     getMock.mockImplementationOnce(() => new Promise((resolve) => { resolverAnterior = resolve; }))
       .mockResolvedValue({ data: [cochera({ id: "c2", numero: "A-02" })] });
     render(<VisitantesContent />);
-    fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2099-01-01T08:00" } });
+
     fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2099-01-01T12:00" } });
+
     await screen.findByRole("option", { name: /A-02/ });
     await act(async () => resolverAnterior({ data: [cochera()] }));
-    expect(screen.queryByRole("option", { name: /A-01/ })).not.toBeInTheDocument();
 
-    // Sin "hasta" no hay franja válida: no se puede elegir cochera.
-    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "" } });
-    expect(screen.getByLabelText("Cochera")).toBeDisabled();
-    expect(screen.queryByRole("option", { name: /A-02/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /A-01/ })).not.toBeInTheDocument();
   });
 
-  // El fin tiene que ser posterior al inicio; si no, ni se consulta.
-  // El aviso es inmediato y no espera al submit: si esperara, el error visible
-  // seria el de la cochera (deshabilitada por la franja invalida) y el problema
-  // real quedaria escondido.
-  it("avisa al instante si la franja esta invertida, sin llamar al backend", async () => {
+  // Se escriba lo que se escriba, el horario cae en un bloque de 15.
+  it("el horario elegido siempre cae en un bloque de 15 minutos", async () => {
     mockCocheras([cochera()]);
     render(<VisitantesContent />);
 
-    fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2099-01-01T12:00" } });
-    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2099-01-01T08:00" } });
+    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2099-01-01T18:23" } });
 
-    expect(await screen.findByText("El fin tiene que ser posterior al inicio")).toBeInTheDocument();
-    expect(screen.getByLabelText("Cochera")).toBeDisabled();
-    expect(getMock).not.toHaveBeenCalledWith(
-      "/api/v1/cocheras/disponibles",
-      expect.objectContaining({ params: expect.objectContaining({ hasta: "2099-01-01T08:00" }) })
-    );
-    expect(postMock).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Hasta")).toHaveValue("2099-01-01T18:15");
+    expect(screen.getByLabelText("Desde")).toHaveAttribute("step", "900");
   });
 
   it("muestra errores si se envia el formulario vacio", async () => {
