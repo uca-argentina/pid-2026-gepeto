@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const { getMock, postMock, toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
@@ -346,7 +346,10 @@ describe("ReservasContent: franja horaria", () => {
 
   // "La reserva debe marcar por default la hora y dia del momento": el campo
   // no arranca vacío ni en medianoche.
-  it("arranca con el desde en el momento actual y el hasta una hora despues", async () => {
+  // El arranque por defecto cae en el bloque de 15 en curso, redondeando
+  // hacia abajo: si son las 14:07 arranca 14:00, para no dejar sin cubrir los
+  // minutos en los que el auto ya está estacionado.
+  it("arranca en el bloque de 15 en curso y propone una hora de duracion", async () => {
     mockData({ vehiculos: [vehiculo()] });
     render(<ReservasContent modo="admin" />);
     await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
@@ -354,14 +357,29 @@ describe("ReservasContent: franja horaria", () => {
     const desde = screen.getByLabelText("Desde").value;
     const hasta = screen.getByLabelText("Hasta").value;
 
-    expect(desde).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
-    expect(hasta).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
-    // Una hora exacta de diferencia.
+    expect(Number(desde.slice(14, 16))).toBe(Math.floor(new Date().getMinutes() / 15) * 15);
     expect(new Date(hasta) - new Date(desde)).toBe(60 * 60 * 1000);
+  });
 
-    // Y el "desde" es efectivamente ahora, no una fecha fija.
-    const diferenciaConAhora = Math.abs(new Date(desde) - Date.now());
-    expect(diferenciaConAhora).toBeLessThan(2 * 60 * 1000);
+  // El paso de 15 min lo ofrece el navegador, pero no impide escribir a mano:
+  // por eso el valor se baja al bloque igual.
+  it("los campos declaran el paso de 15 minutos", async () => {
+    mockData({ vehiculos: [vehiculo()] });
+    render(<ReservasContent modo="admin" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+
+    expect(screen.getByLabelText("Desde")).toHaveAttribute("step", "900");
+    expect(screen.getByLabelText("Hasta")).toHaveAttribute("step", "900");
+  });
+
+  it("un horario fuera de bloque se baja al bloque en curso", async () => {
+    mockData({ vehiculos: [vehiculo()] });
+    render(<ReservasContent modo="admin" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+
+    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2099-01-01T18:23" } });
+
+    expect(screen.getByLabelText("Hasta")).toHaveValue("2099-01-01T18:15");
   });
 
   // La disponibilidad se pregunta por el rango completo, no por el día.
@@ -389,7 +407,9 @@ describe("ReservasContent: franja horaria", () => {
 
   // Se puede reservar el tiempo que se desee: cambiar el "hasta" a otro día
   // tiene que volver a consultar disponibilidad con ese rango.
-  it("permite estirar la franja a varios dias y vuelve a consultar disponibilidad", async () => {
+  // Mover la franja tiene que volver a preguntar qué cocheras quedan libres:
+  // el rango cambió.
+  it("cambiar la franja vuelve a consultar disponibilidad", async () => {
     mockData({ visitantes: [visitante()], vehiculos: [vehiculo()], disponibles: [cochera()] });
     const user = userEvent.setup();
     render(<ReservasContent modo="admin" />);
@@ -407,17 +427,22 @@ describe("ReservasContent: franja horaria", () => {
     );
   });
 
-  it("avisa si la franja queda invertida y no consulta disponibilidad con ella", async () => {
+  // Se avisa al instante: si se esperara al submit, el error visible sería el
+  // de la cochera (deshabilitada por la franja inválida) y el problema real
+  // quedaría escondido.
+  it("avisa al instante si la franja queda invertida", async () => {
     mockData({ visitantes: [visitante()], vehiculos: [vehiculo()], disponibles: [cochera()] });
-    const user = userEvent.setup();
     render(<ReservasContent modo="admin" />);
     await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
-    await user.type(screen.getByPlaceholderText("ABC123 / AB123CD"), "ABC123");
 
     fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2099-01-01T12:00" } });
     fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2099-01-01T08:00" } });
 
-    expect(await screen.findByText("El fin tiene que ser posterior al inicio")).toBeInTheDocument();
+    // waitFor y no findByText: el efecto de disponibilidad vuelve a renderizar
+    // y findByText devolvería el nodo viejo, ya desprendido del documento.
+    await waitFor(() =>
+      expect(screen.getByText("El fin tiene que ser posterior al inicio")).toBeInTheDocument()
+    );
     expect(screen.getByLabelText("Cochera")).toBeDisabled();
   });
 
@@ -458,5 +483,55 @@ describe("ReservasContent: franja horaria", () => {
     render(<ReservasContent modo="admin" />);
 
     expect(await screen.findByText(/01\/01 22:00 → 03\/01 08:00/)).toBeInTheDocument();
+  });
+});
+
+describe("ReservasContent: modalidad en el listado", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const reservaCon = (modalidad, extra = {}) => ({
+    id: "r1",
+    desde: "2026-01-01T10:00",
+    hasta: "2026-01-01T12:00",
+    estado: "CONFIRMADA",
+    modalidad,
+    visitante: { nombre: "Juan Perez" },
+    vehiculo: { patente: "ABC123" },
+    cochera: { numero: "A-01", sector: "Planta Baja" },
+    ...extra,
+  });
+
+  // La modalidad la decide el backend a partir de la duración: el listado la
+  // muestra, no la vuelve a deducir. Si la dedujera por su cuenta, backend y
+  // pantalla podrían discrepar al cambiar un umbral.
+  it("muestra la modalidad que manda el backend", async () => {
+    mockData({ reservas: [reservaCon("MEDIA_JORNADA")] });
+    render(<ReservasContent modo="admin" />);
+
+    expect(await screen.findByText("Media jornada")).toBeInTheDocument();
+  });
+
+  it("traduce las tres modalidades", async () => {
+    mockData({
+      reservas: [
+        reservaCon("FRANJA"),
+        reservaCon("MEDIA_JORNADA", { id: "r2" }),
+        reservaCon("JORNADA_COMPLETA", { id: "r3" }),
+      ],
+    });
+    render(<ReservasContent modo="admin" />);
+
+    expect(await screen.findByText("Por franja horaria")).toBeInTheDocument();
+    expect(screen.getByText("Media jornada")).toBeInTheDocument();
+    expect(screen.getByText("Jornada completa")).toBeInTheDocument();
+  });
+
+  it("una reserva sin modalidad no rompe el listado", async () => {
+    mockData({ reservas: [reservaCon(undefined)] });
+    render(<ReservasContent modo="admin" />);
+
+    expect(await screen.findByText("Juan Perez — ABC123")).toBeInTheDocument();
   });
 });

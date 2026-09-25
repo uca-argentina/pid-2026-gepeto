@@ -20,6 +20,8 @@ import com.aparcar.api.service.impl.ReservaService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.springframework.security.access.AccessDeniedException;
@@ -84,7 +86,9 @@ public class ReservaServiceTests {
 
         // Franja de referencia: dentro de una hora, por una hora. En el futuro
         // para que no choque con la regla de "no puede terminar en el pasado".
-        desde = LocalDateTime.now().plusHours(1);
+        // Alineada al bloque de 15: desde que las reservas se toman en bloques,
+        // un now() crudo (14:07:33) seria rechazado por la propia validacion.
+        desde = LocalDateTime.now().plusHours(1).withMinute(0).withSecond(0).withNano(0);
         hasta = desde.plusHours(1);
 
         dto = new ReservaRequestDto();
@@ -313,8 +317,8 @@ public class ReservaServiceTests {
     @Test
     @DisplayName("crear rechaza una franja que termina en el pasado")
     void crearRechazaFranjaEnteramenteVencida() {
-        dto.setDesde(LocalDateTime.now().minusHours(3));
-        dto.setHasta(LocalDateTime.now().minusHours(2));
+        dto.setDesde(LocalDateTime.now().minusHours(3).withMinute(0).withSecond(0).withNano(0));
+        dto.setHasta(LocalDateTime.now().minusHours(2).withMinute(0).withSecond(0).withNano(0));
 
         assertThrows(ValidationException.class, () -> reservaService.crear(dto, ADMIN_EMAIL, true));
         verify(reservaRepository, never()).save(any());
@@ -326,8 +330,9 @@ public class ReservaServiceTests {
     @Test
     @DisplayName("crear acepta un inicio en el pasado mientras el fin siga siendo futuro")
     void crearAceptaInicioPasadoConFinFuturo() {
-        LocalDateTime inicioPasado = LocalDateTime.now().minusMinutes(20);
-        LocalDateTime finFuturo = LocalDateTime.now().plusHours(1);
+        // Alineados al bloque, como exige la regla de los 15 minutos.
+        LocalDateTime inicioPasado = LocalDateTime.now().minusHours(1).withMinute(30).withSecond(0).withNano(0);
+        LocalDateTime finFuturo = LocalDateTime.now().plusHours(1).withMinute(30).withSecond(0).withNano(0);
         dto.setDesde(inicioPasado);
         dto.setHasta(finFuturo);
         when(reservaRepository.existeSolapadaEnCochera(cochera.getId(), ReservaEstado.CONFIRMADA, inicioPasado, finFuturo))
@@ -378,6 +383,69 @@ public class ReservaServiceTests {
         assertThrows(ValidationException.class,
                 () -> reservaService.cancelar(terminada.getId(), VISITANTE_EMAIL, false));
         verify(reservaRepository, never()).save(any());
+    }
+
+    // ---- Bloques de 15 minutos ----
+    //
+    // La regla vive en el backend y no solo en el tablero del frontend: si
+    // estuviera unicamente en la UI, cualquier cliente que pegue a la API
+    // podria reservar de 14:07 a 15:23.
+
+    @Test
+    @DisplayName("crear rechaza un inicio que no cae en un bloque de 15 minutos")
+    void crearRechazaInicioFueraDeBloque() {
+        dto.setDesde(desde.withMinute(7).withSecond(0).withNano(0));
+
+        assertThrows(ValidationException.class, () -> reservaService.crear(dto, ADMIN_EMAIL, true));
+        verify(reservaRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("crear rechaza un fin que no cae en un bloque de 15 minutos")
+    void crearRechazaFinFueraDeBloque() {
+        dto.setHasta(hasta.withMinute(23).withSecond(0).withNano(0));
+
+        assertThrows(ValidationException.class, () -> reservaService.crear(dto, ADMIN_EMAIL, true));
+        verify(reservaRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("crear rechaza un horario con segundos, aunque los minutos sean multiplo de 15")
+    void crearRechazaHorarioConSegundos() {
+        dto.setDesde(desde.withMinute(30).withSecond(42).withNano(0));
+
+        assertThrows(ValidationException.class, () -> reservaService.crear(dto, ADMIN_EMAIL, true));
+        verify(reservaRepository, never()).save(any());
+    }
+
+    @ParameterizedTest(name = "minuto {0} es un bloque valido")
+    @ValueSource(ints = {0, 15, 30, 45})
+    @DisplayName("crear acepta los cuatro bloques de la hora")
+    void crearAceptaLosCuatroBloques(int minuto) {
+        LocalDateTime inicio = desde.withMinute(minuto).withSecond(0).withNano(0);
+        LocalDateTime fin = inicio.plusMinutes(15);
+        dto.setDesde(inicio);
+        dto.setHasta(fin);
+        when(reservaRepository.existeSolapadaEnCochera(cochera.getId(), ReservaEstado.CONFIRMADA, inicio, fin))
+                .thenReturn(false);
+        when(reservaRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        assertEquals(ReservaEstado.CONFIRMADA, reservaService.crear(dto, ADMIN_EMAIL, true).estado());
+    }
+
+    // La reserva mas corta posible es un bloque.
+    @Test
+    @DisplayName("crear acepta una reserva de exactamente 15 minutos")
+    void crearAceptaUnaReservaDeUnBloque() {
+        LocalDateTime inicio = desde.withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime fin = inicio.plusMinutes(15);
+        dto.setDesde(inicio);
+        dto.setHasta(fin);
+        when(reservaRepository.existeSolapadaEnCochera(cochera.getId(), ReservaEstado.CONFIRMADA, inicio, fin))
+                .thenReturn(false);
+        when(reservaRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        assertEquals(ReservaEstado.CONFIRMADA, reservaService.crear(dto, ADMIN_EMAIL, true).estado());
     }
 
     private Reserva reservaDe(Visitante dueño) {

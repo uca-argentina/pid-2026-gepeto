@@ -6,7 +6,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
 import api from "@/app/api";
-import { ahora, enUnaHora, formatearRango } from "@/utils/franjaHoraria";
+import {
+  MODALIDAD_ETIQUETA,
+  PASO_MINUTOS,
+  alBloqueLocal,
+  formatearRango,
+  franjaPorDefecto,
+} from "@/utils/franjaHoraria";
 
 const reservaSchema = z
   .object({
@@ -72,7 +78,7 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
   } = useForm({
     resolver: zodResolver(reservaSchema),
     // La reserva arranca por defecto en este momento; el "hasta" se elige.
-    defaultValues: { desde: ahora(), hasta: enUnaHora(), patente: "" },
+    defaultValues: { ...franjaPorDefecto(), patente: "" },
   });
 
   const patente = watch("patente");
@@ -169,7 +175,7 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
         hasta: data.hasta,
       });
       toast.success("Reserva creada correctamente");
-      reset({ patente: "", cocheraId: "", desde: ahora(), hasta: enUnaHora() });
+      reset({ patente: "", cocheraId: "", ...franjaPorDefecto() });
       setCocheras([]);
       cargarReservas();
       onOcupacionCambiada?.();
@@ -266,10 +272,17 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
 
             <div>
               <label className={labelClasses} htmlFor="reserva-desde">Desde</label>
+              {/* step de 15 min: el navegador ofrece los bloques y marca como
+                  inválido cualquier horario intermedio. Igual se baja al bloque
+                  en onChange, porque el step no frena a quien escribe a mano. */}
               <input
                 id="reserva-desde"
                 type="datetime-local"
+                step={PASO_MINUTOS * 60}
                 {...register("desde")}
+                onChange={(e) =>
+                  setValue("desde", alBloqueLocal(e.target.value), { shouldValidate: true })
+                }
                 className={inputClasses}
               />
               {errors.desde && <p className="mt-1 text-sm text-red-500">{errors.desde.message}</p>}
@@ -280,13 +293,17 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
               <input
                 id="reserva-hasta"
                 type="datetime-local"
+                step={PASO_MINUTOS * 60}
                 min={desde}
                 {...register("hasta")}
+                onChange={(e) =>
+                  setValue("hasta", alBloqueLocal(e.target.value), { shouldValidate: true })
+                }
                 className={inputClasses}
               />
               {errors.hasta && <p className="mt-1 text-sm text-red-500">{errors.hasta.message}</p>}
               {/* Se avisa al instante: si se espera al submit, el error que
-                  aparece es el de la cochera (que quedo deshabilitada), y el
+                  aparece es el de la cochera (que quedó deshabilitada), y el
                   problema real —la franja dada vuelta— queda invisible. */}
               {desde && hasta && hasta <= desde && !errors.hasta && (
                 <p className="mt-1 text-sm text-red-500">El fin tiene que ser posterior al inicio</p>
@@ -360,6 +377,11 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
                     <p className="text-xs text-ink/60">
                       Cochera {r.cochera?.numero} ({r.cochera?.sector}) · {formatearRango(r.desde, r.hasta)}
                     </p>
+                    {/* La modalidad la calcula el backend a partir de la
+                        duración, así que el listado no la vuelve a deducir. */}
+                    {r.modalidad && (
+                      <p className="franja-modalidad-badge">{MODALIDAD_ETIQUETA[r.modalidad] ?? r.modalidad}</p>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     <EstadoBadge estado={r.estado} />

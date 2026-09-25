@@ -7,7 +7,7 @@ import * as z from "zod";
 import { toast } from "sonner";
 import api from "@/app/api";
 import { formatoPatenteValido, MENSAJE_FORMATO_INVALIDO } from "@/utils/patenteValidation";
-import { ahora, enUnaHora } from "@/utils/franjaHoraria";
+import { PASO_MINUTOS, alBloqueLocal, franjaPorDefecto } from "@/utils/franjaHoraria";
 
 const visitanteSchema = z
   .object({
@@ -63,7 +63,7 @@ export default function VisitantesContent({ onAltaCreada }) {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(visitanteSchema),
-    defaultValues: { tipoVehiculo: "AUTO", cocheraId: "", desde: ahora(), hasta: enUnaHora() },
+    defaultValues: { tipoVehiculo: "AUTO", cocheraId: "", ...franjaPorDefecto() },
   });
 
   const tipoVehiculo = watch("tipoVehiculo");
@@ -106,7 +106,7 @@ export default function VisitantesContent({ onAltaCreada }) {
       toast.success(
         `Visitante dado de alta y cochera reservada. Su contraseña inicial es su documento (${data.documento}).`
       );
-      reset({ tipoVehiculo: "AUTO", cocheraId: "", desde: ahora(), hasta: enUnaHora() });
+      reset({ tipoVehiculo: "AUTO", cocheraId: "", ...franjaPorDefecto() });
       onAltaCreada?.();
     } catch (err) {
       toast.error(
@@ -181,12 +181,31 @@ export default function VisitantesContent({ onAltaCreada }) {
                 </div>
                 <div>
                   <label className={labelClasses} htmlFor="alta-desde">Desde</label>
-                  <input id="alta-desde" type="datetime-local" {...register("desde")} className={inputClasses} />
+                  <input
+                    id="alta-desde"
+                    type="datetime-local"
+                    step={PASO_MINUTOS * 60}
+                    {...register("desde")}
+                    onChange={(e) =>
+                      setValue("desde", alBloqueLocal(e.target.value), { shouldValidate: true })
+                    }
+                    className={inputClasses}
+                  />
                   {errors.desde && <p className="mt-1 text-sm text-red-500">{errors.desde.message}</p>}
                 </div>
                 <div>
                   <label className={labelClasses} htmlFor="alta-hasta">Hasta</label>
-                  <input id="alta-hasta" type="datetime-local" min={desde} {...register("hasta")} className={inputClasses} />
+                  <input
+                    id="alta-hasta"
+                    type="datetime-local"
+                    step={PASO_MINUTOS * 60}
+                    min={desde}
+                    {...register("hasta")}
+                    onChange={(e) =>
+                      setValue("hasta", alBloqueLocal(e.target.value), { shouldValidate: true })
+                    }
+                    className={inputClasses}
+                  />
                   {errors.hasta && <p className="mt-1 text-sm text-red-500">{errors.hasta.message}</p>}
                   {desde && hasta && hasta <= desde && (
                     <p className="mt-1 text-sm text-red-500">El fin tiene que ser posterior al inicio</p>

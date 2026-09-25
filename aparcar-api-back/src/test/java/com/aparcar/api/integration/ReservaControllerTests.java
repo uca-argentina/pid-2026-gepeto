@@ -107,9 +107,18 @@ public class ReservaControllerTests {
                 + "\",\"hasta\":\"" + hasta + "\"}";
     }
 
-    /** Franja de referencia para los casos que no dependen del horario. */
+    /**
+     * Franja de referencia para los casos que no dependen del horario.
+     *
+     * Alineada al bloque de 15: las reservas se toman en bloques, asi que un
+     * horario con minutos arbitrarios seria rechazado por la validacion.
+     */
+    private static String isoConSegundos(LocalDateTime t) {
+        return t.withNano(0).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"));
+    }
+
     private static LocalDateTime enUnaHora() {
-        return LocalDateTime.now().withNano(0).plusHours(1);
+        return LocalDateTime.now().plusHours(1).withMinute(0).withSecond(0).withNano(0);
     }
 
     // ---- Seguridad ----
@@ -574,8 +583,10 @@ public class ReservaControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(reservaJson(visitante.getId(), vehiculo.getId(), cochera.getId(), desde, hasta)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.desde").value(desde.toString()))
-                .andExpect(jsonPath("$.hasta").value(hasta.toString()));
+                // toString() omite los segundos cuando son cero, Jackson no:
+                // se compara con el ISO completo para que no dependa de eso.
+                .andExpect(jsonPath("$.desde").value(isoConSegundos(desde)))
+                .andExpect(jsonPath("$.hasta").value(isoConSegundos(hasta)));
     }
 
     // La cochera se libera sola: una reserva ya vencida no impide reservar de

@@ -30,6 +30,9 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class ReservaService implements IReservaService {
+    /** Las reservas se toman de a bloques de 15 minutos. */
+    private static final int MINUTOS_POR_BLOQUE = 15;
+
     private final ReservaRepository reservaRepository;
     private final VisitanteRepository visitanteRepository;
     private final VehiculoRepository vehiculoRepository;
@@ -148,11 +151,27 @@ public class ReservaService implements IReservaService {
      * "ahora", no falle por los segundos que tarda el usuario en enviarlo.
      */
     private void validarRango(LocalDateTime desde, LocalDateTime hasta) {
+        // La reserva se toma en bloques de 15 minutos. Se valida en el backend
+        // y no solo en el tablero del frontend: si la regla vive unicamente en
+        // la UI, cualquier cliente que pegue a la API la saltea.
+        validarBloqueDe15(desde, "El inicio");
+        validarBloqueDe15(hasta, "El fin");
+
         if (!hasta.isAfter(desde)) {
             throw new ValidationException("El fin de la reserva tiene que ser posterior al inicio.");
         }
         if (!hasta.isAfter(LocalDateTime.now())) {
             throw new ValidationException("La reserva no puede terminar en el pasado.");
+        }
+    }
+
+    private void validarBloqueDe15(LocalDateTime momento, String cual) {
+        if (momento.getMinute() % MINUTOS_POR_BLOQUE != 0
+                || momento.getSecond() != 0
+                || momento.getNano() != 0) {
+            throw new ValidationException(
+                    "%s de la reserva tiene que caer en un bloque de %d minutos."
+                            .formatted(cual, MINUTOS_POR_BLOQUE));
         }
     }
 
@@ -214,6 +233,7 @@ public class ReservaService implements IReservaService {
                 vehiculoDto,
                 cocheraDto,
                 reserva.getEstado(),
+                reserva.getModalidad(),
                 reserva.getFechaCreacion());
     }
 }

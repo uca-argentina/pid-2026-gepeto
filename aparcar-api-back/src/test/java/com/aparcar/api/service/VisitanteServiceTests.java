@@ -14,6 +14,7 @@ import com.aparcar.api.entity.auth.AppAuthority;
 import com.aparcar.api.entity.auth.Visitante;
 import com.aparcar.api.entity.reserva.CocheraEstado;
 import com.aparcar.api.entity.reserva.CocheraTipo;
+import com.aparcar.api.entity.reserva.ModalidadReserva;
 import com.aparcar.api.entity.reserva.ReservaEstado;
 import com.aparcar.api.entity.reserva.VehiculoTipo;
 import com.aparcar.api.exception.NotFoundException;
@@ -102,6 +103,7 @@ public class VisitanteServiceTests {
                 new VehiculoResponseDto(VEHICULO_ID, "ABC123", VehiculoTipo.AUTO, UUID.randomUUID()),
                 new CocheraResponseDto(COCHERA_ID, "A-01", "Planta Baja", CocheraTipo.AUTO, CocheraEstado.HABILITADA, null),
                 ReservaEstado.CONFIRMADA,
+                ModalidadReserva.FRANJA,
                 Instant.now());
     }
 

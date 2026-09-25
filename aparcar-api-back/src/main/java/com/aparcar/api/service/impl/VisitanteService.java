@@ -74,7 +74,11 @@ public class VisitanteService implements IVisitanteService {
         reservaDto.setCocheraId(dto.getCocheraId());
         // Por defecto el alta cubre desde ahora y por una hora: el admin esta
         // registrando a alguien que acaba de llegar. Si manda la franja, manda.
-        LocalDateTime desde = dto.getDesde() != null ? dto.getDesde() : LocalDateTime.now();
+        //
+        // El "ahora" se baja al bloque de 15 en curso: las reservas se toman en
+        // bloques, y un now() crudo (14:07:33) seria rechazado por la propia
+        // validacion del servicio de reservas.
+        LocalDateTime desde = dto.getDesde() != null ? dto.getDesde() : alBloqueDe15(LocalDateTime.now());
         LocalDateTime hasta = dto.getHasta() != null ? dto.getHasta() : desde.plusHours(1);
         reservaDto.setDesde(desde);
         reservaDto.setHasta(hasta);
@@ -131,6 +135,11 @@ public class VisitanteService implements IVisitanteService {
 
         visitante.setPassword(passwordEncoder.encode(dto.getPasswordNueva()));
         visitanteRepository.save(visitante);
+    }
+
+    /** Baja un momento al bloque de 15 minutos en el que cae. */
+    private static LocalDateTime alBloqueDe15(LocalDateTime momento) {
+        return momento.withMinute(momento.getMinute() / 15 * 15).withSecond(0).withNano(0);
     }
 
     private Visitante buscarPorId(UUID id) {

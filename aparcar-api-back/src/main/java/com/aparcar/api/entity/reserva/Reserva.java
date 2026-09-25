@@ -70,6 +70,11 @@ public class Reserva {
     @Column(name = "fecha_creacion", nullable = false, updatable = false)
     private Instant fechaCreacion;
 
+    /** Como se esta reservando: por franja, media jornada o jornada completa. */
+    public ModalidadReserva getModalidad() {
+        return ModalidadReserva.de(desde, hasta);
+    }
+
     /** True si la franja esta corriendo en el instante dado. */
     public boolean estaVigenteEn(LocalDateTime momento) {
         return !momento.isBefore(desde) && momento.isBefore(hasta);

@@ -14,11 +14,23 @@ Que prueba cada archivo de test del proyecto, caso por caso. Ver `ARCHIVOS.md` p
 
 _1 tests._
 
+_1 tests._
+
+_1 tests._
+
+_1 tests._
+
 ```
 contextLoads   (sin @DisplayName)
 ```
 
 ## `component/OTPCleanupTests.java`
+
+_1 tests._
+
+_1 tests._
+
+_1 tests._
 
 _1 tests._
 
@@ -43,12 +55,24 @@ marcaTodasLasVencidas   (sin @DisplayName)
 
 _2 tests._
 
+_2 tests._
+
+_2 tests._
+
+_2 tests._
+
 ```
 testRevoke   (sin @DisplayName)
 cacheRejectsNulls   (sin @DisplayName)
 ```
 
 ## `component/SpringEmailSenderTests.java`
+
+_2 tests._
+
+_2 tests._
+
+_2 tests._
 
 _2 tests._
 
@@ -69,6 +93,18 @@ corrigeUnArranqueEnUtc   (sin @DisplayName)
 respetaOtraZonaConfigurada   (sin @DisplayName)
 ```
 
+## `entity/ModalidadReservaTests.java`
+
+_10 tests._
+
+_10 tests._
+
+```
+laModalidadSaleDeLaDuracion   (sin @DisplayName)
+elHorarioDeArranqueNoCambiaLaModalidad   (sin @DisplayName)
+unaFranjaSinDatosNoRompe   (sin @DisplayName)
+```
+
 ## `entity/ReservaSolapamientoTests.java`
 
 _20 tests._
@@ -87,6 +123,12 @@ estaVigenteEnCubreLosBordes   (sin @DisplayName)
 
 _4 tests._
 
+_4 tests._
+
+_4 tests._
+
+_4 tests._
+
 Caja blanca. El filtro que arma el JWT, probado en aislamiento con mocks.
 
 ```
@@ -97,6 +139,12 @@ jwtExpiresEightHoursAfterIssued   (sin @DisplayName)
 ```
 
 ## `filters/RateLimitFilterTests.java`
+
+_5 tests._
+
+_5 tests._
+
+_5 tests._
 
 _5 tests._
 
@@ -114,6 +162,12 @@ differentIpsHaveIndependentBuckets   (sin @DisplayName)
 
 _5 tests._
 
+_5 tests._
+
+_5 tests._
+
+_5 tests._
+
 ```
 tearDown   (sin @DisplayName)
 registerValidatesInput   (sin @DisplayName)
@@ -124,6 +178,12 @@ resetPasswordWithValidOTP   (sin @DisplayName)
 ```
 
 ## `integration/CocheraControllerTests.java`
+
+_39 tests._
+
+_39 tests._
+
+_39 tests._
 
 _39 tests._
 
@@ -166,6 +226,12 @@ listarSectoresDevuelveSectoresDistintos   (sin @DisplayName)
 
 _9 tests._
 
+_9 tests._
+
+_9 tests._
+
+_9 tests._
+
 Caja negra. La matriz de permisos: que rol puede pegarle a que endpoint.
 
 ```
@@ -181,6 +247,12 @@ El 403 devuelve el mismo formato JSON que el 401 (no un 404 ni un body vacío)
 ```
 
 ## `integration/LoginFlowTests.java`
+
+_4 tests._
+
+_4 tests._
+
+_4 tests._
 
 _4 tests._
 
@@ -257,6 +329,12 @@ crearDevuelve400SiElFinEsAnteriorAlInicio   (sin @DisplayName)
 
 _10 tests._
 
+_10 tests._
+
+_10 tests._
+
+_10 tests._
+
 ```
 shouldReturnUnauthorizedForAnonymousUsers   (sin @DisplayName)
 shouldReturnForbiddenForRegularUsers   (sin @DisplayName)
@@ -271,6 +349,12 @@ updateUserRejectsAnonymousUsers   (sin @DisplayName)
 ```
 
 ## `integration/VehiculoControllerTests.java`
+
+_18 tests._
+
+_18 tests._
+
+_18 tests._
 
 _18 tests._
 
@@ -337,6 +421,12 @@ loadUserByUsernameThrowsWhenUserNotFound   (sin @DisplayName)
 ```
 
 ## `security/authenticationProvider/DevAuthenticationProviderTests.java`
+
+_4 tests._
+
+_4 tests._
+
+_4 tests._
 
 _4 tests._
 
@@ -776,6 +866,12 @@ alternar dos veces vuelve a light
 
 _3 tests._
 
+_3 tests._
+
+_3 tests._
+
+_3 tests._
+
 ```
 devuelve el valor de window.__ENV cuando está presente (runtime)
 ignora window.__ENV si la clave pedida no está definida ahí
@@ -801,9 +897,9 @@ es case-insensitive
 
 | | Archivos | Tests |
 |---|---|---|
-| Backend | 28 | 295 |
-| Frontend | 16 | 157 |
-| **Total** | **44** | **452** |
+| Backend | 29 | 313 |
+| Frontend | 16 | 162 |
+| **Total** | **45** | **475** |
 
 Correr todo:
 

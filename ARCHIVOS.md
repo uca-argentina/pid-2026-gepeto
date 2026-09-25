@@ -40,6 +40,15 @@ Resumen de lo nuevo, para no tener que leer todo el archivo buscando las marcas.
 **Reservas por franja horaria** 🆕
 
 - Una reserva dejó de ser "por día" y pasó a ser un rango `[desde, hasta)`. Se puede reservar el tiempo que se quiera, incluidos varios días.
+- **Las reservas se toman en bloques de 15 minutos.** El cliente elige un horario de inicio y desde ahí la duración se arma sumando de a 15. La regla se valida en el backend y no solo en el tablero: si viviera únicamente en la UI, cualquier cliente que pegue a la API podría reservar de 14:07 a 15:23.
+- **Las reservas se toman en bloques de 15 minutos.** Los campos `Desde` y `Hasta` declaran `step` de 15 min, así que el navegador ofrece los bloques y marca como inválido cualquier horario intermedio. Igual el valor se baja al bloque en `onChange` (`alBloqueLocal`), porque el `step` no frena a quien escribe a mano.
+- El arranque por defecto es el **bloque en curso**, redondeando hacia abajo: si son las 14:07 arranca 14:00, no 14:15, porque si no los ocho minutos en los que el auto ya está estacionado quedarían sin cubrir.
+
+**El sistema detecta la modalidad** 🆕
+
+- `ModalidadReserva.java` 🆕 clasifica cada reserva en **por franja horaria**, **media jornada** (12 h o más) o **jornada completa** (24 h o más), deducido de la duración y no del horario de arranque: media jornada es medio día de estadía, empiece a las 8 o a las 15.
+- **No se guarda en la base**: es una lectura de la franja. Si el predio decide que media jornada son 6 h y no 12, las reservas viejas se reinterpretan solas en vez de quedar etiquetadas con un criterio viejo.
+- Viaja en `ReservaResponseDto`, así que el listado la muestra sin volver a deducirla — si la calculara por su cuenta, backend y pantalla podrían discrepar al cambiar un umbral.
 - **Toda la regla de "no se pisan" es una sola condición**, en `ReservaRepository`: `r.desde < :hasta AND r.hasta > :desde`. Es el test estándar de intersección de intervalos semiabiertos: cubre los cuatro casos de superposición y deja pasar el borde que hay que permitir — si una reserva termina justo cuando arranca la siguiente, no se pisan y la cochera se puede volver a entregar en ese instante.
 - **Las cocheras se liberan solas.** Sale de lo mismo: una reserva vencida ya no intersecta ningún rango futuro, así que deja de ocupar en el instante exacto en que termina, sin depender de que corra ninguna tarea.
 - `ReservasVencidas.java` 🆕 marca las vencidas como `FINALIZADA`, pero es **solo informativo**: mantiene el listado legible. Si el proceso se cae un fin de semana, nadie se queda sin poder reservar.
@@ -325,6 +334,7 @@ Entidades JPA que representan los datos persistidos.
 | `CocheraTipo.java` | Enum `AUTO`, `MOTO`, `ACCESIBLE`, `CARGA` |
 | `CocheraEstado.java` | Estado operativo de una cochera |
 | `Reserva.java` ✏️ | Entidad de reservas. La `fecha` (un día) se reemplazó por la franja `desde`/`hasta`. Expone `seSolapaCon(desde, hasta)` y `estaVigenteEn(momento)`, que es donde está escrita la regla de superposición |
+| `ModalidadReserva.java` 🆕 | Enum `FRANJA`, `MEDIA_JORNADA`, `JORNADA_COMPLETA`, deducido de la duración de la franja. No se persiste |
 | `ReservaEstado.java` ✏️ | Enum `CONFIRMADA`, `CANCELADA`, `FINALIZADA` 🆕. `FINALIZADA` la pone una tarea programada cuando pasa el `hasta`; es informativa, la disponibilidad no depende de ella |
 
 ---

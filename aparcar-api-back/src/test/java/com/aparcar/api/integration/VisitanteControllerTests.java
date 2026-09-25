@@ -89,6 +89,16 @@ public class VisitanteControllerTests {
         return visitanteRepository.save(visitante);
     }
 
+    /** toString() omite los segundos en cero; Jackson los serializa igual. */
+    private static String isoConSegundos(LocalDateTime t) {
+        return t.withNano(0).format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss"));
+    }
+
+    /** Baja un horario al bloque de 15 minutos, que es lo unico que acepta el alta. */
+    private static LocalDateTime alBloque(LocalDateTime momento) {
+        return momento.withMinute(momento.getMinute() / 15 * 15).withSecond(0).withNano(0);
+    }
+
     private Cochera crearCochera(String numero, CocheraTipo tipo) {
         Cochera cochera = new Cochera();
         cochera.setNumero(numero);
@@ -111,7 +121,7 @@ public class VisitanteControllerTests {
     void altaRespetaYValidaLaFranjaElegida() throws Exception {
         Cochera cochera = crearCochera("A-01", CocheraTipo.AUTO);
         var context = getContext();
-        LocalDateTime desde = LocalDateTime.now().plusDays(7).withNano(0);
+        LocalDateTime desde = LocalDateTime.now().plusDays(7).withMinute(0).withSecond(0).withNano(0);
         LocalDateTime hasta = desde.plusHours(3);
         String cuerpo = cuerpoAlta("30111222", "juan@test.com", "ABC123", cochera.getId());
 
@@ -120,8 +130,8 @@ public class VisitanteControllerTests {
         mockMvc.perform(post("/api/v1/visitantes/alta")
                         .with(securityContext(context))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(cuerpo.replace("}", ",\"desde\":\"" + LocalDateTime.now().minusDays(2)
-                                + "\",\"hasta\":\"" + LocalDateTime.now().minusDays(1) + "\"}")))
+                        .content(cuerpo.replace("}", ",\"desde\":\"" + alBloque(LocalDateTime.now().minusDays(2))
+                                + "\",\"hasta\":\"" + alBloque(LocalDateTime.now().minusDays(1)) + "\"}")))
                 .andExpect(status().isBadRequest());
         assertEquals(0, visitanteRepository.count());
         assertEquals(0, vehiculoRepository.count());
@@ -132,8 +142,8 @@ public class VisitanteControllerTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(cuerpo.replace("}", ",\"desde\":\"" + desde + "\",\"hasta\":\"" + hasta + "\"}")))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.reserva.desde").value(desde.toString()))
-                .andExpect(jsonPath("$.reserva.hasta").value(hasta.toString()));
+                .andExpect(jsonPath("$.reserva.desde").value(isoConSegundos(desde)))
+                .andExpect(jsonPath("$.reserva.hasta").value(isoConSegundos(hasta)));
         assertEquals(desde, reservaRepository.findAll().getFirst().getDesde());
     }
 
