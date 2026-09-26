@@ -78,6 +78,67 @@
   .dark .ui-primary { background: var(--color-accent); color: var(--color-brand); }
   .dark .ui-primary:hover:not(:disabled) { background: #8bdeff; }
 
+  /* ---- Panel de ocupacion de cocheras (admin) ---- */
+  .ocupacion { display: grid; gap: 0; }
+
+  /* Banner del dia */
+  .ocupacion-banner { display: flex; align-items: center; gap: 12px; border: 1px solid var(--color-line); border-radius: 14px 14px 0 0; background: var(--color-surface); padding: 12px 14px; }
+  .ocupacion-fecha { flex: 1; min-width: 0; text-align: center; }
+  .ocupacion-fecha-dia { display: flex; align-items: baseline; justify-content: center; gap: 8px; flex-wrap: wrap; color: var(--color-ink); font-size: 15px; font-weight: 650; }
+  /* Solo la inicial: `capitalize` sube la de cada palabra y deja "26 De Septiembre". */
+  .ocupacion-fecha-texto::first-letter { text-transform: uppercase; }
+  .ocupacion-fecha-relativo { border-radius: 999px; background: var(--color-accent); padding: 2px 9px; color: white; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .dark .ocupacion-fecha-relativo { color: var(--color-brand); }
+  .ocupacion-fecha-resumen { margin-top: 2px; color: var(--color-muted); font-size: 12px; }
+  .ocupacion-banner-acciones { display: flex; align-items: center; gap: 8px; }
+  .ocupacion-nav { display: grid; place-items: center; width: 34px; height: 34px; flex: none; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-bg); color: var(--color-ink); font-size: 16px; line-height: 1; cursor: pointer; transition: border-color .15s, background .15s; }
+  .ocupacion-nav:hover { border-color: var(--color-accent); }
+  .ocupacion-hoy { border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-bg); padding: 7px 12px; color: var(--color-ink); font-size: 12px; font-weight: 600; cursor: pointer; transition: border-color .15s; }
+  .ocupacion-hoy:hover { border-color: var(--color-accent); }
+
+  /* Pestanas */
+  .ocupacion-tabs { display: flex; gap: 0; border: 1px solid var(--color-line); border-top: 0; background: var(--color-bg); }
+  .ocupacion-tab { flex: 1; border: 0; border-bottom: 2px solid transparent; background: none; padding: 11px 10px; color: var(--color-muted); font-size: 13px; font-weight: 600; cursor: pointer; transition: color .15s, border-color .15s, background .15s; }
+  .ocupacion-tab:hover { color: var(--color-ink); }
+  .ocupacion-tab.is-activa { border-bottom-color: var(--color-accent); background: var(--color-surface); color: var(--color-ink); }
+
+  /* Desplegables + detalle al costado */
+  .ocupacion-cuerpo { display: grid; grid-template-columns: minmax(0, 240px) minmax(0, 1fr); border: 1px solid var(--color-line); border-top: 0; border-radius: 0 0 14px 14px; overflow: hidden; }
+  .ocupacion-grupos { display: grid; align-content: start; background: var(--color-bg); border-right: 1px solid var(--color-line); }
+  .ocupacion-grupo { display: flex; align-items: center; gap: 8px; border: 0; border-bottom: 1px solid var(--color-line); background: none; padding: 13px 14px; color: var(--color-ink); font-size: 13.5px; text-align: left; cursor: pointer; transition: background .15s; }
+  .ocupacion-grupo:last-child { border-bottom: 0; }
+  .ocupacion-grupo:hover { background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
+  .ocupacion-grupo.is-abierto { background: var(--color-surface); font-weight: 650; }
+  .ocupacion-grupo-nombre { flex: 1; min-width: 0; }
+  .ocupacion-grupo-contador { border-radius: 999px; background: color-mix(in srgb, var(--color-ink) 8%, transparent); padding: 2px 8px; color: var(--color-muted); font-size: 11.5px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .ocupacion-grupo-contador.is-ocupada { background: color-mix(in srgb, var(--color-accent) 18%, transparent); color: var(--color-ink); }
+  .ocupacion-grupo-flecha { color: var(--color-muted); font-size: 15px; transition: transform .15s; }
+  .ocupacion-grupo.is-abierto .ocupacion-grupo-flecha { transform: rotate(90deg); color: var(--color-accent); }
+
+  .ocupacion-detalle { background: var(--color-surface); padding: 16px; min-height: 148px; }
+  .ocupacion-detalle-ayuda, .ocupacion-vacio { color: var(--color-muted); font-size: 13px; }
+  .ocupacion-vacio { padding: 14px; }
+  .ocupacion-detalle-titulo { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; color: var(--color-ink); font-size: 14px; font-weight: 700; }
+  .ocupacion-detalle-cuenta { color: var(--color-muted); font-size: 12px; font-weight: 500; }
+
+  .ocupacion-lista { display: grid; gap: 8px; }
+  .ocupacion-item { border: 1px solid var(--color-line); border-radius: 11px; background: var(--color-bg); padding: 10px 12px; }
+  .ocupacion-item-cabecera { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+  .ocupacion-item-cochera { border-radius: 7px; background: color-mix(in srgb, var(--color-accent) 16%, transparent); padding: 2px 7px; color: var(--color-ink); font-size: 12px; font-weight: 700; }
+  .ocupacion-item-patente { color: var(--color-ink); font-size: 14px; font-weight: 650; letter-spacing: .04em; }
+  .ocupacion-item-modalidad { margin-left: auto; color: var(--color-muted); font-size: 11.5px; }
+  .ocupacion-item-datos { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-top: 5px; }
+  .ocupacion-item-horario { color: var(--color-ink); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .ocupacion-item-horario.cruza { color: var(--color-accent); }
+  .ocupacion-item-email { color: var(--color-muted); font-size: 12px; overflow-wrap: anywhere; }
+
+  /* En pantalla angosta no hay "al costado": el detalle va abajo. */
+  @media (max-width: 640px) {
+    .ocupacion-cuerpo { grid-template-columns: minmax(0, 1fr); }
+    .ocupacion-grupos { border-right: 0; border-bottom: 1px solid var(--color-line); }
+    .ocupacion-detalle { min-height: 0; }
+  }
+
   /* ---- Atajos de jornada ---- */
   .atajos-jornada { display: grid; gap: 7px; }
   .atajos-jornada-titulo { color: var(--color-muted); font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; }

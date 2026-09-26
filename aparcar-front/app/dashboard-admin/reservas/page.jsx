@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireAuth } from "@/utils/serverAuth";
 import LogoutButton from "@/components/LogoutButton";
-import ReservasContent from "@/components/ReservasContent";
+import PanelReservas from "./PanelReservas";
 import DashboardHeader from "@/components/DashboardHeader";
 
 export default async function ReservasAdminPage() {
@@ -19,7 +19,7 @@ export default async function ReservasAdminPage() {
           </Link>
         </DashboardHeader>
 
-        <ReservasContent modo="admin" />
+        <PanelReservas />
       </div>
     </div>
   );
