@@ -2,13 +2,20 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const { getMock, toastErrorMock } = vi.hoisted(() => ({
+const { getMock, postMock, putMock, toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
+  postMock: vi.fn(),
+  putMock: vi.fn(),
+  toastSuccessMock: vi.fn(),
   toastErrorMock: vi.fn(),
 }));
 
-vi.mock("@/app/api", () => ({ default: { get: getMock } }));
-vi.mock("sonner", () => ({ toast: { error: toastErrorMock } }));
+vi.mock("@/app/api", () => ({
+  default: { get: getMock, post: postMock, put: putMock },
+}));
+vi.mock("sonner", () => ({
+  toast: { success: toastSuccessMock, error: toastErrorMock },
+}));
 
 const { default: OcupacionCocheras } = await import("@/components/OcupacionCocheras");
 
@@ -151,11 +158,52 @@ describe("OcupacionCocheras: el detalle", () => {
     await waitFor(() => expect(grupo("Auto")).toBeInTheDocument());
     await user.click(grupo("Auto"));
 
-    const item = (await screen.findByText("ABC123")).closest("li");
-    expect(within(item).getByText("A-01")).toBeInTheDocument();
-    expect(within(item).getByText("08:00 – 12:00")).toBeInTheDocument();
-    expect(within(item).getByText("Media jornada")).toBeInTheDocument();
-    expect(within(item).getByText("juan@test.com")).toBeInTheDocument();
+    const fila = (await screen.findByText("A-01")).closest(".ocupacion-cochera");
+    expect(within(fila).getByText("ABC123")).toBeInTheDocument();
+    expect(within(fila).getByText("08:00 – 12:00")).toBeInTheDocument();
+    expect(within(fila).getByText("Media jornada")).toBeInTheDocument();
+    expect(within(fila).getByText("juan@test.com")).toBeInTheDocument();
+  });
+
+  // Lo que cambia respecto de la primera version: el panel es del predio
+  // entero, asi que una cochera sin reservas figura igual, marcada como libre.
+  it("las cocheras libres también figuran", async () => {
+    const ocupada = cochera("A-01");
+    mockData({
+      cocheras: [ocupada, cochera("A-02"), cochera("A-03")],
+      reservas: [reserva({ cochera: ocupada })],
+    });
+    const user = userEvent.setup();
+    render(<OcupacionCocheras />);
+
+    await waitFor(() => expect(grupo("Auto")).toBeInTheDocument());
+    await user.click(grupo("Auto"));
+
+    expect(await screen.findByText("A-02")).toBeInTheDocument();
+    expect(screen.getByText("A-03")).toBeInTheDocument();
+    expect(screen.getAllByText("Libre")).toHaveLength(2);
+  });
+
+  it("el filtro deja solo las reservadas y se puede volver atrás", async () => {
+    const ocupada = cochera("A-01");
+    mockData({
+      cocheras: [ocupada, cochera("A-02")],
+      reservas: [reserva({ cochera: ocupada })],
+    });
+    const user = userEvent.setup();
+    render(<OcupacionCocheras />);
+
+    await waitFor(() => expect(grupo("Auto")).toBeInTheDocument());
+    await user.click(grupo("Auto"));
+    expect(await screen.findByText("A-02")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /solo reservadas/i }));
+
+    expect(screen.queryByText("A-02")).not.toBeInTheDocument();
+    expect(screen.getByText("A-01")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /solo reservadas/i }));
+    expect(await screen.findByText("A-02")).toBeInTheDocument();
   });
 
   it("hasta que no se elige un grupo, invita a elegir uno", async () => {
@@ -165,7 +213,7 @@ describe("OcupacionCocheras: el detalle", () => {
     expect(await screen.findByText(/elegí un tipo de cochera/i)).toBeInTheDocument();
   });
 
-  it("un grupo sin nada ocupado lo dice en vez de quedar vacío", async () => {
+  it("un grupo sin nada ocupado muestra sus cocheras como libres", async () => {
     mockData({ cocheras: [cochera("M-01", "MOTO")] });
     const user = userEvent.setup();
     render(<OcupacionCocheras />);
@@ -173,7 +221,20 @@ describe("OcupacionCocheras: el detalle", () => {
     await waitFor(() => expect(grupo("Moto")).toBeInTheDocument());
     await user.click(grupo("Moto"));
 
-    expect(await screen.findByText(/no hay nada ocupado en moto/i)).toBeInTheDocument();
+    expect(await screen.findByText("M-01")).toBeInTheDocument();
+    expect(screen.getByText("Libre")).toBeInTheDocument();
+  });
+
+  it("con el filtro puesto y nada reservado, lo dice", async () => {
+    mockData({ cocheras: [cochera("M-01", "MOTO")] });
+    const user = userEvent.setup();
+    render(<OcupacionCocheras />);
+
+    await waitFor(() => expect(grupo("Moto")).toBeInTheDocument());
+    await user.click(grupo("Moto"));
+    await user.click(screen.getByRole("button", { name: /solo reservadas/i }));
+
+    expect(await screen.findByText(/no hay ninguna cochera reservada/i)).toBeInTheDocument();
   });
 
   it("volver a tocar el mismo grupo lo cierra", async () => {
@@ -329,5 +390,165 @@ describe("OcupacionCocheras: refresco", () => {
     rerender(<OcupacionCocheras refreshKey={1} />);
 
     await waitFor(() => expect(getMock).toHaveBeenCalledTimes(4));
+  });
+});
+
+describe("OcupacionCocheras: acciones sobre la cochera", () => {
+  const confirmando = (respuesta) =>
+    vi.spyOn(window, "confirm").mockReturnValue(respuesta);
+
+  const abrirAuto = async (user) => {
+    await waitFor(() => expect(grupo("Auto")).toBeInTheDocument());
+    await user.click(grupo("Auto"));
+    await screen.findByText("A-01");
+  };
+
+  it("deshabilita una cochera mandando la cochera entera, no solo el estado", async () => {
+    confirmando(true);
+    putMock.mockResolvedValue({ data: {} });
+    mockData({ cocheras: [cochera("A-01")] });
+    const user = userEvent.setup();
+    render(<OcupacionCocheras />);
+    await abrirAuto(user);
+
+    await user.click(screen.getByRole("button", { name: "Deshabilitar" }));
+
+    // El PUT del backend reemplaza la cochera completa: mandar solo el estado
+    // le borraria el numero, el sector y el tipo.
+    await waitFor(() => expect(putMock).toHaveBeenCalledWith("/api/v1/cocheras/c-A-01", {
+      numero: "A-01",
+      sector: "Planta Baja",
+      tipo: "AUTO",
+      estado: "DESHABILITADA",
+    }));
+    expect(toastSuccessMock).toHaveBeenCalledWith("Cochera A-01 deshabilitada");
+  });
+
+  it("una cochera fuera de servicio se vuelve a habilitar desde el mismo lugar", async () => {
+    confirmando(true);
+    putMock.mockResolvedValue({ data: {} });
+    mockData({ cocheras: [{ ...cochera("A-01"), estado: "DESHABILITADA" }] });
+    const user = userEvent.setup();
+    render(<OcupacionCocheras />);
+    await abrirAuto(user);
+
+    expect(screen.getByText("Fuera de servicio")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Habilitar" }));
+
+    await waitFor(() => expect(putMock).toHaveBeenCalledWith(
+      "/api/v1/cocheras/c-A-01",
+      expect.objectContaining({ estado: "HABILITADA" })
+    ));
+  });
+
+  // El aviso dice cuantas reservas se van a cancelar porque el panel ya las
+  // tiene: no hace falta advertir en abstracto.
+  it("al deshabilitar avisa cuántas reservas se van a cancelar", async () => {
+    const confirm = confirmando(false);
+    const c = cochera("A-01");
+    mockData({ cocheras: [c], reservas: [reserva({ cochera: c })] });
+    const user = userEvent.setup();
+    render(<OcupacionCocheras />);
+    await abrirAuto(user);
+
+    await user.click(screen.getByRole("button", { name: "Deshabilitar" }));
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("1 reserva confirmada"));
+    // Si se dice que no, no se toca nada.
+    expect(putMock).not.toHaveBeenCalled();
+  });
+
+  it("sin reservas no amenaza con cancelar nada", async () => {
+    const confirm = confirmando(false);
+    mockData({ cocheras: [cochera("A-01")] });
+    const user = userEvent.setup();
+    render(<OcupacionCocheras />);
+    await abrirAuto(user);
+
+    await user.click(screen.getByRole("button", { name: "Deshabilitar" }));
+
+    expect(confirm).toHaveBeenCalledWith(expect.not.stringContaining("cancelar"));
+  });
+
+  it("si el backend rechaza el cambio lo dice y no miente", async () => {
+    confirmando(true);
+    putMock.mockRejectedValue({ response: { data: { message: "No se puede" } } });
+    mockData({ cocheras: [cochera("A-01")] });
+    const user = userEvent.setup();
+    render(<OcupacionCocheras />);
+    await abrirAuto(user);
+
+    await user.click(screen.getByRole("button", { name: "Deshabilitar" }));
+
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith("No se puede"));
+    expect(screen.getByRole("button", { name: "Deshabilitar" })).toBeEnabled();
+  });
+});
+
+describe("OcupacionCocheras: cancelar una reserva", () => {
+  const abrirAuto = async (user) => {
+    await waitFor(() => expect(grupo("Auto")).toBeInTheDocument());
+    await user.click(grupo("Auto"));
+    await screen.findByText("ABC123");
+  };
+
+  it("cancela y vuelve a pedir los datos", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    postMock.mockResolvedValue({ data: {} });
+    const c = cochera("A-01");
+    mockData({ cocheras: [c], reservas: [reserva({ cochera: c })] });
+    const user = userEvent.setup();
+    render(<OcupacionCocheras />);
+    await abrirAuto(user);
+    await waitFor(() => expect(getMock).toHaveBeenCalledTimes(2));
+
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith("/api/v1/reservas/r1/cancelar"));
+    // El panel no puede quedar mostrando la reserva que se acaba de cancelar.
+    await waitFor(() => expect(getMock).toHaveBeenCalledTimes(4));
+  });
+
+  it("si se dice que no, no cancela", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const c = cochera("A-01");
+    mockData({ cocheras: [c], reservas: [reserva({ cochera: c })] });
+    const user = userEvent.setup();
+    render(<OcupacionCocheras />);
+    await abrirAuto(user);
+
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    expect(postMock).not.toHaveBeenCalled();
+  });
+
+  // Una reserva ya vencida se sigue viendo, pero cancelarla no significaria
+  // nada: el boton no esta.
+  it("una reserva finalizada no ofrece cancelar", async () => {
+    const c = cochera("A-01");
+    mockData({
+      cocheras: [c],
+      reservas: [reserva({ cochera: c, estado: "FINALIZADA" })],
+    });
+    const user = userEvent.setup();
+    render(<OcupacionCocheras />);
+    await abrirAuto(user);
+
+    expect(screen.queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
+  });
+
+  it("el confirm nombra la patente y la cochera, para no cancelar la que no era", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const c = cochera("A-01");
+    mockData({ cocheras: [c], reservas: [reserva({ cochera: c })] });
+    const user = userEvent.setup();
+    render(<OcupacionCocheras />);
+    await abrirAuto(user);
+
+    await user.click(screen.getByRole("button", { name: "Cancelar" }));
+
+    const texto = confirm.mock.calls[0][0];
+    expect(texto).toContain("ABC123");
+    expect(texto).toContain("A-01");
   });
 });

@@ -13,6 +13,13 @@ export default async function DashboardAdminPage() {
       <div className="dashboard-container">
         <DashboardHeader actions={<LogoutButton />}>
           <Link
+            href="/dashboard-admin/visitantes"
+            className="dashboard-nav-link"
+          >
+            <DashboardIcon name="user-plus" />
+            <span>Nuevo visitante</span>
+          </Link>
+          <Link
             href="/dashboard-admin/cocheras"
             className="dashboard-nav-link"
           >

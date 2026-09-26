@@ -105,16 +105,25 @@ export const horarioEnElDia = (reserva, dia) => {
   };
 };
 
-/** Una fila de la lista: lo que el admin necesita ver de una ocupación. */
+/** Una reserva, como se muestra dentro de la cochera que ocupa. */
 const aOcupacion = (reserva, dia) => ({
   id: reserva.id,
-  cochera: reserva.cochera?.numero ?? "—",
-  sector: reserva.cochera?.sector ?? "—",
   patente: reserva.vehiculo?.patente ?? "—",
   email: reserva.visitante?.email ?? "—",
   modalidad: MODALIDAD_ETIQUETA[reserva.modalidad] ?? reserva.modalidad ?? "—",
   horario: horarioEnElDia(reserva, dia),
+  // Solo una reserva vigente se puede cancelar; una que ya terminó, no.
+  cancelable: reserva.estado === "CONFIRMADA",
 });
+
+/**
+ * Compara números de cochera de forma natural: A-2 antes que A-10.
+ *
+ * Con `localeCompare` a secas el orden sería alfabético y A-10 quedaría antes
+ * que A-2, que es justo el orden en el que nadie busca una cochera.
+ */
+const porNumero = (a, b) =>
+  a.numero.localeCompare(b.numero, "es", { numeric: true, sensitivity: "base" });
 
 /**
  * Arma los grupos que se muestran como menús desplegables.
@@ -124,9 +133,12 @@ const aOcupacion = (reserva, dia) => ({
  * las reservas, para que un tipo o un piso sin nada reservado igual aparezca
  * (que también es información: está todo libre).
  *
- * El contador cuenta cocheras distintas y no reservas, porque una misma cochera
- * puede tener dos turnos en el mismo día y seguiría siendo una sola cochera
- * ocupada; la lista, en cambio, muestra las dos reservas.
+ * La unidad de la lista es **la cochera**, no la reserva: el panel muestra todo
+ * el predio y cada cochera lleva colgadas las reservas que la ocupan ese día,
+ * que pueden ser ninguna, una o varias (dos turnos en el mismo día).
+ *
+ * El contador, por eso, cuenta cocheras y no reservas: dos turnos en la misma
+ * cochera siguen siendo una sola cochera ocupada.
  */
 export const agruparOcupacion = (cocheras, reservas, dia, clave) => {
   const delDia = (reservas ?? []).filter(
@@ -134,29 +146,66 @@ export const agruparOcupacion = (cocheras, reservas, dia, clave) => {
   );
 
   const grupos = new Map();
+  const deGrupo = (valor) => {
+    if (!grupos.has(valor)) grupos.set(valor, { clave: valor, cocheras: new Map() });
+    return grupos.get(valor).cocheras;
+  };
+
   for (const c of cocheras ?? []) {
     const valor = c[clave];
     if (!valor) continue;
-    if (!grupos.has(valor)) grupos.set(valor, { clave: valor, total: 0, ocupaciones: [] });
-    grupos.get(valor).total += 1;
+    deGrupo(valor).set(c.id, {
+      id: c.id,
+      numero: c.numero,
+      sector: c.sector,
+      tipo: c.tipo,
+      estado: c.estado,
+      reservas: [],
+    });
   }
 
   for (const r of delDia) {
-    const valor = r.cochera?.[clave];
+    const c = r.cochera;
+    const valor = c?.[clave];
     if (!valor) continue;
+    const enGrupo = deGrupo(valor);
     // Una reserva de una cochera que ya no está en el catálogo (borrada, por
-    // ejemplo) igual se muestra: la ocupación existió.
-    if (!grupos.has(valor)) grupos.set(valor, { clave: valor, total: 0, ocupaciones: [] });
-    grupos.get(valor).ocupaciones.push(aOcupacion(r, dia));
+    // ejemplo) igual se muestra: la ocupación existió. Se arma la cochera con
+    // lo que trae la propia reserva.
+    if (!enGrupo.has(c.id)) {
+      enGrupo.set(c.id, {
+        id: c.id,
+        numero: c.numero,
+        sector: c.sector,
+        tipo: c.tipo,
+        estado: c.estado,
+        reservas: [],
+      });
+    }
+    enGrupo.get(c.id).reservas.push(aOcupacion(r, dia));
   }
 
   return [...grupos.values()]
-    .map((g) => ({
-      ...g,
-      // Ordenadas por hora de entrada: es el orden en el que fueron llegando.
-      ocupaciones: [...g.ocupaciones].sort((a, b) => a.cochera.localeCompare(b.cochera)),
-      ocupadas: new Set(g.ocupaciones.map((o) => o.cochera)).size,
-    }))
+    .map(({ clave: valor, cocheras: mapa }) => {
+      const lista = [...mapa.values()]
+        .map((c) => ({
+          ...c,
+          // Por hora de entrada: es el orden en el que van llegando.
+          reservas: [...c.reservas].sort((x, y) =>
+            x.horario.texto.localeCompare(y.horario.texto)
+          ),
+          ocupada: c.reservas.length > 0,
+        }))
+        .sort(porNumero);
+
+      return {
+        clave: valor,
+        cocheras: lista,
+        total: lista.length,
+        ocupadas: lista.filter((c) => c.ocupada).length,
+        deshabilitadas: lista.filter((c) => c.estado === "DESHABILITADA").length,
+      };
+    })
     .sort((a, b) => a.clave.localeCompare(b.clave));
 };
 

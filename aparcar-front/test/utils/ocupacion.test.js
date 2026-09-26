@@ -117,12 +117,40 @@ describe("agruparOcupacion", () => {
 
   // Los grupos salen de las cocheras y no de las reservas: un tipo sin nada
   // reservado igual aparece, porque "está todo libre" también es informacion.
-  it("un grupo sin reservas aparece igual, en cero", () => {
+  it("un grupo sin reservas aparece igual, con su cochera libre", () => {
     const grupos = agruparOcupacion([cochera("M-01", "MOTO")], [], DIA, "tipo");
 
     expect(grupos).toHaveLength(1);
     expect(grupos[0]).toMatchObject({ clave: "MOTO", total: 1, ocupadas: 0 });
-    expect(grupos[0].ocupaciones).toEqual([]);
+    // La cochera figura igual: el panel muestra todo el predio, no solo lo
+    // reservado.
+    expect(grupos[0].cocheras).toHaveLength(1);
+    expect(grupos[0].cocheras[0]).toMatchObject({ numero: "M-01", ocupada: false });
+    expect(grupos[0].cocheras[0].reservas).toEqual([]);
+  });
+
+  // Las cocheras se ordenan como se buscan en el predio, no alfabeticamente:
+  // con localeCompare a secas A-10 quedaria antes que A-2.
+  it("ordena las cocheras por numero de forma natural", () => {
+    const grupos = agruparOcupacion(
+      [cochera("A-10"), cochera("A-2"), cochera("A-1")],
+      [],
+      DIA,
+      "tipo"
+    );
+
+    expect(grupos[0].cocheras.map((c) => c.numero)).toEqual(["A-1", "A-2", "A-10"]);
+  });
+
+  it("cuenta aparte las cocheras fuera de servicio", () => {
+    const grupos = agruparOcupacion(
+      [cochera("A-01"), { ...cochera("A-02"), estado: "DESHABILITADA" }],
+      [],
+      DIA,
+      "tipo"
+    );
+
+    expect(grupos[0]).toMatchObject({ total: 2, ocupadas: 0, deshabilitadas: 1 });
   });
 
   it("agrupa por tipo y por piso sobre los mismos datos", () => {
@@ -202,8 +230,10 @@ describe("agruparOcupacion", () => {
       "tipo"
     );
 
+    // Una cochera ocupada, pero con sus dos turnos colgados.
     expect(grupos[0].ocupadas).toBe(1);
-    expect(grupos[0].ocupaciones).toHaveLength(2);
+    expect(grupos[0].cocheras).toHaveLength(1);
+    expect(grupos[0].cocheras[0].reservas).toHaveLength(2);
   });
 
   it("cada ocupación trae los cuatro datos que el admin necesita", () => {
@@ -215,13 +245,30 @@ describe("agruparOcupacion", () => {
       "tipo"
     );
 
-    expect(grupos[0].ocupaciones[0]).toMatchObject({
-      cochera: "A-01",
+    const [libre] = grupos[0].cocheras;
+    expect(libre.numero).toBe("A-01");
+    expect(libre.reservas[0]).toMatchObject({
       patente: "ABC123",
       email: "juan@test.com",
       modalidad: "Media jornada",
+      // Una reserva confirmada se puede cancelar desde el panel.
+      cancelable: true,
     });
-    expect(grupos[0].ocupaciones[0].horario.texto).toBe("08:00 – 12:00");
+    expect(libre.reservas[0].horario.texto).toBe("08:00 – 12:00");
+  });
+
+  // Una reserva que ya vencio se sigue mostrando, pero no se cancela: el boton
+  // no tendria que hacer.
+  it("una reserva finalizada no es cancelable", () => {
+    const c = cochera("A-01");
+    const grupos = agruparOcupacion(
+      [c],
+      [reserva({ cochera: c, estado: "FINALIZADA" })],
+      DIA,
+      "tipo"
+    );
+
+    expect(grupos[0].cocheras[0].reservas[0].cancelable).toBe(false);
   });
 
   // Si la cochera se borró del catálogo, la reserva igual se muestra: la
@@ -230,7 +277,8 @@ describe("agruparOcupacion", () => {
     const grupos = agruparOcupacion([], [reserva()], DIA, "tipo");
 
     expect(grupos).toHaveLength(1);
-    expect(grupos[0]).toMatchObject({ clave: "AUTO", total: 0, ocupadas: 1 });
+    expect(grupos[0]).toMatchObject({ clave: "AUTO", total: 1, ocupadas: 1 });
+    expect(grupos[0].cocheras[0].numero).toBe("A-01");
   });
 
   it("aguanta listas vacías o ausentes", () => {
