@@ -590,3 +590,89 @@ describe("ReservasContent: atajos de jornada", () => {
     });
   });
 });
+
+describe("ReservasContent: el layout en dos columnas", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // El panel de reservas del admin muestra el alta a la izquierda y el listado
+  // a la derecha; el dashboard del visitante los sigue viendo apilados, porque
+  // convive con el resto de su panel.
+  it("por defecto los apila, como venía", async () => {
+    mockData({ vehiculos: [vehiculo()] });
+    const { container } = render(<ReservasContent modo="admin" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+
+    expect(container.querySelector(".reservas-columnas")).toBeNull();
+  });
+
+  it("en columnas agrupa el alta y el listado en dos bloques", async () => {
+    mockData({ vehiculos: [vehiculo()] });
+    const { container } = render(<ReservasContent modo="admin" layout="columnas" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+
+    const grilla = container.querySelector(".reservas-columnas");
+    expect(grilla).not.toBeNull();
+    // Exactamente dos: si fueran tres, el CSS de dos columnas dejaría uno suelto
+    // abajo en vez de la grilla que se espera.
+    expect(grilla.children).toHaveLength(2);
+  });
+
+  // El orden del DOM es el que manda cuando las columnas se apilan en pantalla
+  // angosta, y también el que recorre un lector de pantalla: el alta va primero
+  // porque es a lo que se entra.
+  it("el alta va antes que el listado en el DOM", async () => {
+    mockData({ vehiculos: [vehiculo()] });
+    const { container } = render(<ReservasContent modo="admin" layout="columnas" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+
+    const [primero, segundo] = container.querySelector(".reservas-columnas").children;
+    expect(primero).toHaveTextContent("Nueva reserva");
+    expect(segundo).toHaveTextContent("Todas las reservas");
+  });
+
+  // Lo que importa del cambio de layout es que no haya cambiado nada más: el
+  // alta tiene que seguir reservando igual.
+  it("en columnas se reserva igual que apilado", async () => {
+    mockData({
+      visitantes: [visitante()],
+      vehiculos: [vehiculo()],
+      disponibles: [cochera()],
+      reservas: [],
+    });
+    postMock.mockResolvedValue({ data: {} });
+    const user = userEvent.setup();
+    render(<ReservasContent modo="admin" layout="columnas" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+
+    await user.type(screen.getByPlaceholderText("ABC123 / AB123CD"), "ABC123");
+    await screen.findByRole("option", { name: /A-01/ });
+    await user.selectOptions(screen.getByLabelText("Cochera"), "c1");
+    await user.click(screen.getByRole("button", { name: /confirmar reserva/i }));
+
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith(
+      "/api/v1/reservas",
+      expect.objectContaining({ vehiculoId: "veh1", cocheraId: "c1" })
+    ));
+  });
+
+  it("el listado sigue mostrándose en columnas", async () => {
+    mockData({
+      vehiculos: [vehiculo()],
+      reservas: [{
+        id: "r1",
+        desde: "2026-01-01T10:00",
+        hasta: "2026-01-01T12:00",
+        estado: "CONFIRMADA",
+        modalidad: "FRANJA",
+        visitante: { nombre: "Juan Perez" },
+        vehiculo: { patente: "ABC123" },
+        cochera: { numero: "A-01", sector: "Planta Baja" },
+      }],
+    });
+    render(<ReservasContent modo="admin" layout="columnas" />);
+
+    expect(await screen.findByText("Juan Perez — ABC123")).toBeInTheDocument();
+  });
+});
