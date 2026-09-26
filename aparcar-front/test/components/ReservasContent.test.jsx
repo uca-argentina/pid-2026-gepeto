@@ -506,11 +506,17 @@ describe("ReservasContent: modalidad en el listado", () => {
   // La modalidad la decide el backend a partir de la duración: el listado la
   // muestra, no la vuelve a deducir. Si la dedujera por su cuenta, backend y
   // pantalla podrían discrepar al cambiar un umbral.
+  // Se consulta el badge del listado y no el texto suelto: "Media jornada" es
+  // también el nombre de uno de los atajos del formulario.
+  const badges = () =>
+    [...document.querySelectorAll(".franja-modalidad-badge")].map((n) => n.textContent);
+
   it("muestra la modalidad que manda el backend", async () => {
     mockData({ reservas: [reservaCon("MEDIA_JORNADA")] });
     render(<ReservasContent modo="admin" />);
+    await screen.findByText("Juan Perez — ABC123");
 
-    expect(await screen.findByText("Media jornada")).toBeInTheDocument();
+    expect(badges()).toEqual(["Media jornada"]);
   });
 
   it("traduce las tres modalidades", async () => {
@@ -522,10 +528,9 @@ describe("ReservasContent: modalidad en el listado", () => {
       ],
     });
     render(<ReservasContent modo="admin" />);
+    await screen.findAllByText("Juan Perez — ABC123");
 
-    expect(await screen.findByText("Por franja horaria")).toBeInTheDocument();
-    expect(screen.getByText("Media jornada")).toBeInTheDocument();
-    expect(screen.getByText("Jornada completa")).toBeInTheDocument();
+    expect(badges()).toEqual(["Por franja horaria", "Media jornada", "Jornada completa"]);
   });
 
   it("una reserva sin modalidad no rompe el listado", async () => {
@@ -533,5 +538,55 @@ describe("ReservasContent: modalidad en el listado", () => {
     render(<ReservasContent modo="admin" />);
 
     expect(await screen.findByText("Juan Perez — ABC123")).toBeInTheDocument();
+  });
+});
+
+describe("ReservasContent: atajos de jornada", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // El atajo tiene que llegar hasta el campo: no alcanza con que el botón
+  // calcule bien si después el formulario no toma el valor.
+  it("media jornada deja el campo Hasta doce horas despues del inicio", async () => {
+    mockData({ vehiculos: [vehiculo()] });
+    const user = userEvent.setup();
+    render(<ReservasContent modo="admin" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+
+    fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2099-01-01T08:00" } });
+    await user.click(screen.getByRole("button", { name: /media jornada/i }));
+
+    expect(screen.getByLabelText("Hasta")).toHaveValue("2099-01-01T20:00");
+  });
+
+  it("jornada completa lleva el fin al dia siguiente", async () => {
+    mockData({ vehiculos: [vehiculo()] });
+    const user = userEvent.setup();
+    render(<ReservasContent modo="admin" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+
+    fireEvent.change(screen.getByLabelText("Desde"), { target: { value: "2099-01-01T08:00" } });
+    await user.click(screen.getByRole("button", { name: /jornada completa/i }));
+
+    expect(screen.getByLabelText("Hasta")).toHaveValue("2099-01-02T08:00");
+  });
+
+  // Cambiar la franja con un atajo también cambia qué cocheras sirven.
+  it("usar un atajo vuelve a consultar disponibilidad", async () => {
+    mockData({ visitantes: [visitante()], vehiculos: [vehiculo()], disponibles: [cochera()] });
+    const user = userEvent.setup();
+    render(<ReservasContent modo="admin" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+    await user.type(screen.getByPlaceholderText("ABC123 / AB123CD"), "ABC123");
+    await screen.findByRole("option", { name: /A-01/ });
+
+    const previas = getMock.mock.calls.filter((c) => c[0] === "/api/v1/cocheras/disponibles").length;
+    await user.click(screen.getByRole("button", { name: /jornada completa/i }));
+
+    await waitFor(() => {
+      const ahora = getMock.mock.calls.filter((c) => c[0] === "/api/v1/cocheras/disponibles");
+      expect(ahora.length).toBeGreaterThan(previas);
+    });
   });
 });

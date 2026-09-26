@@ -40,8 +40,7 @@ Resumen de lo nuevo, para no tener que leer todo el archivo buscando las marcas.
 **Reservas por franja horaria** 🆕
 
 - Una reserva dejó de ser "por día" y pasó a ser un rango `[desde, hasta)`. Se puede reservar el tiempo que se quiera, incluidos varios días.
-- **Las reservas se toman en bloques de 15 minutos.** El cliente elige un horario de inicio y desde ahí la duración se arma sumando de a 15. La regla se valida en el backend y no solo en el tablero: si viviera únicamente en la UI, cualquier cliente que pegue a la API podría reservar de 14:07 a 15:23.
-- **Las reservas se toman en bloques de 15 minutos.** Los campos `Desde` y `Hasta` declaran `step` de 15 min, así que el navegador ofrece los bloques y marca como inválido cualquier horario intermedio. Igual el valor se baja al bloque en `onChange` (`alBloqueLocal`), porque el `step` no frena a quien escribe a mano.
+- **Las reservas se toman en bloques de 15 minutos.** La regla se valida en el backend y no solo en la pantalla: si viviera únicamente en la UI, cualquier cliente que pegue a la API podría reservar de 14:07 a 15:23. En el formulario, los campos `Desde` y `Hasta` declaran `step` de 15 min, así que el navegador ofrece los bloques y marca como inválido cualquier horario intermedio. Igual el valor se baja al bloque en `onChange` (`alBloqueLocal`), porque el `step` no frena a quien escribe a mano.
 - El arranque por defecto es el **bloque en curso**, redondeando hacia abajo: si son las 14:07 arranca 14:00, no 14:15, porque si no los ocho minutos en los que el auto ya está estacionado quedarían sin cubrir.
 
 **El sistema detecta la modalidad** 🆕
@@ -49,6 +48,8 @@ Resumen de lo nuevo, para no tener que leer todo el archivo buscando las marcas.
 - `ModalidadReserva.java` 🆕 clasifica cada reserva en **por franja horaria**, **media jornada** (12 h o más) o **jornada completa** (24 h o más), deducido de la duración y no del horario de arranque: media jornada es medio día de estadía, empiece a las 8 o a las 15.
 - **No se guarda en la base**: es una lectura de la franja. Si el predio decide que media jornada son 6 h y no 12, las reservas viejas se reinterpretan solas en vez de quedar etiquetadas con un criterio viejo.
 - Viaja en `ReservaResponseDto`, así que el listado la muestra sin volver a deducirla — si la calculara por su cuenta, backend y pantalla podrían discrepar al cambiar un umbral.
+- `AtajosJornada.jsx` 🆕 ofrece las dos jornadas como botones: en vez de contar horas a mano, se elige **media jornada** o **jornada completa** y el campo `Hasta` salta a 12 h o 24 h después del inicio. Caen **justo** en el umbral que usa el backend, así que la reserva queda clasificada con la modalidad que anuncia el botón; si un atajo dejara 11 h 45, el listado la mostraría como franja horaria y el botón estaría mintiendo.
+- El atajo mueve solo el `Hasta`: el inicio lo sigue eligiendo quien reserva, porque media jornada es medio día de estadía, empiece a las 8 o a las 15.
 - **Toda la regla de "no se pisan" es una sola condición**, en `ReservaRepository`: `r.desde < :hasta AND r.hasta > :desde`. Es el test estándar de intersección de intervalos semiabiertos: cubre los cuatro casos de superposición y deja pasar el borde que hay que permitir — si una reserva termina justo cuando arranca la siguiente, no se pisan y la cochera se puede volver a entregar en ese instante.
 - **Las cocheras se liberan solas.** Sale de lo mismo: una reserva vencida ya no intersecta ningún rango futuro, así que deja de ocupar en el instante exacto en que termina, sin depender de que corra ninguna tarea.
 - `ReservasVencidas.java` 🆕 marca las vencidas como `FINALIZADA`, pero es **solo informativo**: mantiene el listado legible. Si el proceso se cae un fin de semana, nadie se queda sin poder reservar.
@@ -652,6 +653,7 @@ Sección destinada a usuarios internos con rol `USER`.
 | `ProtectedRoute.jsx` ✏️ | Wrapper client-side para proteger rutas según autenticación/rol. Refactorizado: se eliminó el estado `isReady` y la decisión de renderizar se deriva directo de `isHydrated + isAuthenticated + hasRequiredRole`, lo que evita mostrar contenido un instante antes de redirigir |
 | `LogoutButton.jsx` 🆕 | Botón "Cerrar sesión": llama a `logout()` del store (que borra la cookie JWT y limpia el estado) y navega a `/login` con `router.replace`, para que el botón Atrás no vuelva al dashboard |
 | `ReservasContent.jsx` 🆕 | **Movido desde `app/dashboard-user/`.** Alta de reserva por patente: se escribe/elige la patente (autocompletado nativo) y se resuelven solos el visitante y el tipo de vehículo. Vuelve a pedir la lista de vehículos al hacer foco en el campo, por si se cargó uno recién más arriba en la misma página. Sirve igual para los dos roles porque busca sobre el catálogo completo, sin filtrar por la cuenta que mira. La prop opcional `onReservaCreada` la usa el panel admin para refrescar la cuadrícula. Sus `id` de formulario van prefijados con `reserva-` para no chocar con los del alta de visitante, que se renderiza en la misma página |
+| `AtajosJornada.jsx` 🆕 | Los dos atajos de jornada (**media jornada** / **jornada completa**), compartidos por el formulario de reserva y el alta de visitante. Solo mueven el campo `Hasta`, sumando al inicio los minutos exactos del umbral con el que el backend clasifica la modalidad. El que coincide con la franja cargada queda marcado (`aria-pressed`), así que además de ser un atajo sirve de lectura de lo que se está reservando. Quedan deshabilitados sin inicio, porque no habría a qué sumarle. El `idPrefijo` evita que choquen los `id` cuando los dos formularios conviven en la misma página |
 
 Las pantallas nuevas basadas en Server Components utilizan preferentemente `requireAuth()` desde `utils/serverAuth.js`.
 
@@ -680,6 +682,7 @@ Las pantallas nuevas basadas en Server Components utilizan preferentemente `requ
 |---|---|
 | `env.js` | Resuelve variables públicas tanto en desarrollo como en Docker |
 | `serverAuth.js` | Protección server-side mediante `requireAuth(allowedRoles)` |
+| `franjaHoraria.js` 🆕 | Todo lo que necesita la franja horaria en el front: el tamaño del bloque (`PASO_MINUTOS`), bajar un horario al bloque en el que cae, el arranque por defecto, los umbrales de jornada y la traducción de la modalidad que manda el backend. El formato legible (`formatearRango`) se arma a mano y no con `toLocaleString`, porque `es-AR` devuelve reloj de 12 horas (`10:00 a. m.`), peor de leer para horarios de cochera, y el resultado varía según el ICU del entorno |
 
 Ejemplo:
 
@@ -709,11 +712,12 @@ Convención: `test/` refleja la estructura de `app/`, `store/` y `utils/` (misma
 | `dashboard-admin/VisitantesContent.test.jsx` | Alta de visitante + vehículo (dos POST encadenados), validaciones, errores de duplicados |
 | `dashboard-admin/cocheras/CocherasManagement.test.jsx` ✏️ | CRUD completo: filtros, alta, edición (con `window.confirm` al deshabilitar), baja (con confirmación), y la navegación de regreso al panel |
 | `dashboard-admin/usuarios/UserManagement.test.jsx` ✏️ | Alta de usuario, activar, editar roles, eliminar (con confirmación), y la navegación de regreso al panel |
-| `components/ReservasContent.test.jsx` ✏️ | Resolución de visitante/vehículo por patente, cochera deshabilitada hasta tener match, **regresión del bug de caché de vehículos al hacer foco**, envío de la reserva. Se movió junto con el componente |
+| `components/ReservasContent.test.jsx` ✏️ | Resolución de visitante/vehículo por patente, cochera deshabilitada hasta tener match, **regresión del bug de caché de vehículos al hacer foco**, envío de la reserva, y toda la franja horaria: arranque en el bloque de 15 en curso, `step` declarado, horarios fuera de bloque bajados al bloque, rango invertido, atajos de jornada llevados hasta el campo y la modalidad que muestra el listado. Se movió junto con el componente |
+| `components/AtajosJornada.test.jsx` 🆕 | `components/AtajosJornada.jsx`: que cada atajo caiga **justo** en el umbral con el que el backend clasifica la modalidad, que muevan solo el `Hasta`, que marquen el que coincide con la franja cargada y que queden deshabilitados sin inicio |
 | `dashboard-admin/PanelOperativo.test.jsx` 🆕 | **Regresión del bug de la reserva que no se agregaba**: que el panel admin incluya el formulario de reservas, que un admin pueda crear una resolviendo el visitante por patente, y que la cuadrícula pase de "0/1 ocupadas" a "1/1 ocupadas" sin recargar |
 | `dashboard-user/MiPerfilContent.test.jsx` ✏️ | Autoregistro del visitante (`/me`), alta de vehículo propio, validaciones y errores del backend, más los casos nuevos 🆕 de editar el perfil (`PUT /me`), editar un vehículo y eliminarlo con confirmación |
 
-El detalle de qué casos prueba cada archivo (front y back) está en `TESTS.md`, en la raíz del repo: **36 archivos y 251 tests** en total (160 del backend, 91 del frontend). Los dos suites corren solas en cada pull request, vía `.github/workflows/ci.yml`.
+El detalle de qué casos prueba cada archivo (front y back) está en `TESTS.md`, en la raíz del repo: **46 archivos y 486 tests** en total (313 del backend, 173 del frontend). Los dos suites corren solas en cada pull request, vía `.github/workflows/ci.yml`.
 
 ---
 

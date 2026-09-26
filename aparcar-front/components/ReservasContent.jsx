@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
 import api from "@/app/api";
+import AtajosJornada from "@/components/AtajosJornada";
 import {
   MODALIDAD_ETIQUETA,
   PASO_MINUTOS,
@@ -308,6 +309,15 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
               {desde && hasta && hasta <= desde && !errors.hasta && (
                 <p className="mt-1 text-sm text-red-500">El fin tiene que ser posterior al inicio</p>
               )}
+            </div>
+
+            <div className="sm:col-span-2">
+              <AtajosJornada
+                idPrefijo="reserva"
+                desde={desde}
+                hasta={hasta}
+                onChange={(h) => setValue("hasta", h, { shouldValidate: true })}
+              />
             </div>
 
             <div className="sm:col-span-2">
