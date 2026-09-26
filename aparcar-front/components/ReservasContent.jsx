@@ -60,7 +60,12 @@ function EstadoBadge({ estado }) {
 // la cuadrícula de ocupación, que vive en un componente hermano. Se dispara
 // tanto al crear una reserva como al cancelarla, porque las dos cosas cambian
 // qué cocheras están libres.
-export default function ReservasContent({ modo = "user", onOcupacionCambiada, refreshKey = 0 }) {
+export default function ReservasContent({
+  modo = "user",
+  onOcupacionCambiada,
+  refreshKey = 0,
+  layout = "apilado",
+}) {
   const esAdmin = modo === "admin";
 
   const [visitantes, setVisitantes] = useState([]);
@@ -205,8 +210,14 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
 
   const sinVehiculos = !esAdmin && vehiculos.length === 0;
 
+  // En dos columnas el alta queda a la izquierda y el listado a la derecha; el
+  // dashboard del visitante los sigue viendo apilados, que es lo que entra en
+  // una pantalla angosta sin pelear con el resto de su panel.
+  const enColumnas = layout === "columnas";
+
   return (
-    <div className="mx-auto max-w-3xl space-y-10">
+    <div className={enColumnas ? "reservas-columnas" : "mx-auto max-w-3xl space-y-10"}>
+      <div className="space-y-10">
       <div>
         <h1 className="text-3xl font-extrabold tracking-tight text-ink mb-2">Nueva reserva</h1>
         <p className="text-sm text-ink/60">
@@ -224,7 +235,10 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
         ) : (
         <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
+            {/* La patente ocupa el ancho completo para que `Desde` y `Hasta`
+                caigan juntos en la fila siguiente: son un par, y separarlos
+                obliga a leer el formulario en zigzag. */}
+            <div className="sm:col-span-2">
               <label className={labelClasses} htmlFor="reserva-patente">Patente</label>
               {esAdmin ? (
                 <>
@@ -361,6 +375,7 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
           </div>
         </form>
         )}
+      </div>
       </div>
 
       <div>

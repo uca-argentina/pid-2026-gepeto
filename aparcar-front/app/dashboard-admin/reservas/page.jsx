@@ -19,7 +19,7 @@ export default async function ReservasAdminPage() {
           </Link>
         </DashboardHeader>
 
-        <ReservasContent modo="admin" />
+        <ReservasContent modo="admin" layout="columnas" />
       </div>
     </div>
   );
