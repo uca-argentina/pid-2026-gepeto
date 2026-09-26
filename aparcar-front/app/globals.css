@@ -78,6 +78,19 @@
   .dark .ui-primary { background: var(--color-accent); color: var(--color-brand); }
   .dark .ui-primary:hover:not(:disabled) { background: #8bdeff; }
 
+  /* ---- Reservas del admin en dos columnas ---- */
+  .reservas-columnas { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+  /* El alta queda a la vista mientras se recorre el listado, que es la columna
+     que crece sin limite. */
+  @media (min-width: 1024px) {
+    .reservas-columnas > :first-child { position: sticky; top: 24px; }
+  }
+  /* Debajo de 1024 no entran dos columnas legibles: se apilan, con el alta
+     primero porque es a lo que se viene. */
+  @media (max-width: 1023px) {
+    .reservas-columnas { grid-template-columns: minmax(0, 1fr); gap: 40px; }
+  }
+
   /* ---- Panel de ocupacion de cocheras (admin) ---- */
   .ocupacion { display: grid; gap: 0; }
 
