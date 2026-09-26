@@ -7,6 +7,7 @@ import * as z from "zod";
 import { toast } from "sonner";
 import api from "@/app/api";
 import { formatoPatenteValido, MENSAJE_FORMATO_INVALIDO } from "@/utils/patenteValidation";
+import AtajosJornada from "@/components/AtajosJornada";
 import { PASO_MINUTOS, alBloqueLocal, franjaPorDefecto } from "@/utils/franjaHoraria";
 
 const visitanteSchema = z
@@ -210,6 +211,14 @@ export default function VisitantesContent({ onAltaCreada }) {
                   {desde && hasta && hasta <= desde && (
                     <p className="mt-1 text-sm text-red-500">El fin tiene que ser posterior al inicio</p>
                   )}
+                </div>
+                <div className="sm:col-span-2">
+                  <AtajosJornada
+                    idPrefijo="alta"
+                    desde={desde}
+                    hasta={hasta}
+                    onChange={(h) => setValue("hasta", h, { shouldValidate: true })}
+                  />
                 </div>
                 <div className="sm:col-span-2">
                   <label className={labelClasses} htmlFor="alta-cocheraId">Cochera</label>

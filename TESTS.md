@@ -40,8 +40,6 @@ otpCleanupDeletesAllExpiredOTPs   (sin @DisplayName)
 
 ## `component/ReservasVencidasTests.java`
 
-_4 tests._
-
 Caja blanca de la tarea que marca como FINALIZADA las reservas vencidas. Ojo con lo que **no** hace: no es lo que libera la cochera (eso sale del solapamiento de rangos, que funciona aunque la tarea nunca corra), solo mantiene el estado legible.
 
 ```
@@ -83,8 +81,6 @@ sendPlainTextEmailShouldThrowRuntimeExceptionOnError   (sin @DisplayName)
 
 ## `config/ZonaHorariaConfigTests.java`
 
-_3 tests._
-
 Caja blanca de la zona horaria. Existen por un bug concreto: el contenedor arrancaba en UTC mientras el navegador mandaba hora local, y una reserva de las 16 a las 17 llegaba a un backend que creia que eran las 19, asi que la rechazaba por "terminada en el pasado".
 
 ```
@@ -106,8 +102,6 @@ unaFranjaSinDatosNoRompe   (sin @DisplayName)
 ```
 
 ## `entity/ReservaSolapamientoTests.java`
-
-_20 tests._
 
 Caja blanca del predicado de solapamiento, que es donde vive toda la regla de "dos reservas no se pisan". Ataca los bordes directamente, sin servicio ni base: un `<=` de mas y dos reservas consecutivas dejarian de poder existir; uno de menos y se permitiria pisar un minuto.
 
@@ -267,8 +261,6 @@ loginRejectsWrongPasswordInDevProfile   (sin @DisplayName)
 
 ## `integration/RegistrationFlowTests.java`
 
-_1 tests._
-
 Caja negra del registro contra un servidor embebido real.
 
 ```
@@ -276,8 +268,6 @@ registerLoginAndAccessOwnProfileWithRealJwt   (sin @DisplayName)
 ```
 
 ## `integration/RegistrationTests.java`
-
-_9 tests._
 
 Caja negra del alta publica de visitantes.
 
@@ -290,8 +280,6 @@ rejectsPasswordsOverBcryptByteLimit   (sin @DisplayName)
 ```
 
 ## `integration/ReservaControllerTests.java`
-
-_27 tests._
 
 Caja negra. Las reglas de negocio de reservas contra DB real, incluida la **superposicion de franjas entre usuarios distintos** y la liberacion automatica de la cochera al vencer.
 
@@ -383,8 +371,6 @@ crearDevuelve400SiPatenteEsDeMotoParaAuto   (sin @DisplayName)
 
 ## `integration/VisitanteControllerTests.java`
 
-_19 tests._
-
 Caja negra. Foco en el alta operativa del admin y en los endpoints `/me` de autoservicio.
 
 ```
@@ -410,8 +396,6 @@ actualizarPropioDevuelve401ParaAnonimos   (sin @DisplayName)
 ```
 
 ## `security/VisitanteDetailsServiceTests.java`
-
-_2 tests._
 
 Caja blanca. El puente Visitante -> UserDetails.
 
@@ -520,8 +504,6 @@ listarSectoresDelegaEnElRepository   (sin @DisplayName)
 
 ## `service/ReservaServiceTests.java`
 
-_32 tests._
-
 Las mismas reglas que `ReservaControllerTests`, pero con mocks y aisladas del repositorio. Incluye la validacion de la franja horaria: rango invertido, duracion cero, franja ya vencida, y el vehiculo comprometido en otra cochera.
 
 ```
@@ -557,8 +539,6 @@ crearAceptaUnaReservaDeUnBloque   (sin @DisplayName)
 ```
 
 ## `service/UserServiceTests.java`
-
-_10 tests._
 
 Incluye el borrado seguro: se bloquea si el visitante tiene reservas registradas, y se llevan sus vehiculos junto con la cuenta.
 
@@ -605,8 +585,6 @@ crearRechazaFormatoDeMotoParaAuto   (sin @DisplayName)
 
 ## `service/VisitanteServiceTests.java`
 
-_20 tests._
-
 Incluye el alta operativa atomica (cuenta + vehiculo + reserva) y el cambio de contraseña propio.
 
 ```
@@ -647,6 +625,8 @@ _6 tests._
 
 _6 tests._
 
+_6 tests._
+
 Los dos interceptores de `app/api.jsx`, incluida la **regresion del bug del login doble**.
 
 ```
@@ -658,7 +638,26 @@ ante un 401, borra la cookie JWT y redirige a /login
 ante un error que no es 401, no toca la cookie ni redirige
 ```
 
+## `components/AtajosJornada.test.jsx`
+
+_8 tests._
+
+Los atajos de media jornada y jornada completa. Lo que se verifica no es que sumen 12 o 24 horas cualesquiera, sino que caigan **justo** en los umbrales con los que el backend clasifica la modalidad: un atajo que dejara la reserva en 11 h 45 la etiquetaria como franja horaria y el boton estaria mintiendo.
+
+```
+ofrece media jornada y jornada completa con su duracion
+media jornada deja el fin doce horas despues del inicio
+jornada completa deja el fin al dia siguiente a la misma hora
+los atajos caen justo en los umbrales que usa el backend
+marca como activo el atajo que coincide con la franja actual
+ninguno queda activo con una franja que no es una jornada
+quedan deshabilitados si todavia no hay inicio
+el resultado sigue cayendo en un bloque de 15 minutos
+```
+
 ## `components/LogoutButton.test.jsx`
+
+_1 tests._
 
 _1 tests._
 
@@ -676,9 +675,9 @@ cierra la sesión y navega a /login
 
 ## `components/ReservasContent.test.jsx`
 
-_31 tests._
+_34 tests._
 
-El formulario de reserva, que comparten los dos dashboards. Cubre la **franja horaria** (arranque por defecto en el momento actual, rango invertido, varios dias) y la **regresion del bug de cache de vehiculos al hacer foco**.
+El formulario de reserva, que comparten los dos dashboards. Cubre la **franja horaria** (arranque por defecto en el bloque de 15 en curso, rango invertido, varios dias), los atajos de jornada llevados hasta el campo, la modalidad que muestra el listado y la **regresion del bug de cache de vehiculos al hacer foco**.
 
 ```
 muestra el mensaje de vacio cuando no hay reservas cargadas
@@ -712,6 +711,9 @@ muestra los dos dias cuando la franja cruza la medianoche
 muestra la modalidad que manda el backend
 traduce las tres modalidades
 una reserva sin modalidad no rompe el listado
+media jornada deja el campo Hasta doce horas despues del inicio
+jornada completa lleva el fin al dia siguiente
+usar un atajo vuelve a consultar disponibilidad
 ```
 
 ## `components/ThemeToggle.test.jsx`
@@ -726,6 +728,8 @@ al hacer click, alterna a oscuro y aplica la clase al <html>
 ```
 
 ## `dashboard-admin/PanelOperativo.test.jsx`
+
+_1 tests._
 
 _1 tests._
 
@@ -805,6 +809,8 @@ _13 tests._
 
 _13 tests._
 
+_13 tests._
+
 ```
 muestra la navegación de regreso al panel
 carga y lista los usuarios existentes
@@ -860,6 +866,8 @@ _10 tests._
 
 _10 tests._
 
+_10 tests._
+
 ```
 muestra los campos de email y contraseña y el boton de ingresar
 muestra errores de validacion y no llama a la API si el email esta vacio
@@ -874,6 +882,8 @@ ante otro error del backend, muestra el mensaje que devuelve el servidor
 ```
 
 ## `page.test.jsx`
+
+_4 tests._
 
 _4 tests._
 
@@ -905,6 +915,8 @@ permite mostrar y ocultar las contraseñas
 ```
 
 ## `store/authStore.test.js`
+
+_8 tests._
 
 _8 tests._
 
@@ -948,6 +960,8 @@ _3 tests._
 
 _3 tests._
 
+_3 tests._
+
 ```
 devuelve el valor de window.__ENV cuando está presente (runtime)
 ignora window.__ENV si la clave pedida no está definida ahí
@@ -974,8 +988,8 @@ es case-insensitive
 | | Archivos | Tests |
 |---|---|---|
 | Backend | 29 | 313 |
-| Frontend | 16 | 162 |
-| **Total** | **45** | **475** |
+| Frontend | 17 | 173 |
+| **Total** | **46** | **486** |
 
 Correr todo:
 

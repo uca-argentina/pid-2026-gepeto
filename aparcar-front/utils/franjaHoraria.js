@@ -64,6 +64,12 @@ export const minutosEntre = (desde, hasta) =>
 // respuesta; acá solo se traduce a texto para mostrarla. Si la dedujera
 // también el frontend, al cambiar un umbral los dos lados discreparían.
 
+// Los umbrales viven acá y en ModalidadReserva.java. Tienen que coincidir: el
+// backend clasifica y el frontend ofrece los atajos que caen justo en cada
+// clasificación, así que si se cambia uno hay que cambiar el otro.
+export const MINUTOS_MEDIA_JORNADA = 12 * 60;
+export const MINUTOS_JORNADA_COMPLETA = 24 * 60;
+
 export const MODALIDADES = {
   FRANJA: { clave: "FRANJA", etiqueta: "Por franja horaria" },
   MEDIA_JORNADA: { clave: "MEDIA_JORNADA", etiqueta: "Media jornada" },
@@ -94,6 +100,19 @@ export const formatearRango = (desde, hasta) => {
   return dia(d) === dia(h)
     ? `${dia(d)} de ${hora(d)} a ${hora(h)}`
     : `${dia(d)} ${hora(d)} → ${dia(h)} ${hora(h)}`;
+};
+
+/**
+ * Suma minutos a un valor "YYYY-MM-DDTHH:mm".
+ *
+ * Se usa para los atajos de jornada: como el inicio ya cae en un bloque y los
+ * saltos son múltiplos de 15, el resultado también cae en un bloque.
+ */
+export const sumarMinutosLocal = (valor, minutos) => {
+  if (!valor) return valor;
+  const d = new Date(valor);
+  if (Number.isNaN(d.getTime())) return valor;
+  return aInputLocal(new Date(d.getTime() + minutos * 60000));
 };
 
 /** Valor por defecto: el bloque en curso, por una hora. */
