@@ -12,6 +12,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class RevokedUserCacheTests {
 
     @Test
+    void cambiarEmailRevocaSesionesAnterioresPeroPermiteNuevosLogins() {
+        var cache = new RevokedUserCache();
+        cache.revokeSessions("anterior@test.com");
+        assertTrue(cache.isRevoked("anterior@test.com", 0));
+        assertFalse(cache.isRevoked("anterior@test.com", System.currentTimeMillis() + 1));
+        cache.revoke("baja@test.com");
+        assertTrue(cache.isRevoked("baja@test.com", Long.MAX_VALUE));
+        cache.clear();
+        assertFalse(cache.isRevoked("anterior@test.com", 0));
+    }
+
+    @Test
     @DisplayName("RevokedUserCache revokes and checks revoked users")
     void testRevoke() {
         // Arrange

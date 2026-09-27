@@ -7,6 +7,9 @@ import * as z from "zod";
 import { toast } from "sonner";
 import api from "@/app/api";
 import AtajosJornada from "@/components/AtajosJornada";
+import CotizacionReserva from "@/components/CotizacionReserva";
+import useCotizacion from "@/hooks/useCotizacion";
+import { formatearPrecio } from "@/utils/tarifas";
 import {
   MODALIDAD_ETIQUETA,
   PASO_MINUTOS,
@@ -118,6 +121,8 @@ export default function ReservasContent({
     [cocheras, ocultarAccesibles]
   );
   const hayAccesiblesOcultas = cocherasOfrecidas.length < cocheras.length;
+  const cocheraElegida = cocherasOfrecidas.find((c) => c.id === cocheraId);
+  const cotizacion = useCotizacion(cocheraElegida?.tipo ?? vehiculoEncontrado?.tipo, desde, hasta);
 
   const cargarReservas = async () => {
     setLoadingReservas(true);
@@ -158,6 +163,7 @@ export default function ReservasContent({
   }, [refreshKey]);
 
   useEffect(() => {
+    let vigente = true;
     setValue("cocheraId", "");
     setCocheras([]);
     if (!rangoValido || !vehiculoEncontrado) return;
@@ -167,8 +173,9 @@ export default function ReservasContent({
       .get("/api/v1/cocheras/disponibles", {
         params: { desde, hasta, tipoVehiculo: vehiculoEncontrado.tipo },
       })
-      .then((res) => setCocheras(res.data))
-      .catch(() => toast.error("No se pudieron cargar las cocheras disponibles."));
+      .then((res) => { if (vigente) setCocheras(res.data); })
+      .catch(() => { if (vigente) toast.error("No se pudieron cargar las cocheras disponibles."); });
+    return () => { vigente = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [desde, hasta, rangoValido, vehiculoEncontrado]);
 
@@ -183,6 +190,8 @@ export default function ReservasContent({
       return;
     }
 
+    if (!cotizacion.lista || !cocheraElegida || !rangoValido) return;
+
     try {
       await api.post("/api/v1/reservas", {
         // Solo el admin puede reservar en nombre de otro; para un visitante el
@@ -192,6 +201,7 @@ export default function ReservasContent({
         cocheraId: data.cocheraId,
         desde: data.desde,
         hasta: data.hasta,
+        precioEsperado: cotizacion.datos.total,
       });
       toast.success("Reserva creada correctamente");
       reset({ patente: "", cocheraId: "", ...franjaPorDefecto() });
@@ -200,6 +210,7 @@ export default function ReservasContent({
       onOcupacionCambiada?.();
     } catch (err) {
       toast.error(err.response?.data?.message || "No se pudo crear la reserva.");
+      cotizacion.recargar();
     }
   };
 
@@ -383,10 +394,12 @@ export default function ReservasContent({
             </div>
           </div>
 
+          <CotizacionReserva cotizacion={cotizacion} />
+
           <div>
             <button
               type="submit"
-              disabled={isSubmitting || !cocheraId}
+              disabled={isSubmitting || !cocheraElegida || !cotizacion.lista || !rangoValido}
               className="ui-primary group relative flex w-full justify-center px-3 py-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? "Reservando..." : "Confirmar reserva"}
@@ -426,6 +439,9 @@ export default function ReservasContent({
                     {r.modalidad && (
                       <p className="franja-modalidad-badge">{MODALIDAD_ETIQUETA[r.modalidad] ?? r.modalidad}</p>
                     )}
+                    <p className="mt-1 text-sm font-semibold text-ink">
+                      {r.precioTotal == null ? "Sin importe registrado" : `Total: ${formatearPrecio(r.precioTotal)} ARS`}
+                    </p>
                   </div>
                   <div className="flex items-center gap-3">
                     <EstadoBadge estado={r.estado} />

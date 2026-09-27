@@ -1,6 +1,7 @@
 package com.aparcar.api.service.impl;
 
 import com.aparcar.api.dto.auth.ChangePasswordDto;
+import com.aparcar.api.component.IRevokedUserCache;
 import com.aparcar.api.dto.reserva.ReservaRequestDto;
 import com.aparcar.api.dto.reserva.ReservaResponseDto;
 import com.aparcar.api.dto.reserva.VehiculoRequestDto;
@@ -19,6 +20,8 @@ import com.aparcar.api.service.IVehiculoService;
 import com.aparcar.api.service.IVisitanteService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -34,6 +37,7 @@ public class VisitanteService implements IVisitanteService {
     private final IVehiculoService vehiculoService;
     private final IReservaService reservaService;
     private final PasswordEncoder passwordEncoder;
+    private final IRevokedUserCache revokedUserCache;
 
     @Override
     @Transactional
@@ -87,6 +91,7 @@ public class VisitanteService implements IVisitanteService {
         LocalDateTime hasta = dto.getHasta() != null ? dto.getHasta() : desde.plusHours(1);
         reservaDto.setDesde(desde);
         reservaDto.setHasta(hasta);
+        reservaDto.setPrecioEsperado(dto.getPrecioEsperado());
         ReservaResponseDto reserva = reservaService.crear(reservaDto, visitante.getEmail(), true);
 
         return new VisitanteAltaResponseDto(toResponseDto(visitante), vehiculo, reserva);
@@ -111,6 +116,17 @@ public class VisitanteService implements IVisitanteService {
     public VisitanteResponseDto actualizarPropio(String email, VisitanteUpdateDto dto) {
         Visitante visitante = buscarPorEmail(email);
 
+        boolean esAdmin = visitante.getAuthorities() != null
+                && visitante.getAuthorities().contains(AppAuthority.ADMIN);
+        if (!esAdmin && (dto.getDocumento() != null || dto.getNombreEstacionamiento() != null)) {
+            throw new AccessDeniedException("Solo un administrador puede editar el documento o el nombre del estacionamiento.");
+        }
+
+        if (dto.getDocumento() != null && !dto.getDocumento().equals(visitante.getDocumento())
+                && visitanteRepository.existsByDocumento(dto.getDocumento())) {
+            throw new ValidationException("Ya existe un visitante con ese documento.");
+        }
+
         // El email es con lo que se inicia sesion, asi que cambiarlo cambia el
         // login: hay que asegurarse de que no se lo pise a otra cuenta.
         boolean cambiaEmail = !visitante.getEmail().equalsIgnoreCase(dto.getEmail());
@@ -118,7 +134,14 @@ public class VisitanteService implements IVisitanteService {
             throw new ValidationException("Ya existe una cuenta con ese email.");
         }
 
-        visitante.setTelefono(dto.getTelefono());
+        if (dto.getDocumento() != null) {
+            visitante.setDocumento(dto.getDocumento());
+        }
+        if (dto.getNombreEstacionamiento() != null) {
+            visitante.setNombreEstacionamiento(dto.getNombreEstacionamiento().isBlank()
+                    ? null : dto.getNombreEstacionamiento());
+        }
+        visitante.setTelefono(dto.getTelefono() == null ? null : dto.getTelefono().trim());
         visitante.setEmail(dto.getEmail());
 
         // null = "no lo mandaron": se respeta lo que ya estaba. Solo un valor
@@ -127,7 +150,18 @@ public class VisitanteService implements IVisitanteService {
             visitante.setTieneDiscapacidad(dto.getTieneDiscapacidad());
         }
 
-        return toResponseDto(visitanteRepository.save(visitante));
+        Visitante guardado;
+        try {
+            guardado = visitanteRepository.saveAndFlush(visitante);
+        } catch (DataIntegrityViolationException ex) {
+            throw new ValidationException("El email o documento ya está en uso. Revisá tus datos.");
+        }
+        // El JWT identifica por email. Tras guardar, se cierran las sesiones con
+        // la identidad anterior; el cliente invita a entrar con el nuevo email.
+        if (cambiaEmail) {
+            revokedUserCache.revokeSessions(email);
+        }
+        return toResponseDto(guardado);
     }
 
     @Override
@@ -170,6 +204,7 @@ public class VisitanteService implements IVisitanteService {
                 visitante.getDocumento(),
                 visitante.getTelefono(),
                 visitante.getEmail(),
-                visitante.puedeUsarCocheraAccesible());
+                visitante.puedeUsarCocheraAccesible(),
+                visitante.getNombreEstacionamiento());
     }
 }

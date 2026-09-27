@@ -20,6 +20,11 @@ public interface IRevokedUserCache {
      */
     boolean isRevoked(String email);
 
+    /** Invalida las sesiones anteriores a un cambio de email, sin bloquear futuros logins. */
+    void revokeSessions(String email);
+
+    boolean isRevoked(String email, long issuedAtMillis);
+
     /**
      * Clears all revoked tokens from the cache.
      */

@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { requireAuth } from "@/utils/serverAuth";
-import LogoutButton from "@/components/LogoutButton";
 import PanelOperativo from "./PanelOperativo";
 import DashboardHeader from "@/components/DashboardHeader";
 import DashboardIcon from "@/components/DashboardIcon";
+import ParkingHeading from "@/components/ParkingHeading";
 
 export default async function DashboardAdminPage() {
   await requireAuth(["ADMIN"]);
@@ -11,7 +11,7 @@ export default async function DashboardAdminPage() {
   return (
     <div className="dashboard-shell">
       <div className="dashboard-container">
-        <DashboardHeader actions={<LogoutButton />}>
+        <DashboardHeader>
           <Link
             href="/dashboard-admin/visitantes"
             className="dashboard-nav-link"
@@ -40,8 +40,13 @@ export default async function DashboardAdminPage() {
             <DashboardIcon name="users" />
             <span>Gestionar usuarios</span>
           </Link>
+          <Link href="/dashboard-admin/tarifas" className="dashboard-nav-link">
+            <DashboardIcon name="tarifas" />
+            <span>Gestionar tarifas</span>
+          </Link>
         </DashboardHeader>
 
+        <ParkingHeading />
         <PanelOperativo />
       </div>
     </div>

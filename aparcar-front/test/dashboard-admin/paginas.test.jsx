@@ -37,9 +37,37 @@ vi.mock("sonner", () => ({
 
 const { default: ReservasPage } = await import("@/app/dashboard-admin/reservas/page");
 const { default: VisitantesPage } = await import("@/app/dashboard-admin/visitantes/page");
+const { default: TarifasPage } = await import("@/app/dashboard-admin/tarifas/page");
+const { default: DashboardPage } = await import("@/app/dashboard-admin/page");
+const { default: PerfilAdminPage } = await import("@/app/dashboard-admin/perfil/page");
+const { default: PerfilUserPage } = await import("@/app/dashboard-user/perfil/page");
 
 /** Un Server Component async se resuelve y después se renderiza su resultado. */
 const renderPagina = async (Pagina) => render(await Pagina());
+
+describe("Rutas de perfil", () => {
+  it.each([[PerfilAdminPage, "ADMIN", "/dashboard-admin"], [PerfilUserPage, "USER", "/dashboard-user"]])(
+    "protege la pantalla con su rol y permite volver al panel (%s, %s)", async (Pagina, role, href) => {
+      await renderPagina(Pagina);
+      expect(requireAuthMock).toHaveBeenCalledWith([role]);
+      expect(screen.getByRole("link", { name: /volver al panel/i })).toHaveAttribute("href", href);
+    }
+  );
+});
+
+describe("/dashboard-admin/tarifas", () => {
+  it("exige ADMIN y permite volver al panel", async () => {
+    await renderPagina(TarifasPage);
+    expect(requireAuthMock).toHaveBeenCalledWith(["ADMIN"]);
+    expect(screen.getByRole("heading", { name: "Gestionar tarifas" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /volver al panel/i })).toHaveAttribute("href", "/dashboard-admin");
+  });
+
+  it("el panel incorpora el acceso a Gestionar tarifas", async () => {
+    await renderPagina(DashboardPage);
+    expect(screen.getByRole("link", { name: "Gestionar tarifas" })).toHaveAttribute("href", "/dashboard-admin/tarifas");
+  });
+});
 
 beforeEach(() => {
   vi.clearAllMocks();

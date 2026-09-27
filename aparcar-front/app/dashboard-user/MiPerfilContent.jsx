@@ -6,29 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
 import api from "@/app/api";
-
 import { formatoPatenteValido, MENSAJE_FORMATO_INVALIDO } from "@/utils/patenteValidation";
-
-const editPerfilSchema = z.object({
-  telefono: z.string().optional(),
-  email: z.string().min(1, "El email es obligatorio").email("Ingresa un correo válido"),
-  // Autodeclarado: habilita reservar cocheras ACCESIBLE.
-  tieneDiscapacidad: z.boolean().optional(),
-});
-
-const passwordSchema = z
-  .object({
-    passwordActual: z.string().min(1, "Ingresá tu contraseña actual"),
-    passwordNueva: z
-      .string()
-      .min(8, "La contraseña nueva debe tener al menos 8 caracteres")
-      .max(100, "La contraseña nueva no puede superar los 100 caracteres"),
-    passwordRepetida: z.string().min(1, "Repetí la contraseña nueva"),
-  })
-  .refine((d) => d.passwordNueva === d.passwordRepetida, {
-    message: "Las contraseñas no coinciden",
-    path: ["passwordRepetida"],
-  });
 
 const vehiculoSchema = z
   .object({
@@ -47,109 +25,34 @@ const vehiculoSchema = z
     }
   });
 
-const inputClasses =
-  "ui-input";
-const labelClasses = "ui-label";
 
-// Ya no existe el paso de "cargá tus datos": la cuenta y el visitante son la
-// misma entidad, así que nombre y documento vienen dados desde el alta y acá
-// solo se muestran. Lo editable es lo de contacto y los vehículos propios.
-//
-// `onVehiculosCambiaron` avisa al dashboard para que el formulario de reserva
-// vuelva a pedir la lista de patentes.
-//
-// `onDiscapacidadCambiada` avisa cuando el visitante marca o desmarca que tiene
-// una discapacidad: eso cambia qué cocheras le ofrece el backend (las
-// ACCESIBLE aparecen o desaparecen), así que el formulario de reserva tiene
-// que volver a pedirlas.
-export default function MiPerfilContent({ onVehiculosCambiaron, onDiscapacidadCambiada }) {
-  const [visitante, setVisitante] = useState(null);
-  const [vehiculos, setVehiculos] = useState([]);
+const inputClasses = "ui-input";
+
+// Los datos personales se editan desde Mi cuenta. Los vehículos siguen junto
+// a las reservas para conservar el refresco de patentes del panel.
+export default function MiPerfilContent({ onVehiculosCambiaron }) {
+  const [vehiculos, setVehiculos] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [editandoPerfil, setEditandoPerfil] = useState(false);
-  const [cambiandoPassword, setCambiandoPassword] = useState(false);
   const [editandoVehiculoId, setEditandoVehiculoId] = useState(null);
-
-  const editPerfilForm = useForm({ resolver: zodResolver(editPerfilSchema) });
-  const passwordForm = useForm({ resolver: zodResolver(passwordSchema) });
   const vehiculoForm = useForm({
     resolver: zodResolver(vehiculoSchema),
     defaultValues: { patente: "", tipo: "AUTO" },
   });
   const editVehiculoForm = useForm({ resolver: zodResolver(vehiculoSchema) });
-
-  // El backend devuelve solo los vehículos de la cuenta autenticada, así que no
-  // hace falta pasarle a quién pertenecen.
   const cargarVehiculos = async () => {
     const res = await api.get("/api/v1/vehiculos");
     setVehiculos(res.data);
   };
-
-  const cargar = async () => {
-    try {
-      setLoading(true);
-      const res = await api.get("/api/v1/visitantes/me");
-      setVisitante(res.data);
-      await cargarVehiculos();
-    } catch {
-      toast.error("No se pudieron cargar tus datos.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    cargar();
+    let activo = true;
+    api.get("/api/v1/vehiculos")
+      .then(({ data }) => {
+        if (activo) setVehiculos(data);
+      })
+      .catch(() => { if (activo) toast.error("No se pudieron cargar tus vehículos."); })
+      .finally(() => { if (activo) setLoading(false); });
+    return () => { activo = false; };
   }, []);
-
-  const startEditandoPerfil = () => {
-    editPerfilForm.reset({
-      telefono: visitante.telefono || "",
-      email: visitante.email || "",
-      tieneDiscapacidad: Boolean(visitante.tieneDiscapacidad),
-    });
-    setEditandoPerfil(true);
-  };
-
-  const onEditarPerfil = async (data) => {
-    const tieneDiscapacidad = Boolean(data.tieneDiscapacidad);
-    try {
-      const res = await api.put("/api/v1/visitantes/me", {
-        telefono: data.telefono || undefined,
-        email: data.email,
-        // Se manda siempre explícito (true o false): el backend interpreta un
-        // valor ausente como "no tocar", y acá el checkbox siempre tiene valor.
-        tieneDiscapacidad,
-      });
-      toast.success("Tus datos se actualizaron correctamente");
-      if (tieneDiscapacidad !== Boolean(visitante.tieneDiscapacidad)) {
-        onDiscapacidadCambiada?.();
-      }
-      setVisitante(res.data);
-      setEditandoPerfil(false);
-    } catch (err) {
-      toast.error(err.response?.data?.message || "No se pudieron actualizar tus datos.");
-    }
-  };
-
-  const startCambiandoPassword = () => {
-    passwordForm.reset({ passwordActual: "", passwordNueva: "", passwordRepetida: "" });
-    setCambiandoPassword(true);
-  };
-
-  const onCambiarPassword = async (data) => {
-    try {
-      await api.put("/api/v1/visitantes/me/password", {
-        passwordActual: data.passwordActual,
-        passwordNueva: data.passwordNueva,
-      });
-      toast.success("Tu contraseña se cambió correctamente");
-      passwordForm.reset({ passwordActual: "", passwordNueva: "", passwordRepetida: "" });
-      setCambiandoPassword(false);
-    } catch (err) {
-      toast.error(err.response?.data?.message || "No se pudo cambiar la contraseña.");
-    }
-  };
 
   const onAgregarVehiculo = async (data) => {
     try {
@@ -196,287 +99,112 @@ export default function MiPerfilContent({ onVehiculosCambiaron, onDiscapacidadCa
     }
   };
 
-  if (loading) {
-    return <div className="text-center text-sm text-ink/60 p-8">Cargando tus datos...</div>;
-  }
 
-  if (!visitante) {
-    return (
-      <div className="text-center text-sm text-ink/60 p-8">
-        No se pudieron cargar tus datos.
-      </div>
-    );
-  }
+  if (loading) return <p className="p-8 text-center text-sm text-ink/60">Cargando tus vehículos...</p>;
+  if (!vehiculos) return <p className="p-8 text-center text-sm text-ink/60">No se pudieron cargar tus vehículos.</p>;
 
   return (
-    <div className="mx-auto max-w-2xl">
-      <h1 className="text-3xl font-extrabold tracking-tight text-ink mb-2">Mis datos</h1>
-      <p className="text-sm text-ink/60 mb-8">Tus datos y vehículos registrados.</p>
-
-      <div className="space-y-8">
-        <div className="ui-card p-6">
-          <div className="profile-heading flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-bold text-ink">{visitante.nombre}</h2>
-              <p className="text-sm text-ink/60">
-                Documento {visitante.documento}
-                {visitante.telefono ? ` · ${visitante.telefono}` : ""}
-                {visitante.email ? ` · ${visitante.email}` : ""}
-              </p>
-              {visitante.tieneDiscapacidad && (
-                <span className="mt-2 inline-flex items-center rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-link ring-1 ring-inset ring-accent/30">
-                  Persona con discapacidad · puede usar cocheras accesibles
-                </span>
-              )}
-            </div>
-
-            <div className="profile-actions flex shrink-0 gap-2">
-              {!editandoPerfil && (
-                <button
-                  type="button"
-                  onClick={startEditandoPerfil}
-                  className="rounded-lg border border-ink/20 px-3 py-2 text-xs font-semibold text-ink hover:bg-ink/5 transition-colors"
-                >
-                  Editar mis datos
-                </button>
-              )}
-              {!cambiandoPassword && (
-                <button
-                  type="button"
-                  onClick={startCambiandoPassword}
-                  className="rounded-lg border border-ink/20 px-3 py-2 text-xs font-semibold text-ink hover:bg-ink/5 transition-colors"
-                >
-                  Cambiar contraseña
-                </button>
-              )}
-            </div>
-          </div>
-
-          {editandoPerfil && (
-            <form
-              className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2"
-              onSubmit={editPerfilForm.handleSubmit(onEditarPerfil)}
-            >
-              <div>
-                <label className={labelClasses} htmlFor="edit-telefono">Teléfono</label>
-                <input id="edit-telefono" {...editPerfilForm.register("telefono")} className={inputClasses} />
-              </div>
-              <div>
-                <label className={labelClasses} htmlFor="edit-email">Email</label>
-                <input id="edit-email" type="email" {...editPerfilForm.register("email")} className={inputClasses} />
-                {editPerfilForm.formState.errors.email && (
-                  <p className="mt-1 text-sm text-red-500">{editPerfilForm.formState.errors.email.message}</p>
-                )}
-                <p className="mt-1 text-xs text-ink/50">
-                  Es con lo que iniciás sesión: si lo cambiás, entrás con el nuevo.
-                </p>
-              </div>
-              <div className="sm:col-span-2">
-                <label className="flex cursor-pointer items-center gap-2 text-sm text-ink/70" htmlFor="edit-discapacidad">
-                  <input
-                    id="edit-discapacidad"
-                    type="checkbox"
-                    {...editPerfilForm.register("tieneDiscapacidad")}
-                    className="h-4 w-4 rounded border-ink/20 bg-surface accent-accent"
-                  />
-                  Soy una persona con discapacidad
-                </label>
-                <p className="mt-1 text-xs text-ink/50">
-                  Te habilita a reservar las cocheras accesibles. Es una declaración tuya y la podés cambiar cuando quieras.
-                </p>
-              </div>
-              <div className="flex gap-2 sm:col-span-2">
-                <button
-                  type="submit"
-                  disabled={editPerfilForm.formState.isSubmitting}
-                  className="ui-primary px-4 py-2.5 text-sm font-semibold transition-all disabled:opacity-50"
-                >
-                  Guardar cambios
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditandoPerfil(false)}
-                  className="rounded-xl px-4 py-2.5 text-sm font-medium text-ink/70 hover:bg-ink/5 transition-colors"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </form>
-          )}
-
-          {cambiandoPassword && (
-            <form
-              className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2"
-              onSubmit={passwordForm.handleSubmit(onCambiarPassword)}
-            >
-              <div className="sm:col-span-2">
-                <label className={labelClasses} htmlFor="password-actual">Contraseña actual</label>
-                <input
-                  id="password-actual"
-                  type="password"
-                  autoComplete="current-password"
-                  {...passwordForm.register("passwordActual")}
-                  className={inputClasses}
-                />
-                {passwordForm.formState.errors.passwordActual && (
-                  <p className="mt-1 text-sm text-red-500">
-                    {passwordForm.formState.errors.passwordActual.message}
-                  </p>
-                )}
-                <p className="mt-1 text-xs text-ink/50">
-                  Si tu cuenta la creó un administrador, tu contraseña actual es tu documento.
-                </p>
-              </div>
-              <div>
-                <label className={labelClasses} htmlFor="password-nueva">Contraseña nueva</label>
-                <input
-                  id="password-nueva"
-                  type="password"
-                  autoComplete="new-password"
-                  {...passwordForm.register("passwordNueva")}
-                  className={inputClasses}
-                  placeholder="Mínimo 8 caracteres"
-                />
-                {passwordForm.formState.errors.passwordNueva && (
-                  <p className="mt-1 text-sm text-red-500">
-                    {passwordForm.formState.errors.passwordNueva.message}
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className={labelClasses} htmlFor="password-repetida">Repetir contraseña nueva</label>
-                <input
-                  id="password-repetida"
-                  type="password"
-                  autoComplete="new-password"
-                  {...passwordForm.register("passwordRepetida")}
-                  className={inputClasses}
-                />
-                {passwordForm.formState.errors.passwordRepetida && (
-                  <p className="mt-1 text-sm text-red-500">
-                    {passwordForm.formState.errors.passwordRepetida.message}
-                  </p>
-                )}
-              </div>
-              <div className="flex gap-2 sm:col-span-2">
-                <button
-                  type="submit"
-                  disabled={passwordForm.formState.isSubmitting}
-                  className="ui-primary px-4 py-2.5 text-sm font-semibold transition-all disabled:opacity-50"
-                >
-                  Guardar contraseña
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCambiandoPassword(false)}
-                  className="rounded-xl px-4 py-2.5 text-sm font-medium text-ink/70 hover:bg-ink/5 transition-colors"
-                >
-                  Cancelar
-                </button>
-              </div>
-            </form>
-          )}
-        </div>
-
-        <div className="ui-card p-6">
-          <h2 className="text-lg font-bold text-ink mb-4">Mis vehículos</h2>
-
-          {vehiculos.length === 0 ? (
-            <p className="text-sm text-ink/60 mb-4">Todavía no cargaste ningún vehículo.</p>
-          ) : (
-            <ul className="mb-4 divide-y divide-ink/10">
-              {vehiculos.map((v) =>
-                editandoVehiculoId === v.id ? (
-                  <li key={v.id} className="py-3">
-                    <form
-                      className="vehicle-form flex flex-wrap items-start gap-2"
-                      onSubmit={editVehiculoForm.handleSubmit(onEditarVehiculo)}
-                    >
-                      <div>
-                        <input
-                          {...editVehiculoForm.register("patente")}
-                          className={`${inputClasses} uppercase`}
-                        />
-                        {editVehiculoForm.formState.errors.patente && (
-                          <p className="mt-1 text-sm text-red-500">
-                            {editVehiculoForm.formState.errors.patente.message}
-                          </p>
-                        )}
-                      </div>
-                      <select {...editVehiculoForm.register("tipo")} className={inputClasses}>
-                        <option value="AUTO">Auto</option>
-                        <option value="MOTO">Moto</option>
-                        <option value="CARGA">Carga</option>
-                      </select>
-                      <button
-                        type="submit"
-                        className="ui-primary px-4 py-3 text-sm font-semibold transition-all"
-                      >
-                        Guardar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditandoVehiculoId(null)}
-                        className="rounded-xl px-4 py-3 text-sm font-medium text-ink/70 hover:bg-ink/5 transition-colors"
-                      >
-                        Cancelar
-                      </button>
-                    </form>
-                  </li>
-                ) : (
-                  <li key={v.id} className="flex flex-wrap items-center justify-between gap-3 py-4 text-sm">
-                    <span className="font-medium text-ink">{v.patente}</span>
-                    <span className="text-ink/60">{v.tipo}</span>
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => startEditandoVehiculo(v)}
-                        className="rounded-lg border border-ink/20 px-2.5 py-1 text-xs font-semibold text-ink hover:bg-ink/5 transition-colors"
-                      >
-                        Editar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => eliminarVehiculo(v)}
-                        className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors dark:bg-red-500/10 dark:text-red-300 dark:ring-red-400/20 dark:border-red-400/25 dark:hover:bg-red-500/20"
-                      >
-                        Eliminar
-                      </button>
+    <div className="mx-auto max-w-2xl space-y-6">
+      <div>
+        <h1 className="text-3xl font-extrabold tracking-tight text-ink mb-2">Mis vehículos</h1>
+        <p className="text-sm text-ink/60">Tus vehículos, listos para tu próxima reserva.</p>
+      </div>
+      <div className="ui-card p-6">
+        {vehiculos.length === 0 ? (
+          <p className="text-sm text-ink/60 mb-4">Todavía no cargaste ningún vehículo.</p>
+        ) : (
+          <ul className="mb-4 divide-y divide-ink/10">
+            {vehiculos.map((v) =>
+              editandoVehiculoId === v.id ? (
+                <li key={v.id} className="py-3">
+                  <form
+                    className="vehicle-form flex flex-wrap items-start gap-2"
+                    onSubmit={editVehiculoForm.handleSubmit(onEditarVehiculo)}
+                  >
+                    <div>
+                      <input
+                        {...editVehiculoForm.register("patente")}
+                        className={`${inputClasses} uppercase`}
+                      />
+                      {editVehiculoForm.formState.errors.patente && (
+                        <p className="mt-1 text-sm text-red-500">
+                          {editVehiculoForm.formState.errors.patente.message}
+                        </p>
+                      )}
                     </div>
-                  </li>
-                )
-              )}
-            </ul>
-          )}
+                    <select {...editVehiculoForm.register("tipo")} className={inputClasses}>
+                      <option value="AUTO">Auto</option>
+                      <option value="MOTO">Moto</option>
+                      <option value="CARGA">Carga</option>
+                    </select>
+                    <button
+                      type="submit"
+                      className="ui-primary px-4 py-3 text-sm font-semibold transition-all"
+                    >
+                      Guardar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditandoVehiculoId(null)}
+                      className="rounded-xl px-4 py-3 text-sm font-medium text-ink/70 hover:bg-ink/5 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                  </form>
+                </li>
+              ) : (
+                <li key={v.id} className="flex flex-wrap items-center justify-between gap-3 py-4 text-sm">
+                  <span className="font-medium text-ink">{v.patente}</span>
+                  <span className="text-ink/60">{v.tipo}</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => startEditandoVehiculo(v)}
+                      className="rounded-lg border border-ink/20 px-2.5 py-1 text-xs font-semibold text-ink hover:bg-ink/5 transition-colors"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => eliminarVehiculo(v)}
+                      className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors dark:bg-red-500/10 dark:text-red-300 dark:ring-red-400/20 dark:border-red-400/25 dark:hover:bg-red-500/20"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                </li>
+              )
+            )}
+          </ul>
+        )}
 
-          <form
-            className="vehicle-form flex flex-wrap items-start gap-3"
-            onSubmit={vehiculoForm.handleSubmit(onAgregarVehiculo)}
+        <form
+          className="vehicle-form flex flex-wrap items-start gap-3"
+          onSubmit={vehiculoForm.handleSubmit(onAgregarVehiculo)}
+        >
+          <div>
+            <input
+              {...vehiculoForm.register("patente")}
+              className={`${inputClasses} uppercase`}
+              placeholder="ABC123 / AB123CD"
+            />
+            {vehiculoForm.formState.errors.patente && (
+              <p className="mt-1 text-sm text-red-500">{vehiculoForm.formState.errors.patente.message}</p>
+            )}
+          </div>
+          <select {...vehiculoForm.register("tipo")} className={inputClasses}>
+            <option value="AUTO">Auto</option>
+            <option value="MOTO">Moto</option>
+            <option value="CARGA">Carga</option>
+          </select>
+          <button
+            type="submit"
+            disabled={vehiculoForm.formState.isSubmitting}
+            className="ui-primary px-4 py-3 text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <div>
-              <input
-                {...vehiculoForm.register("patente")}
-                className={`${inputClasses} uppercase`}
-                placeholder="ABC123 / AB123CD"
-              />
-              {vehiculoForm.formState.errors.patente && (
-                <p className="mt-1 text-sm text-red-500">{vehiculoForm.formState.errors.patente.message}</p>
-              )}
-            </div>
-            <select {...vehiculoForm.register("tipo")} className={inputClasses}>
-              <option value="AUTO">Auto</option>
-              <option value="MOTO">Moto</option>
-              <option value="CARGA">Carga</option>
-            </select>
-            <button
-              type="submit"
-              disabled={vehiculoForm.formState.isSubmitting}
-              className="ui-primary px-4 py-3 text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Agregar
-            </button>
-          </form>
-        </div>
+            Agregar
+          </button>
+        </form>
       </div>
     </div>
   );

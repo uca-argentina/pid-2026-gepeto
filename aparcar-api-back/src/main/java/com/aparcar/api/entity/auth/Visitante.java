@@ -47,6 +47,9 @@ public class Visitante {
 
     private String telefono;
 
+    @Column(name = "nombre_estacionamiento", length = 100)
+    private String nombreEstacionamiento;
+
     @ElementCollection(targetClass = AppAuthority.class, fetch = FetchType.EAGER)
     @CollectionTable(name = "visitante_authorities", joinColumns = @JoinColumn(name = "visitante_id"))
     @Enumerated(EnumType.STRING)

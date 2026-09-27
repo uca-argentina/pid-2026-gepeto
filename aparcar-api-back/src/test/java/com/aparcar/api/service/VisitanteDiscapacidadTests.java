@@ -1,6 +1,7 @@
 package com.aparcar.api.service;
 
 import com.aparcar.api.config.UnitTests;
+import com.aparcar.api.component.IRevokedUserCache;
 import com.aparcar.api.dto.reserva.CocheraResponseDto;
 import com.aparcar.api.dto.reserva.ReservaResponseDto;
 import com.aparcar.api.dto.reserva.VehiculoRequestDto;
@@ -58,11 +59,15 @@ public class VisitanteDiscapacidadTests {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private IRevokedUserCache revokedUserCache;
+
     @InjectMocks
     private VisitanteService visitanteService;
 
     @BeforeEach
     void setUp() {
+        lenient().when(visitanteRepository.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
         lenient().when(passwordEncoder.encode(any())).thenAnswer(i -> "hash:" + i.getArgument(0));
         lenient().when(visitanteRepository.save(any())).thenAnswer(i -> {
             Visitante v = i.getArgument(0);
@@ -89,7 +94,7 @@ public class VisitanteDiscapacidadTests {
                         CocheraEstado.HABILITADA, null),
                 ReservaEstado.CONFIRMADA,
                 ModalidadReserva.FRANJA,
-                Instant.now());
+                Instant.now(), new java.math.BigDecimal("1000.00"), CocheraTipo.AUTO);
     }
 
     private static VisitanteAltaDto alta(Boolean tieneDiscapacidad) {

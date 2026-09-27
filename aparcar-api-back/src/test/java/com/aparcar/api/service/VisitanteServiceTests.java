@@ -1,6 +1,7 @@
 package com.aparcar.api.service;
 
 import com.aparcar.api.config.UnitTests;
+import com.aparcar.api.component.IRevokedUserCache;
 import com.aparcar.api.dto.auth.ChangePasswordDto;
 import com.aparcar.api.dto.reserva.CocheraResponseDto;
 import com.aparcar.api.dto.reserva.ReservaRequestDto;
@@ -63,6 +64,9 @@ public class VisitanteServiceTests {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private IRevokedUserCache revokedUserCache;
+
     @InjectMocks
     private VisitanteService visitanteService;
 
@@ -70,6 +74,7 @@ public class VisitanteServiceTests {
 
     @BeforeEach
     void setUp() {
+        lenient().when(visitanteRepository.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
         dto = new VisitanteAltaDto();
         dto.setNombre("Juan Perez");
         dto.setDocumento("30111222");
@@ -104,7 +109,7 @@ public class VisitanteServiceTests {
                 new CocheraResponseDto(COCHERA_ID, "A-01", "Planta Baja", CocheraTipo.AUTO, CocheraEstado.HABILITADA, null),
                 ReservaEstado.CONFIRMADA,
                 ModalidadReserva.FRANJA,
-                Instant.now());
+                Instant.now(), new java.math.BigDecimal("1000.00"), CocheraTipo.AUTO);
     }
 
     @Test
@@ -286,6 +291,20 @@ public class VisitanteServiceTests {
         assertEquals("30111222", result.documento());
         assertEquals("11-2222-3333", result.telefono());
         assertEquals("nuevo@mail.com", result.email());
+        verify(revokedUserCache).revokeSessions("juan@mail.com");
+    }
+
+    @Test
+    void conflictoConcurrenteNoRevocaLaSesion() {
+        Visitante visitante = unVisitante();
+        VisitanteUpdateDto update = new VisitanteUpdateDto();
+        update.setEmail("nuevo@mail.com");
+        when(visitanteRepository.findByEmail(visitante.getEmail())).thenReturn(Optional.of(visitante));
+        when(visitanteRepository.saveAndFlush(any())).thenThrow(
+                new org.springframework.dao.DataIntegrityViolationException("unique"));
+        assertThrows(ValidationException.class,
+                () -> visitanteService.actualizarPropio("juan@mail.com", update));
+        verify(revokedUserCache, never()).revokeSessions(any());
     }
 
     // Cambiar el email cambia el login, asi que no puede pisar el de otra

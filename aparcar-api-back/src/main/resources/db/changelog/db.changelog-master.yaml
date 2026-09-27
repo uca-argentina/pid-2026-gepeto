@@ -13,3 +13,7 @@ databaseChangeLog:
       file: db/changelog/006-reservas-por-franja-horaria.yaml
   - include:
       file: db/changelog/007-visitante-tiene-discapacidad.yaml
+  - include:
+      file: db/changelog/008-tarifas.yaml
+  - include:
+      file: db/changelog/009-nombre-estacionamiento.yaml

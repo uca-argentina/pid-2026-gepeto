@@ -54,7 +54,10 @@ public class JWTValidationFilter extends OncePerRequestFilter {
                 Claims claims = Jwts.parser().verifyWith(secretKey).build()
                         .parseSignedClaims(jwt).getPayload();
                 String email = String.valueOf(claims.get("email"));
-                if (revokedCache.isRevoked(email)) {
+                Number sessionIssuedAt = claims.get("sessionIssuedAt", Number.class);
+                long issuedAt = sessionIssuedAt != null ? sessionIssuedAt.longValue()
+                        : claims.getIssuedAt() != null ? claims.getIssuedAt().getTime() : 0;
+                if (revokedCache.isRevoked(email, issuedAt)) {
                     log.error("Request to parse expired JWT : {} failed : Revoked token", jwt);
                     sendUnauthorized(request, response, "Revoked token");
                     return;

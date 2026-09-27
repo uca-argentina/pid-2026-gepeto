@@ -8,6 +8,7 @@ import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
@@ -56,6 +57,8 @@ public class VisitanteAltaDto {
     private LocalDateTime desde;
 
     private LocalDateTime hasta;
+
+    private BigDecimal precioEsperado;
 
     /**
      * Opcional: el admin lo marca si ya sabe, al momento del alta, que la

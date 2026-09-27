@@ -112,6 +112,10 @@ public class DevSecurityConfig {
 
                 .authorizeHttpRequests(requests -> requests
 
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/tarifas", "/api/v1/tarifas/cotizacion")
+                        .hasAnyAuthority("ADMIN", "USER")
+                        .requestMatchers("/api/v1/tarifas", "/api/v1/tarifas/**").hasAuthority("ADMIN")
+
                         .requestMatchers(
                                 "/api/v1/cocheras/disponibles",
                                 "/register",

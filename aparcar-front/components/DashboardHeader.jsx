@@ -1,4 +1,5 @@
 import Brand from "@/components/Brand";
+import AccountMenu from "@/components/AccountMenu";
 
 export default function DashboardHeader({ children, actions, visitor = false }) {
   return (
@@ -8,7 +9,7 @@ export default function DashboardHeader({ children, actions, visitor = false }) 
           <Brand />
           <span className="workspace-label">{visitor ? "Mi espacio" : "Administración"}</span>
         </div>
-        <div className="dashboard-account">{actions}</div>
+        <div className="dashboard-account">{actions ?? <AccountMenu visitor={visitor} />}</div>
       </div>
       {children && <nav className="dashboard-navigation" aria-label={visitor ? "Mi cuenta" : "Administración"}>{children}</nav>}
     </header>

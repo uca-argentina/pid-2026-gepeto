@@ -4,6 +4,7 @@ import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Data
@@ -33,4 +34,7 @@ public class ReservaRequestDto {
 
     @NotNull(message = "El fin de la reserva es obligatorio")
     private LocalDateTime hasta;
+
+    /** Solo se compara: el servidor calcula siempre el importe definitivo. */
+    private BigDecimal precioEsperado;
 }

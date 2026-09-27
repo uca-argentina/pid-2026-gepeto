@@ -1,0 +1,46 @@
+databaseChangeLog:
+  - changeSet:
+      id: 008-tarifas
+      author: aparcar
+      changes:
+        - createTable:
+            tableName: tarifas
+            columns:
+              - column:
+                  name: tipo
+                  type: varchar(20)
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: hora
+                  type: decimal(10,2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: fraccion
+                  type: decimal(10,2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: media_jornada
+                  type: decimal(10,2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: jornada_completa
+                  type: decimal(10,2)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: bigint
+        - addColumn:
+            tableName: reservas
+            columns:
+              - column:
+                  name: precio_total
+                  type: decimal(18,2)
+              - column:
+                  name: tipo_tarifa
+                  type: varchar(20)

@@ -18,6 +18,7 @@ import com.aparcar.api.repository.ReservaRepository;
 import com.aparcar.api.repository.VehiculoRepository;
 import com.aparcar.api.repository.VisitanteRepository;
 import com.aparcar.api.service.IReservaService;
+import com.aparcar.api.service.ITarifaService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -37,6 +38,7 @@ public class ReservaService implements IReservaService {
     private final VisitanteRepository visitanteRepository;
     private final VehiculoRepository vehiculoRepository;
     private final CocheraRepository cocheraRepository;
+    private final ITarifaService tarifaService;
 
     @Override
     @Transactional
@@ -59,6 +61,12 @@ public class ReservaService implements IReservaService {
         validarDisponibilidad(cochera, dto.getDesde(), dto.getHasta());
         validarVehiculoLibre(vehiculo, dto.getDesde(), dto.getHasta());
 
+        // La categoría sale de la cochera validada, nunca de un precio o tipo enviado por el cliente.
+        var cotizacion = tarifaService.cotizar(cochera.getTipo(), dto.getDesde(), dto.getHasta());
+        if (dto.getPrecioEsperado() != null && dto.getPrecioEsperado().compareTo(cotizacion.total()) != 0) {
+            throw new ValidationException("El precio cambió. Revisá la nueva cotización antes de confirmar.");
+        }
+
         Reserva reserva = new Reserva();
         reserva.setDesde(dto.getDesde());
         reserva.setHasta(dto.getHasta());
@@ -66,6 +74,8 @@ public class ReservaService implements IReservaService {
         reserva.setVehiculo(vehiculo);
         reserva.setCochera(cochera);
         reserva.setEstado(ReservaEstado.CONFIRMADA);
+        reserva.setPrecioTotal(cotizacion.total());
+        reserva.setTipoTarifa(cotizacion.tipo());
 
         return toResponseDto(reservaRepository.save(reserva));
     }
@@ -260,6 +270,8 @@ public class ReservaService implements IReservaService {
                 cocheraDto,
                 reserva.getEstado(),
                 reserva.getModalidad(),
-                reserva.getFechaCreacion());
+                reserva.getFechaCreacion(),
+                reserva.getPrecioTotal(),
+                reserva.getTipoTarifa());
     }
 }
