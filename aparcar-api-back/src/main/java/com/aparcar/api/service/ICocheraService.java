@@ -1,5 +1,6 @@
 package com.aparcar.api.service;
 
+import com.aparcar.api.dto.reserva.CocheraAltaPorPlantaDto;
 import com.aparcar.api.dto.reserva.CocheraRequestDto;
 import com.aparcar.api.dto.reserva.CocheraResponseDto;
 import com.aparcar.api.entity.reserva.CocheraEstado;
@@ -28,6 +29,27 @@ public interface ICocheraService {
      *                              algun numero ya existe en la base.
      */
     List<CocheraResponseDto> crearEnLote(List<CocheraRequestDto> dtos);
+
+    /**
+     * Alta por planta: crea, en un mismo sector, la cantidad pedida de cada
+     * tipo, con numeros generados automaticamente (ver
+     * {@link com.aparcar.api.service.impl.NumeracionCocheras}). Cada tipo
+     * continua desde el mayor numero existente de su prefijo.
+     *
+     * <p>Todo-o-nada: o se crean todas, o ninguna.
+     *
+     * <p>Si otra alta concurrente llega a generar el mismo numero, la
+     * restriccion UNIQUE de {@code cocheras.numero} hace fallar a la segunda,
+     * que no crea nada y avisa para reintentar.
+     *
+     * @return Las cocheras creadas, en orden de tipo (AUTO, MOTO, ACCESIBLE,
+     *         CARGA) y de numero dentro de cada tipo.
+     * @throws ValidationException Si el sector esta vacio, si alguna cantidad
+     *                              es negativa, si ningun tipo tiene cantidad
+     *                              mayor a 0, o si el alta choco con otra
+     *                              concurrente.
+     */
+    List<CocheraResponseDto> crearPorPlanta(CocheraAltaPorPlantaDto dto);
 
     /**
      * Valores distintos de "sector" ya usados en cocheras existentes,

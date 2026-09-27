@@ -1,5 +1,6 @@
 package com.aparcar.api.controller;
 
+import com.aparcar.api.dto.reserva.CocheraAltaPorPlantaDto;
 import com.aparcar.api.dto.reserva.CocheraRequestDto;
 import com.aparcar.api.dto.reserva.CocheraResponseDto;
 import com.aparcar.api.entity.reserva.CocheraEstado;
@@ -40,6 +41,16 @@ public class CocheraController {
     @PostMapping("/bulk")
     public ResponseEntity<List<CocheraResponseDto>> crearEnLote(@Valid @RequestBody List<CocheraRequestDto> dtos) {
         return ResponseEntity.status(HttpStatus.CREATED).body(cocheraService.crearEnLote(dtos));
+    }
+
+    /**
+     * Alta por planta: un sector y cuantas cocheras de cada tipo. Los numeros
+     * los genera el backend y vuelven en la respuesta, para que el admin vea
+     * exactamente cuales quedaron asignados.
+     */
+    @PostMapping("/alta-por-planta")
+    public ResponseEntity<List<CocheraResponseDto>> crearPorPlanta(@Valid @RequestBody CocheraAltaPorPlantaDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(cocheraService.crearPorPlanta(dto));
     }
 
     @GetMapping("/sectores")

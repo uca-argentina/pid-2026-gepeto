@@ -36,4 +36,13 @@ public interface CocheraRepository extends JpaRepository<Cochera, UUID> {
 
     @Query("SELECT DISTINCT c.sector FROM Cochera c ORDER BY c.sector")
     List<String> findDistinctSectores();
+
+    /**
+     * Todos los numeros de cochera existentes. Lo usa la numeracion
+     * automatica del alta por planta para saber desde donde seguir cada
+     * prefijo. Trae solo la columna, y para un unico predio son unos pocos
+     * cientos de valores: no hace falta filtrar por prefijo en SQL.
+     */
+    @Query("SELECT c.numero FROM Cochera c")
+    List<String> findAllNumeros();
 }

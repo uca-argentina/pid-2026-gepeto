@@ -1,5 +1,6 @@
 package com.aparcar.api.service.impl;
 
+import com.aparcar.api.dto.reserva.CocheraAltaPorPlantaDto;
 import com.aparcar.api.dto.reserva.CocheraRequestDto;
 import com.aparcar.api.dto.reserva.CocheraResponseDto;
 import com.aparcar.api.entity.auth.Visitante;
@@ -16,12 +17,15 @@ import com.aparcar.api.repository.ReservaRepository;
 import com.aparcar.api.repository.VisitanteRepository;
 import com.aparcar.api.service.ICocheraService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -81,6 +85,62 @@ public class CocheraService implements ICocheraService {
         }).toList();
 
         return cocheraRepository.saveAll(cocheras).stream().map(this::toResponseDto).toList();
+    }
+
+    @Override
+    @Transactional
+    public List<CocheraResponseDto> crearPorPlanta(CocheraAltaPorPlantaDto dto) {
+        String sector = dto.getSector() == null ? "" : dto.getSector().trim();
+        if (sector.isEmpty()) {
+            throw new ValidationException("El sector es obligatorio.");
+        }
+
+        Map<CocheraTipo, Integer> cantidades = dto.getCantidades() == null ? Map.of() : dto.getCantidades();
+        // El controller ya lo valida con @PositiveOrZero, pero el servicio no
+        // depende de que lo llamen por HTTP.
+        for (Map.Entry<CocheraTipo, Integer> entrada : cantidades.entrySet()) {
+            if (entrada.getValue() != null && entrada.getValue() < 0) {
+                throw new ValidationException(
+                        "La cantidad de cocheras de tipo %s no puede ser negativa.".formatted(entrada.getKey()));
+            }
+        }
+        if (cantidades.values().stream().noneMatch(cantidad -> cantidad != null && cantidad > 0)) {
+            throw new ValidationException("Indica al menos un tipo de cochera con cantidad mayor a 0.");
+        }
+
+        CocheraEstado estado = dto.getEstado() == null ? CocheraEstado.HABILITADA : dto.getEstado();
+        List<String> numerosExistentes = cocheraRepository.findAllNumeros();
+
+        // Se recorre el enum (no el mapa) para que el orden del resultado sea
+        // siempre el mismo, venga como venga el JSON.
+        List<Cochera> nuevas = new ArrayList<>();
+        for (CocheraTipo tipo : CocheraTipo.values()) {
+            Integer cantidad = cantidades.get(tipo);
+            if (cantidad == null || cantidad <= 0) {
+                continue;
+            }
+            for (String numero : NumeracionCocheras.siguientes(tipo, cantidad, numerosExistentes)) {
+                Cochera cochera = new Cochera();
+                cochera.setNumero(numero);
+                cochera.setSector(sector);
+                cochera.setTipo(tipo);
+                cochera.setEstado(estado);
+                nuevas.add(cochera);
+            }
+        }
+
+        // saveAllAndFlush (y no saveAll) para que el INSERT ocurra aca adentro:
+        // si otra alta concurrente se quedo con alguno de estos numeros, la
+        // restriccion UNIQUE salta ahora y se puede traducir a un mensaje
+        // claro, en vez de explotar en el commit como un 500. Toda la
+        // transaccion vuelve atras: no queda ninguna cochera a medias.
+        try {
+            return cocheraRepository.saveAllAndFlush(nuevas).stream().map(this::toResponseDto).toList();
+        } catch (DataIntegrityViolationException e) {
+            throw new ValidationException(
+                    "Otra alta de cocheras se guardo al mismo tiempo y algun numero coincidio. "
+                            + "No se creo ninguna cochera; volve a intentarlo.");
+        }
     }
 
     @Override
