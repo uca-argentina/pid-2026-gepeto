@@ -108,7 +108,7 @@ npm --version
 ## 2. Clonar el repo
 
 ```bash
-git clone https://github.com/martincoronels/aparcar.git
+git clone https://github.com/uca-argentina/pid-2026-gepeto.git
 cd aparcar
 ```
 
