@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -77,12 +78,25 @@ public class CocheraController {
     /**
      * Cocheras libres durante toda la franja pedida. El rango es semiabierto:
      * una cochera cuya reserva termina justo en "desde" cuenta como libre.
+     *
+     * <p>El endpoint es publico, asi que {@code authentication} viene null
+     * para un anonimo. Si quien pide es un visitante logueado sin discapacidad
+     * declarada, no se le ofrecen las cocheras ACCESIBLE (que igual no podria
+     * reservar).
      */
     @GetMapping("/disponibles")
     public ResponseEntity<List<CocheraResponseDto>> listarDisponibles(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime desde,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime hasta,
-            @RequestParam(required = false) VehiculoTipo tipoVehiculo) {
-        return ResponseEntity.ok(cocheraService.listarDisponibles(desde, hasta, tipoVehiculo));
+            @RequestParam(required = false) VehiculoTipo tipoVehiculo,
+            Authentication authentication) {
+        String requesterEmail = authentication == null ? null : authentication.getName();
+        return ResponseEntity.ok(cocheraService.listarDisponibles(
+                desde, hasta, tipoVehiculo, requesterEmail, esAdmin(authentication)));
+    }
+
+    private static boolean esAdmin(Authentication authentication) {
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ADMIN"));
     }
 }

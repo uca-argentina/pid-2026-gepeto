@@ -291,6 +291,10 @@ public class ReservaControllerTests {
     @DisplayName("[Caja negra] POST /api/v1/reservas permite reservar una cochera ACCESIBLE con cualquier tipo de vehiculo")
     void crearPermiteCocheraAccesibleConCualquierVehiculo() throws Exception {
         Visitante visitante = crearVisitante("30111222");
+        // La cochera ACCESIBLE exige ademas que el dueño tenga declarada la
+        // discapacidad (ver AccesibilidadTests); aca se prueba la regla de vehiculo.
+        visitante.setTieneDiscapacidad(true);
+        visitante = visitanteRepository.save(visitante);
         Vehiculo vehiculo = crearVehiculo("ABC123", VehiculoTipo.CARGA, visitante);
         Cochera cochera = crearCochera("AC-01", CocheraTipo.ACCESIBLE);
         var context = getContext();
