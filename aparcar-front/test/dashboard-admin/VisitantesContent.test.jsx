@@ -244,3 +244,81 @@ describe("VisitantesContent (alta de visitante con reserva)", () => {
     expect(toastSuccessMock).not.toHaveBeenCalled();
   });
 });
+
+describe("VisitantesContent: discapacidad", () => {
+  const LABEL = "Persona con discapacidad (opcional)";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("muestra el checkbox de discapacidad desmarcado por defecto", () => {
+    mockCocheras();
+    render(<VisitantesContent />);
+
+    expect(screen.getByLabelText(LABEL)).toBeInTheDocument();
+    expect(screen.getByLabelText(LABEL)).not.toBeChecked();
+  });
+
+  // Es opcional: si el admin no lo toca, el alta sale igual y con false.
+  it("sin marcarlo, manda tieneDiscapacidad: false", async () => {
+    mockCocheras([cochera()]);
+    postMock.mockResolvedValue({ data: {} });
+    const user = userEvent.setup();
+    render(<VisitantesContent />);
+
+    await completarFormulario(user);
+    await screen.findByRole("option", { name: /A-01/ });
+    await user.selectOptions(screen.getByLabelText("Cochera"), "c1");
+    await user.click(screen.getByRole("button", { name: /dar de alta y reservar/i }));
+
+    await waitFor(() => expect(postMock).toHaveBeenCalledTimes(1));
+    expect(postMock.mock.calls[0][1]).toMatchObject({ tieneDiscapacidad: false });
+  });
+
+  it("marcado, manda tieneDiscapacidad: true y permite reservar una ACCESIBLE", async () => {
+    mockCocheras([cochera(), cochera({ id: "c9", numero: "A-09", tipo: "ACCESIBLE" })]);
+    postMock.mockResolvedValue({ data: {} });
+    const user = userEvent.setup();
+    render(<VisitantesContent />);
+
+    await completarFormulario(user);
+    await user.click(screen.getByLabelText(LABEL));
+    await screen.findByRole("option", { name: /A-09/ });
+    await user.selectOptions(screen.getByLabelText("Cochera"), "c9");
+    await user.click(screen.getByRole("button", { name: /dar de alta y reservar/i }));
+
+    await waitFor(() => expect(postMock).toHaveBeenCalledTimes(1));
+    expect(postMock.mock.calls[0][1]).toMatchObject({ tieneDiscapacidad: true, cocheraId: "c9" });
+  });
+
+  // Ofrecerle una ACCESIBLE a alguien sin la marca solo termina en un rechazo
+  // del backend después de completar todo el formulario.
+  it("oculta las cocheras ACCESIBLE hasta que se marca el checkbox", async () => {
+    mockCocheras([cochera(), cochera({ id: "c9", numero: "A-09", tipo: "ACCESIBLE" })]);
+    const user = userEvent.setup();
+    render(<VisitantesContent />);
+
+    await screen.findByRole("option", { name: /A-01/ });
+    expect(screen.queryByRole("option", { name: /A-09/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Las cocheras accesibles aparecen al marcar/)).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText(LABEL));
+
+    expect(await screen.findByRole("option", { name: /A-09/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Las cocheras accesibles aparecen al marcar/)).not.toBeInTheDocument();
+  });
+
+  it("si se desmarca con una ACCESIBLE elegida, la deselecciona", async () => {
+    mockCocheras([cochera(), cochera({ id: "c9", numero: "A-09", tipo: "ACCESIBLE" })]);
+    const user = userEvent.setup();
+    render(<VisitantesContent />);
+
+    await user.click(screen.getByLabelText(LABEL));
+    await screen.findByRole("option", { name: /A-09/ });
+    await user.selectOptions(screen.getByLabelText("Cochera"), "c9");
+    await user.click(screen.getByLabelText(LABEL));
+
+    await waitFor(() => expect(screen.getByLabelText("Cochera")).toHaveValue(""));
+  });
+});
