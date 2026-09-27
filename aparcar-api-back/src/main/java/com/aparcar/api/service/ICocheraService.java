@@ -68,7 +68,33 @@ public interface ICocheraService {
      * Cocheras habilitadas sin una reserva CONFIRMADA en esa fecha. Si se
      * indica tipoVehiculo, solo devuelve las compatibles (ver regla de
      * compatibilidad en {@link IReservaService}).
+     *
+     * <p>Version sin datos de quien pide: no filtra las ACCESIBLE. Equivale a
+     * la consulta de un anonimo.
+     */
+    default List<CocheraResponseDto> listarDisponibles(LocalDateTime desde, LocalDateTime hasta,
+                                                       VehiculoTipo tipoVehiculo) {
+        return listarDisponibles(desde, hasta, tipoVehiculo, null, false);
+    }
+
+    /**
+     * Igual que {@link #listarDisponibles(LocalDateTime, LocalDateTime, VehiculoTipo)},
+     * pero ademas saca las cocheras ACCESIBLE cuando quien pide es un visitante
+     * que no tiene declarada una discapacidad: no tiene sentido ofrecerle una
+     * cochera que despues la reserva le va a rechazar.
+     *
+     * <p>No se filtra cuando:
+     * <ul>
+     *     <li>quien pide es anonimo ({@code requesterEmail} null): el endpoint
+     *     es publico y no hay persona contra la cual comparar;</li>
+     *     <li>quien pide es ADMIN: suele estar reservando para otra persona,
+     *     cuya declaracion se valida al crear la reserva.</li>
+     * </ul>
+     *
+     * <p>Esto es solo una comodidad de la pantalla: la regla real la aplica
+     * igual la creacion de la reserva.
      */
     List<CocheraResponseDto> listarDisponibles(LocalDateTime desde, LocalDateTime hasta,
-                                               VehiculoTipo tipoVehiculo);
+                                               VehiculoTipo tipoVehiculo,
+                                               String requesterEmail, boolean requesterIsAdmin);
 }

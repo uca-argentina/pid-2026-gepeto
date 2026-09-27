@@ -2,6 +2,7 @@ package com.aparcar.api.service.impl;
 
 import com.aparcar.api.dto.reserva.CocheraRequestDto;
 import com.aparcar.api.dto.reserva.CocheraResponseDto;
+import com.aparcar.api.entity.auth.Visitante;
 import com.aparcar.api.entity.reserva.Cochera;
 import com.aparcar.api.entity.reserva.CocheraEstado;
 import com.aparcar.api.entity.reserva.CocheraTipo;
@@ -12,6 +13,7 @@ import com.aparcar.api.exception.NotFoundException;
 import com.aparcar.api.exception.ValidationException;
 import com.aparcar.api.repository.CocheraRepository;
 import com.aparcar.api.repository.ReservaRepository;
+import com.aparcar.api.repository.VisitanteRepository;
 import com.aparcar.api.service.ICocheraService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -29,6 +31,7 @@ import java.util.stream.Collectors;
 public class CocheraService implements ICocheraService {
     private final CocheraRepository cocheraRepository;
     private final ReservaRepository reservaRepository;
+    private final VisitanteRepository visitanteRepository;
 
     @Override
     public CocheraResponseDto crear(CocheraRequestDto dto) {
@@ -142,14 +145,35 @@ public class CocheraService implements ICocheraService {
 
     @Override
     public List<CocheraResponseDto> listarDisponibles(LocalDateTime desde, LocalDateTime hasta,
-                                                      VehiculoTipo tipoVehiculo) {
+                                                      VehiculoTipo tipoVehiculo,
+                                                      String requesterEmail, boolean requesterIsAdmin) {
         Set<UUID> ocupadas = ocupadasEnRango(desde, hasta);
+        boolean incluirAccesibles = puedeVerAccesibles(requesterEmail, requesterIsAdmin);
 
         return cocheraRepository.findByEstado(CocheraEstado.HABILITADA).stream()
                 .filter(cochera -> !ocupadas.contains(cochera.getId()))
                 .filter(cochera -> esCompatible(cochera.getTipo(), tipoVehiculo))
+                .filter(cochera -> incluirAccesibles || cochera.getTipo() != CocheraTipo.ACCESIBLE)
                 .map(cochera -> toResponseDto(cochera, null))
                 .toList();
+    }
+
+    /**
+     * Solo se le ocultan las ACCESIBLE a un visitante identificado que no
+     * declaro discapacidad. Anonimo y ADMIN ven todo (ver el contrato en
+     * {@link ICocheraService}).
+     *
+     * <p>Si el email del token no corresponde a ninguna cuenta (por ejemplo,
+     * la borraron con la sesion abierta) se toma el lado conservador y se
+     * ocultan: esa persona tampoco podria reservarlas.
+     */
+    private boolean puedeVerAccesibles(String requesterEmail, boolean requesterIsAdmin) {
+        if (requesterEmail == null || requesterIsAdmin) {
+            return true;
+        }
+        return visitanteRepository.findByEmail(requesterEmail)
+                .map(Visitante::puedeUsarCocheraAccesible)
+                .orElse(false);
     }
 
     private void cancelarReservasConfirmadas(UUID cocheraId) {

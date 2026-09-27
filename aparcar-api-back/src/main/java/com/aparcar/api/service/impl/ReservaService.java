@@ -55,6 +55,7 @@ public class ReservaService implements IReservaService {
 
         validarRango(dto.getDesde(), dto.getHasta());
         validarCompatibilidad(cochera, vehiculo);
+        validarAccesibilidad(cochera, visitante);
         validarDisponibilidad(cochera, dto.getDesde(), dto.getHasta());
         validarVehiculoLibre(vehiculo, dto.getDesde(), dto.getHasta());
 
@@ -142,6 +143,30 @@ public class ReservaService implements IReservaService {
     }
 
     /**
+     * Una cochera ACCESIBLE solo la puede usar una persona con discapacidad.
+     *
+     * <p>Es una regla sobre la PERSONA, distinta de {@link #validarCompatibilidad}
+     * que es sobre el VEHICULO: una cochera ACCESIBLE sigue aceptando cualquier
+     * tipo de vehiculo, pero ahora exige ademas que quien reserva este
+     * habilitado.
+     *
+     * <p>{@code visitante} es siempre el dueño de la reserva (ya resuelto por
+     * {@link #resolverVisitante}). Cuando un ADMIN reserva en nombre de otro,
+     * lo que cuenta es la declaracion de esa otra persona, no la del admin que
+     * esta cargando la reserva.
+     */
+    private void validarAccesibilidad(Cochera cochera, Visitante visitante) {
+        if (cochera.getTipo() != CocheraTipo.ACCESIBLE) {
+            return;
+        }
+        if (!visitante.puedeUsarCocheraAccesible()) {
+            throw new ValidationException(
+                    ("La cochera %s es de uso exclusivo para personas con discapacidad, y %s no lo tiene "
+                            + "declarado en su perfil.").formatted(cochera.getNumero(), visitante.getNombre()));
+        }
+    }
+
+    /**
      * La franja tiene que tener duracion positiva y no puede estar entera en el
      * pasado (reservar algo ya terminado no tiene sentido y ademas seria
      * invisible: nunca ocuparia la cochera).
@@ -209,7 +234,8 @@ public class ReservaService implements IReservaService {
                 reserva.getVisitante().getNombre(),
                 reserva.getVisitante().getDocumento(),
                 reserva.getVisitante().getTelefono(),
-                reserva.getVisitante().getEmail());
+                reserva.getVisitante().getEmail(),
+                reserva.getVisitante().puedeUsarCocheraAccesible());
 
         VehiculoResponseDto vehiculoDto = new VehiculoResponseDto(
                 reserva.getVehiculo().getId(),
