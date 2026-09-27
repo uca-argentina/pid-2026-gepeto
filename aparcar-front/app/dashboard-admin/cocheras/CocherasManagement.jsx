@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
@@ -22,13 +22,43 @@ const cocheraSchema = z.object({
   }),
 });
 
-const loteSchema = z.object({
-  cocheras: z.array(cocheraSchema).min(1, "Agregá al menos una cochera"),
+// Alta por planta: un sector y cuántas cocheras de cada tipo. Los números no
+// se cargan acá: los genera el backend y vuelven en la respuesta.
+const TIPOS_COCHERA = ["AUTO", "MOTO", "ACCESIBLE", "CARGA"];
+
+const cantidadSchema = z
+  .number({ message: "Ingresá una cantidad" })
+  .int("Tiene que ser un número entero")
+  .min(0, "No puede ser negativa");
+
+const altaPorPlantaSchema = z.object({
+  sector: z.string().trim().min(1, "El sector es obligatorio"),
+  cantidades: z
+    .object({
+      AUTO: cantidadSchema,
+      MOTO: cantidadSchema,
+      ACCESIBLE: cantidadSchema,
+      CARGA: cantidadSchema,
+    })
+    .refine((c) => Object.values(c).some((n) => n > 0), {
+      message: "Indicá al menos un tipo con cantidad mayor a 0",
+    }),
 });
+
+const cantidadesEnCero = () => ({ AUTO: 0, MOTO: 0, ACCESIBLE: 0, CARGA: 0 });
 
 const OTRO_SECTOR = "__OTRO__";
 
-const filaVacia = () => ({ numero: "", sector: "", tipo: "AUTO", estado: "HABILITADA" });
+// Agrupa las cocheras creadas por tipo, respetando el orden en que las
+// devolvió el backend. Solo agrupa: los números se muestran tal cual llegan.
+const agruparPorTipo = (cocherasCreadas) => {
+  const grupos = new Map();
+  cocherasCreadas.forEach((c) => {
+    if (!grupos.has(c.tipo)) grupos.set(c.tipo, []);
+    grupos.get(c.tipo).push(c.numero);
+  });
+  return Array.from(grupos.entries());
+};
 
 const inputClasses =
   "ui-input";
@@ -63,6 +93,11 @@ export default function CocherasManagement() {
   // se muestra un input de texto libre en vez del dropdown.
   const [sectorCreateEsNuevo, setSectorCreateEsNuevo] = useState(false);
   const [sectorEditEsNuevo, setSectorEditEsNuevo] = useState(false);
+  const [sectorLoteEsNuevo, setSectorLoteEsNuevo] = useState(false);
+
+  // Lo que devolvió el backend en la última alta por planta, para mostrarle
+  // al admin exactamente qué números quedaron asignados.
+  const [resultadoLote, setResultadoLote] = useState(null);
 
   const {
     register: registerCreate,
@@ -91,17 +126,20 @@ export default function CocherasManagement() {
     control: controlLote,
     handleSubmit: handleLoteSubmit,
     reset: resetLote,
+    setValue: setValueLote,
     formState: { errors: loteErrors, isSubmitting: isCreandoLote },
   } = useForm({
-    resolver: zodResolver(loteSchema),
-    defaultValues: { cocheras: [filaVacia()] },
+    resolver: zodResolver(altaPorPlantaSchema),
+    defaultValues: { sector: "", cantidades: cantidadesEnCero() },
   });
 
-  const {
-    fields: filasLote,
-    append: agregarFila,
-    remove: quitarFila,
-  } = useFieldArray({ control: controlLote, name: "cocheras" });
+  // Total a crear, para el texto del botón y para deshabilitarlo con todo en
+  // 0. Un valor vacío o negativo no suma: el schema lo marca al enviar.
+  const cantidadesLote = useWatch({ control: controlLote, name: "cantidades" });
+  const totalLote = TIPOS_COCHERA.reduce((total, tipo) => {
+    const n = cantidadesLote?.[tipo];
+    return Number.isFinite(n) && n > 0 ? total + n : total;
+  }, 0);
 
   const [sectoresCargados, setSectoresCargados] = useState(false);
 
@@ -124,6 +162,7 @@ export default function CocherasManagement() {
   useEffect(() => {
     if (sectoresCargados && sectoresDisponibles.length === 0) {
       setSectorCreateEsNuevo(true);
+      setSectorLoteEsNuevo(true);
     }
   }, [sectoresCargados, sectoresDisponibles.length]);
 
@@ -200,21 +239,39 @@ export default function CocherasManagement() {
     }
   };
 
-  const onCrearLote = async (data) => {
+  const onCrearPorPlanta = async (data) => {
+    setResultadoLote(null);
+
+    // Solo viajan los tipos con algo para crear; el backend ignora igual los
+    // que vienen en 0, pero así el pedido dice exactamente lo que se pidió.
+    const cantidades = Object.fromEntries(
+      TIPOS_COCHERA.filter((tipo) => data.cantidades[tipo] > 0).map((tipo) => [
+        tipo,
+        data.cantidades[tipo],
+      ])
+    );
+
     try {
-      const response = await api.post("/api/v1/cocheras/bulk", data.cocheras);
+      const response = await api.post("/api/v1/cocheras/alta-por-planta", {
+        sector: data.sector.trim(),
+        cantidades,
+      });
 
-      toast.success(`${response.data.length} cocheras creadas correctamente`);
+      const creadas = response.data;
+      toast.success(
+        `Se ${creadas.length === 1 ? "creó 1 cochera" : `crearon ${creadas.length} cocheras`}`
+      );
+      setResultadoLote(creadas);
 
-      resetLote({ cocheras: [filaVacia()] });
+      resetLote({ sector: "", cantidades: cantidadesEnCero() });
+      setSectorLoteEsNuevo(false);
 
       await refrescarTodo();
     } catch (error) {
-      // El backend es todo-o-nada: si algo del lote falla, no crea ninguna y
-      // devuelve un mensaje que dice exactamente cual numero/fila fallo y
-      // por que. Se lo mostramos tal cual, no lo reinterpretamos.
+      // El backend es todo-o-nada: si algo falla, no crea ninguna. Su mensaje
+      // se muestra tal cual y el formulario queda como estaba para corregir.
       toast.error(
-        error.response?.data?.message || "No se pudo crear el lote de cocheras. No se creó ninguna."
+        error.response?.data?.message || "No se pudieron crear las cocheras. No se creó ninguna."
       );
     }
   };
@@ -455,45 +512,52 @@ export default function CocherasManagement() {
             </div>
 
             <div className="mt-8 ui-card p-6">
-              <h2 className="text-xl font-bold text-ink">Alta en lote</h2>
+              <h2 className="text-xl font-bold text-ink">Alta por planta</h2>
 
               <p className="mt-1 mb-6 text-sm text-ink/60">
-                Cargá varias cocheras a la vez. Si alguna fila tiene un error,
-                no se crea ninguna del lote.
+                Elegí un sector e indicá cuántas cocheras crear de cada tipo. Los
+                números se asignan solos, a continuación de los que ya existen.
               </p>
 
-              <form className="space-y-4" onSubmit={handleLoteSubmit(onCrearLote)}>
-                <div className="space-y-3">
-                  {filasLote.map((fila, index) => (
-                    <div
-                      key={fila.id}
-                      className="space-y-2 rounded-xl border border-ink/10 p-3"
-                    >
-                      <input
-                        {...registerLote(`cocheras.${index}.numero`)}
-                        className={inputClasses}
-                        placeholder="A-01"
-                        aria-label={`Número fila ${index + 1}`}
-                      />
-                      {loteErrors.cocheras?.[index]?.numero && (
-                        <p className="text-xs text-red-500">
-                          {loteErrors.cocheras[index].numero.message}
-                        </p>
-                      )}
+              <form className="space-y-4" onSubmit={handleLoteSubmit(onCrearPorPlanta)}>
+                <div>
+                  <label htmlFor="lote-sector" className={labelClasses}>
+                    Sector de la planta
+                  </label>
 
-                      {sectoresDisponibles.length === 0 ? (
-                        <input
-                          {...registerLote(`cocheras.${index}.sector`)}
-                          className={inputClasses}
-                          placeholder="Sector"
-                          aria-label={`Sector fila ${index + 1}`}
-                        />
-                      ) : (
+                  {sectorLoteEsNuevo ? (
+                    <>
+                      <input
+                        id="lote-sector"
+                        {...registerLote("sector")}
+                        className={inputClasses}
+                        placeholder="Nombre del sector nuevo"
+                      />
+                      {sectoresDisponibles.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSectorLoteEsNuevo(false);
+                            setValueLote("sector", "", { shouldValidate: false });
+                          }}
+                          className="mt-1 text-xs font-medium text-link hover:text-brand"
+                        >
+                          ‹ Elegir de la lista
+                        </button>
+                      )}
+                    </>
+                  ) : (
+                    (() => {
+                      const { onChange, ...sectorField } = registerLote("sector");
+                      return (
                         <select
-                          {...registerLote(`cocheras.${index}.sector`)}
+                          id="lote-sector"
+                          {...sectorField}
+                          onChange={(e) =>
+                            onSectorSelectChange(e, setValueLote, setSectorLoteEsNuevo, onChange)
+                          }
                           className={inputClasses}
                           defaultValue=""
-                          aria-label={`Sector fila ${index + 1}`}
                         >
                           <option value="" disabled>
                             Seleccioná un sector
@@ -503,68 +567,92 @@ export default function CocherasManagement() {
                               {sector}
                             </option>
                           ))}
+                          <option value={OTRO_SECTOR}>+ Otro (sector nuevo)</option>
                         </select>
-                      )}
-                      {loteErrors.cocheras?.[index]?.sector && (
-                        <p className="text-xs text-red-500">
-                          {loteErrors.cocheras[index].sector.message}
+                      );
+                    })()
+                  )}
+
+                  {loteErrors.sector && (
+                    <p className="mt-1 text-sm text-red-500">
+                      {loteErrors.sector.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {TIPOS_COCHERA.map((tipo) => (
+                    <div key={tipo}>
+                      <label htmlFor={`lote-cantidad-${tipo}`} className={labelClasses}>
+                        {TIPO_LABELS[tipo]}
+                      </label>
+
+                      <input
+                        id={`lote-cantidad-${tipo}`}
+                        type="number"
+                        min={0}
+                        step={1}
+                        inputMode="numeric"
+                        {...registerLote(`cantidades.${tipo}`, { valueAsNumber: true })}
+                        className={inputClasses}
+                      />
+
+                      {loteErrors.cantidades?.[tipo] && (
+                        <p className="mt-1 text-xs text-red-500">
+                          {loteErrors.cantidades[tipo].message}
                         </p>
                       )}
-
-                      <div className="grid grid-cols-2 gap-2">
-                        <select
-                          {...registerLote(`cocheras.${index}.tipo`)}
-                          className={inputClasses}
-                          aria-label={`Tipo fila ${index + 1}`}
-                        >
-                          <option value="AUTO">Auto</option>
-                          <option value="MOTO">Moto</option>
-                          <option value="ACCESIBLE">Accesible</option>
-                          <option value="CARGA">Carga</option>
-                        </select>
-
-                        <select
-                          {...registerLote(`cocheras.${index}.estado`)}
-                          className={inputClasses}
-                          aria-label={`Estado fila ${index + 1}`}
-                        >
-                          <option value="HABILITADA">Habilitada</option>
-                          <option value="DESHABILITADA">Deshabilitada</option>
-                        </select>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => quitarFila(index)}
-                        disabled={filasLote.length === 1}
-                        className="text-xs font-semibold text-red-600 hover:text-red-700 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Quitar fila
-                      </button>
                     </div>
                   ))}
                 </div>
 
-                <div className="flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    onClick={() => agregarFila(filaVacia())}
-                    className="rounded-xl bg-ink/5 px-4 py-2.5 text-sm font-semibold text-ink ring-1 ring-inset ring-ink/15 transition-colors hover:bg-ink/10"
-                  >
-                    + Agregar fila
-                  </button>
+                {loteErrors.cantidades?.root && (
+                  <p className="text-sm text-red-500">{loteErrors.cantidades.root.message}</p>
+                )}
+
+                <button
+                  type="submit"
+                  disabled={isCreandoLote || totalLote === 0}
+                  className="ui-primary flex w-full justify-center px-3 py-3 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isCreandoLote
+                    ? "Creando..."
+                    : totalLote === 0
+                      ? "Indicá cuántas crear"
+                      : `Crear ${totalLote} ${totalLote === 1 ? "cochera" : "cocheras"}`}
+                </button>
+              </form>
+
+              {resultadoLote && (
+                <div
+                  role="status"
+                  className="mt-6 rounded-xl border border-accent/20 bg-accent/5 p-4"
+                >
+                  <p className="text-sm font-semibold text-ink">
+                    {resultadoLote.length === 1
+                      ? "Se creó 1 cochera"
+                      : `Se crearon ${resultadoLote.length} cocheras`}
+                    {resultadoLote[0]?.sector && ` en ${resultadoLote[0].sector}`}:
+                  </p>
+
+                  <ul className="mt-2 space-y-1 text-sm text-ink/70">
+                    {agruparPorTipo(resultadoLote).map(([tipo, numeros]) => (
+                      <li key={tipo}>
+                        <span className="font-medium text-ink">{TIPO_LABELS[tipo] ?? tipo}:</span>{" "}
+                        {numeros.join(", ")}
+                      </li>
+                    ))}
+                  </ul>
 
                   <button
-                    type="submit"
-                    disabled={isCreandoLote}
-                    className="ui-primary flex-1 px-4 py-2.5 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                    type="button"
+                    onClick={() => setResultadoLote(null)}
+                    className="mt-3 text-xs font-medium text-link hover:text-brand"
                   >
-                    {isCreandoLote
-                      ? "Creando..."
-                      : `Crear ${filasLote.length} ${filasLote.length === 1 ? "cochera" : "cocheras"}`}
+                    Ocultar
                   </button>
                 </div>
-              </form>
+              )}
             </div>
           </div>
 

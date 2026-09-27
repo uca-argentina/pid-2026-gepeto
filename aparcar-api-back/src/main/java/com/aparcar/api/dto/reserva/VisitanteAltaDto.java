@@ -56,4 +56,14 @@ public class VisitanteAltaDto {
     private LocalDateTime desde;
 
     private LocalDateTime hasta;
+
+    /**
+     * Opcional: el admin lo marca si ya sabe, al momento del alta, que la
+     * persona tiene una discapacidad. Si no viene se toma como false, y el
+     * propio visitante lo puede cambiar despues desde su perfil.
+     *
+     * <p>Se aplica ANTES de crear la reserva del alta, asi que un alta con
+     * esto en true puede reservar directamente una cochera ACCESIBLE.
+     */
+    private Boolean tieneDiscapacidad;
 }

@@ -11,3 +11,5 @@ databaseChangeLog:
       file: db/changelog/005-identidad-visitante-unica.yaml
   - include:
       file: db/changelog/006-reservas-por-franja-horaria.yaml
+  - include:
+      file: db/changelog/007-visitante-tiene-discapacidad.yaml

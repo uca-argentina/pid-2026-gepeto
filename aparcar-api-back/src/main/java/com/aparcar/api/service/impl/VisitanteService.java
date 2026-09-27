@@ -49,14 +49,19 @@ public class VisitanteService implements IVisitanteService {
         // La contraseña inicial es el documento. Es deliberado: el admin da de
         // alta al visitante en el momento y le puede decir con que entrar sin
         // tener que inventar y comunicar una contraseña aparte.
-        Visitante visitante = visitanteRepository.save(new Visitante(
+        Visitante nuevo = new Visitante(
                 dto.getNombre(),
                 dto.getDocumento(),
                 dto.getEmail(),
                 passwordEncoder.encode(dto.getDocumento()),
                 dto.getTelefono(),
                 Set.of(AppAuthority.USER),
-                true));
+                true);
+        // Se setea antes de guardar y antes de crear la reserva: si el admin
+        // marca que la persona tiene discapacidad, la reserva del alta ya puede
+        // ser en una cochera ACCESIBLE.
+        nuevo.setTieneDiscapacidad(Boolean.TRUE.equals(dto.getTieneDiscapacidad()));
+        Visitante visitante = visitanteRepository.save(nuevo);
 
         VehiculoRequestDto vehiculoDto = new VehiculoRequestDto();
         vehiculoDto.setPatente(dto.getPatente());
@@ -116,6 +121,12 @@ public class VisitanteService implements IVisitanteService {
         visitante.setTelefono(dto.getTelefono());
         visitante.setEmail(dto.getEmail());
 
+        // null = "no lo mandaron": se respeta lo que ya estaba. Solo un valor
+        // explicito (true o false) cambia la declaracion.
+        if (dto.getTieneDiscapacidad() != null) {
+            visitante.setTieneDiscapacidad(dto.getTieneDiscapacidad());
+        }
+
         return toResponseDto(visitanteRepository.save(visitante));
     }
 
@@ -158,6 +169,7 @@ public class VisitanteService implements IVisitanteService {
                 visitante.getNombre(),
                 visitante.getDocumento(),
                 visitante.getTelefono(),
-                visitante.getEmail());
+                visitante.getEmail(),
+                visitante.puedeUsarCocheraAccesible());
     }
 }

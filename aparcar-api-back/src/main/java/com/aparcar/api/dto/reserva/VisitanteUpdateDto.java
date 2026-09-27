@@ -16,4 +16,13 @@ public class VisitanteUpdateDto {
     @NotBlank(message = "El email es obligatorio")
     @Email(message = "El email no tiene un formato valido")
     private String email;
+
+    /**
+     * Si la persona tiene una discapacidad (habilita las cocheras ACCESIBLE).
+     *
+     * <p>Opcional a proposito: si no viene (null), el valor guardado no se
+     * toca. Asi un cliente que todavia no manda este campo no le borra la
+     * declaracion a nadie sin querer.
+     */
+    private Boolean tieneDiscapacidad;
 }

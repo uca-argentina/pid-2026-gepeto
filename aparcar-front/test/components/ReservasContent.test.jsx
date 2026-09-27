@@ -676,3 +676,106 @@ describe("ReservasContent: el layout en dos columnas", () => {
     expect(await screen.findByText("Juan Perez — ABC123")).toBeInTheDocument();
   });
 });
+
+describe("ReservasContent: cocheras accesibles", () => {
+  const accesible = () => cochera({ id: "c9", numero: "A-09", tipo: "ACCESIBLE" });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  async function resolverPatenteAdmin() {
+    const user = userEvent.setup();
+    render(<ReservasContent modo="admin" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/visitantes"));
+    await user.type(screen.getByPlaceholderText("ABC123 / AB123CD"), "ABC123");
+    await screen.findByRole("option", { name: /A-01/ });
+    return user;
+  }
+
+  // El admin reserva en nombre de otros, así que /disponibles le trae todo:
+  // la pantalla filtra según el perfil del dueño del vehículo.
+  it("admin: oculta las ACCESIBLE si el dueño no declaró discapacidad y lo explica", async () => {
+    mockData({
+      visitantes: [visitante({ tieneDiscapacidad: false })],
+      vehiculos: [vehiculo()],
+      disponibles: [cochera(), accesible()],
+    });
+    await resolverPatenteAdmin();
+
+    expect(screen.queryByRole("option", { name: /A-09/ })).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/No se muestran las cocheras accesibles: Juan Perez no tiene declarada discapacidad/)
+    ).toBeInTheDocument();
+  });
+
+  it("admin: ofrece las ACCESIBLE si el dueño declaró discapacidad", async () => {
+    mockData({
+      visitantes: [visitante({ tieneDiscapacidad: true })],
+      vehiculos: [vehiculo()],
+      disponibles: [cochera(), accesible()],
+    });
+    await resolverPatenteAdmin();
+
+    expect(screen.getByRole("option", { name: /A-09/ })).toBeInTheDocument();
+    expect(screen.queryByText(/No se muestran las cocheras accesibles/)).not.toBeInTheDocument();
+  });
+
+  // Si el backend no manda el dato, no se esconde nada: el rechazo del backend
+  // sigue siendo la última palabra.
+  it("admin: si el visitante no trae el campo, no oculta nada", async () => {
+    mockData({
+      visitantes: [visitante()],
+      vehiculos: [vehiculo()],
+      disponibles: [cochera(), accesible()],
+    });
+    await resolverPatenteAdmin();
+
+    expect(screen.getByRole("option", { name: /A-09/ })).toBeInTheDocument();
+  });
+
+  it("admin: si solo quedaban ACCESIBLE, avisa que no hay cocheras para esa persona", async () => {
+    mockData({
+      visitantes: [visitante({ tieneDiscapacidad: false })],
+      vehiculos: [vehiculo()],
+      disponibles: [accesible()],
+    });
+    const user = userEvent.setup();
+    render(<ReservasContent modo="admin" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/visitantes"));
+    await user.type(screen.getByPlaceholderText("ABC123 / AB123CD"), "ABC123");
+
+    expect(await screen.findByText("No hay cocheras libres durante toda esa franja.")).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /A-09/ })).not.toBeInTheDocument();
+  });
+
+  // Para el visitante el filtro lo hace el backend según su perfil: lo que
+  // venga en /disponibles se muestra tal cual.
+  it("visitante: muestra lo que devuelve el backend sin filtrar de nuevo", async () => {
+    mockData({ vehiculos: [vehiculo()], disponibles: [cochera(), accesible()] });
+    const user = userEvent.setup();
+    render(<ReservasContent modo="user" />);
+
+    await screen.findByRole("option", { name: /ABC123 — AUTO/ });
+    await user.selectOptions(screen.getByLabelText("Patente"), "ABC123");
+
+    expect(await screen.findByRole("option", { name: /A-09/ })).toBeInTheDocument();
+  });
+
+  it("si el backend rechaza la reserva de una ACCESIBLE, muestra su mensaje tal cual", async () => {
+    const mensaje =
+      "La cochera A-09 es de uso exclusivo para personas con discapacidad, y Juan Perez no lo tiene declarado en su perfil.";
+    mockData({ vehiculos: [vehiculo()], disponibles: [accesible()] });
+    postMock.mockRejectedValue({ response: { status: 400, data: { message: mensaje } } });
+    const user = userEvent.setup();
+    render(<ReservasContent modo="user" />);
+
+    await screen.findByRole("option", { name: /ABC123 — AUTO/ });
+    await user.selectOptions(screen.getByLabelText("Patente"), "ABC123");
+    await screen.findByRole("option", { name: /A-09/ });
+    await user.selectOptions(screen.getByLabelText("Cochera"), "c9");
+    await user.click(screen.getByRole("button", { name: /confirmar reserva/i }));
+
+    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith(mensaje));
+  });
+});

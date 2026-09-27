@@ -58,6 +58,9 @@ public class AuthService implements IAuthService {
                 registrationDto.getTelefono(),
                 Set.of(AppAuthority.USER),
                 true);
+        // Autodeclarado y opcional: si no viene, la cuenta nace sin el permiso
+        // (el default de la entidad) y la persona lo puede marcar despues.
+        user.setTieneDiscapacidad(Boolean.TRUE.equals(registrationDto.getTieneDiscapacidad()));
         Visitante savedUser;
         try {
             // save realiza su propia transacción. Si otra solicitud gana la

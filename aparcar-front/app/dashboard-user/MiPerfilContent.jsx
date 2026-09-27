@@ -12,6 +12,8 @@ import { formatoPatenteValido, MENSAJE_FORMATO_INVALIDO } from "@/utils/patenteV
 const editPerfilSchema = z.object({
   telefono: z.string().optional(),
   email: z.string().min(1, "El email es obligatorio").email("Ingresa un correo válido"),
+  // Autodeclarado: habilita reservar cocheras ACCESIBLE.
+  tieneDiscapacidad: z.boolean().optional(),
 });
 
 const passwordSchema = z
@@ -55,7 +57,12 @@ const labelClasses = "ui-label";
 //
 // `onVehiculosCambiaron` avisa al dashboard para que el formulario de reserva
 // vuelva a pedir la lista de patentes.
-export default function MiPerfilContent({ onVehiculosCambiaron }) {
+//
+// `onDiscapacidadCambiada` avisa cuando el visitante marca o desmarca que tiene
+// una discapacidad: eso cambia qué cocheras le ofrece el backend (las
+// ACCESIBLE aparecen o desaparecen), así que el formulario de reserva tiene
+// que volver a pedirlas.
+export default function MiPerfilContent({ onVehiculosCambiaron, onDiscapacidadCambiada }) {
   const [visitante, setVisitante] = useState(null);
   const [vehiculos, setVehiculos] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -96,17 +103,28 @@ export default function MiPerfilContent({ onVehiculosCambiaron }) {
   }, []);
 
   const startEditandoPerfil = () => {
-    editPerfilForm.reset({ telefono: visitante.telefono || "", email: visitante.email || "" });
+    editPerfilForm.reset({
+      telefono: visitante.telefono || "",
+      email: visitante.email || "",
+      tieneDiscapacidad: Boolean(visitante.tieneDiscapacidad),
+    });
     setEditandoPerfil(true);
   };
 
   const onEditarPerfil = async (data) => {
+    const tieneDiscapacidad = Boolean(data.tieneDiscapacidad);
     try {
       const res = await api.put("/api/v1/visitantes/me", {
         telefono: data.telefono || undefined,
         email: data.email,
+        // Se manda siempre explícito (true o false): el backend interpreta un
+        // valor ausente como "no tocar", y acá el checkbox siempre tiene valor.
+        tieneDiscapacidad,
       });
       toast.success("Tus datos se actualizaron correctamente");
+      if (tieneDiscapacidad !== Boolean(visitante.tieneDiscapacidad)) {
+        onDiscapacidadCambiada?.();
+      }
       setVisitante(res.data);
       setEditandoPerfil(false);
     } catch (err) {
@@ -205,6 +223,11 @@ export default function MiPerfilContent({ onVehiculosCambiaron }) {
                 {visitante.telefono ? ` · ${visitante.telefono}` : ""}
                 {visitante.email ? ` · ${visitante.email}` : ""}
               </p>
+              {visitante.tieneDiscapacidad && (
+                <span className="mt-2 inline-flex items-center rounded-full bg-accent/10 px-2.5 py-0.5 text-xs font-medium text-link ring-1 ring-inset ring-accent/30">
+                  Persona con discapacidad · puede usar cocheras accesibles
+                </span>
+              )}
             </div>
 
             <div className="profile-actions flex shrink-0 gap-2">
@@ -246,6 +269,20 @@ export default function MiPerfilContent({ onVehiculosCambiaron }) {
                 )}
                 <p className="mt-1 text-xs text-ink/50">
                   Es con lo que iniciás sesión: si lo cambiás, entrás con el nuevo.
+                </p>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-ink/70" htmlFor="edit-discapacidad">
+                  <input
+                    id="edit-discapacidad"
+                    type="checkbox"
+                    {...editPerfilForm.register("tieneDiscapacidad")}
+                    className="h-4 w-4 rounded border-ink/20 bg-surface accent-accent"
+                  />
+                  Soy una persona con discapacidad
+                </label>
+                <p className="mt-1 text-xs text-ink/50">
+                  Te habilita a reservar las cocheras accesibles. Es una declaración tuya y la podés cambiar cuando quieras.
                 </p>
               </div>
               <div className="flex gap-2 sm:col-span-2">

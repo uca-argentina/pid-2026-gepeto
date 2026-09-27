@@ -106,6 +106,19 @@ export default function ReservasContent({
     return visitantes.find((v) => v.id === vehiculoEncontrado.visitanteId) || null;
   }, [esAdmin, vehiculoEncontrado, visitantes]);
 
+  // Para un visitante, /disponibles ya viene filtrado por el backend según su
+  // perfil. El admin, en cambio, recibe todas las cocheras (reserva en nombre
+  // de otros), así que las ACCESIBLE se ocultan acá cuando el dueño del
+  // vehículo no declaró discapacidad: ofrecerlas solo lleva a un rechazo.
+  // La comparación es estricta con `false` para no ocultar nada si el dato no
+  // viene (visitante no encontrado todavía o un backend anterior al campo).
+  const ocultarAccesibles = esAdmin && visitanteEncontrado?.tieneDiscapacidad === false;
+  const cocherasOfrecidas = useMemo(
+    () => (ocultarAccesibles ? cocheras.filter((c) => c.tipo !== "ACCESIBLE") : cocheras),
+    [cocheras, ocultarAccesibles]
+  );
+  const hayAccesiblesOcultas = cocherasOfrecidas.length < cocheras.length;
+
   const cargarReservas = async () => {
     setLoadingReservas(true);
     try {
@@ -349,16 +362,22 @@ export default function ReservasContent({
                     ? "Ingresá primero una patente válida y la franja"
                     : "Elegí primero un vehículo y la franja"}
                 </option>
-                {cocheras.map((c) => (
+                {cocherasOfrecidas.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.numero} — {c.sector} ({c.tipo})
                   </option>
                 ))}
               </select>
               {errors.cocheraId && <p className="mt-1 text-sm text-red-500">{errors.cocheraId.message}</p>}
-              {vehiculoEncontrado && rangoValido && cocheras.length === 0 && (
+              {vehiculoEncontrado && rangoValido && cocherasOfrecidas.length === 0 && (
                 <p className="mt-1 text-sm text-ink/50">
                   No hay cocheras libres durante toda esa franja.
+                </p>
+              )}
+              {hayAccesiblesOcultas && (
+                <p className="mt-1 text-sm text-ink/50">
+                  No se muestran las cocheras accesibles: {visitanteEncontrado.nombre} no tiene
+                  declarada discapacidad en su perfil.
                 </p>
               )}
             </div>

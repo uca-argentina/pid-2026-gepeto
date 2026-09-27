@@ -1,5 +1,6 @@
 package com.aparcar.api.controller;
 
+import com.aparcar.api.dto.reserva.CocheraAltaPorPlantaDto;
 import com.aparcar.api.dto.reserva.CocheraRequestDto;
 import com.aparcar.api.dto.reserva.CocheraResponseDto;
 import com.aparcar.api.entity.reserva.CocheraEstado;
@@ -11,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -39,6 +41,16 @@ public class CocheraController {
     @PostMapping("/bulk")
     public ResponseEntity<List<CocheraResponseDto>> crearEnLote(@Valid @RequestBody List<CocheraRequestDto> dtos) {
         return ResponseEntity.status(HttpStatus.CREATED).body(cocheraService.crearEnLote(dtos));
+    }
+
+    /**
+     * Alta por planta: un sector y cuantas cocheras de cada tipo. Los numeros
+     * los genera el backend y vuelven en la respuesta, para que el admin vea
+     * exactamente cuales quedaron asignados.
+     */
+    @PostMapping("/alta-por-planta")
+    public ResponseEntity<List<CocheraResponseDto>> crearPorPlanta(@Valid @RequestBody CocheraAltaPorPlantaDto dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(cocheraService.crearPorPlanta(dto));
     }
 
     @GetMapping("/sectores")
@@ -77,12 +89,25 @@ public class CocheraController {
     /**
      * Cocheras libres durante toda la franja pedida. El rango es semiabierto:
      * una cochera cuya reserva termina justo en "desde" cuenta como libre.
+     *
+     * <p>El endpoint es publico, asi que {@code authentication} viene null
+     * para un anonimo. Si quien pide es un visitante logueado sin discapacidad
+     * declarada, no se le ofrecen las cocheras ACCESIBLE (que igual no podria
+     * reservar).
      */
     @GetMapping("/disponibles")
     public ResponseEntity<List<CocheraResponseDto>> listarDisponibles(
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime desde,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime hasta,
-            @RequestParam(required = false) VehiculoTipo tipoVehiculo) {
-        return ResponseEntity.ok(cocheraService.listarDisponibles(desde, hasta, tipoVehiculo));
+            @RequestParam(required = false) VehiculoTipo tipoVehiculo,
+            Authentication authentication) {
+        String requesterEmail = authentication == null ? null : authentication.getName();
+        return ResponseEntity.ok(cocheraService.listarDisponibles(
+                desde, hasta, tipoVehiculo, requesterEmail, esAdmin(authentication)));
+    }
+
+    private static boolean esAdmin(Authentication authentication) {
+        return authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ADMIN"));
     }
 }

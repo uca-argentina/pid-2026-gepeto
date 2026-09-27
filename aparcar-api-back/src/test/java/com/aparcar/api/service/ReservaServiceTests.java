@@ -134,6 +134,9 @@ public class ReservaServiceTests {
     @DisplayName("crear permite una cochera ACCESIBLE para cualquier tipo de vehiculo")
     void crearPermiteCocheraAccesibleParaCualquierVehiculo() {
         cochera.setTipo(CocheraTipo.ACCESIBLE);
+        // La regla de vehiculo se sigue cumpliendo; la de persona exige que el
+        // dueño tenga declarada la discapacidad (ver ReservaAccesibilidadTests).
+        visitante.setTieneDiscapacidad(true);
         when(reservaRepository.existeSolapadaEnCochera(cochera.getId(), ReservaEstado.CONFIRMADA, desde, hasta))
                 .thenReturn(false);
         when(reservaRepository.save(any())).thenAnswer(i -> i.getArgument(0));

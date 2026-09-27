@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const { getMock, postMock, putMock, deleteMock, toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
@@ -344,97 +344,212 @@ await user.type(screen.getByLabelText(/^número$/i), "PE-01");
     );
   });
 
-  it("sin ningun sector cargado todavia, el alta arranca directo en modo texto libre", async () => {
+  it("sin ningun sector cargado todavia, el alta (y el alta por planta) arrancan directo en modo texto libre", async () => {
     mockCocheras([], [], []);
     render(<CocherasManagement />);
 
-    expect(await screen.findByPlaceholderText("Nombre del sector nuevo")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getAllByPlaceholderText("Nombre del sector nuevo")).toHaveLength(2)
+    );
+    expect(screen.getByLabelText("Sector").tagName).toBe("INPUT");
+    expect(screen.getByLabelText("Sector de la planta").tagName).toBe("INPUT");
   });
 
-  // ---- Alta en lote ----
+  // ---- Alta por planta ----
 
-  it("el lote arranca con una sola fila y permite agregar mas", async () => {
+  const cantidad = (tipo) => screen.getByLabelText(tipo, { selector: "input" });
+
+  async function cargarCantidad(user, tipo, valor) {
+    await user.clear(cantidad(tipo));
+    await user.type(cantidad(tipo), String(valor));
+  }
+
+  it("las cuatro cantidades arrancan en 0", async () => {
+    mockCocheras([cochera()]);
+    render(<CocherasManagement />);
+    await screen.findByText("A-01");
+
+    for (const tipo of ["Auto", "Moto", "Accesible", "Carga"]) {
+      expect(cantidad(tipo)).toHaveValue(0);
+      expect(cantidad(tipo)).toHaveAttribute("min", "0");
+    }
+  });
+
+  it("con todas las cantidades en 0, el boton de crear queda deshabilitado", async () => {
+    mockCocheras([cochera()]);
+    render(<CocherasManagement />);
+    await screen.findByText("A-01");
+
+    expect(screen.getByRole("button", { name: /indicá cuántas crear/i })).toBeDisabled();
+  });
+
+  it("al cargar alguna cantidad se habilita y muestra el total a crear", async () => {
     mockCocheras([cochera()]);
     const user = userEvent.setup();
     render(<CocherasManagement />);
     await screen.findByText("A-01");
 
-    expect(screen.getAllByLabelText(/^Número fila/).length).toBe(1);
+    await cargarCantidad(user, "Auto", 3);
+    await cargarCantidad(user, "Moto", 2);
 
-    await user.click(screen.getByRole("button", { name: /agregar fila/i }));
-
-    expect(screen.getAllByLabelText(/^Número fila/).length).toBe(2);
+    expect(screen.getByRole("button", { name: "Crear 5 cocheras" })).toBeEnabled();
   });
 
-  it("no permite quitar la ultima fila del lote", async () => {
-    mockCocheras([cochera()]);
+  it("el sector del alta por planta usa el mismo dropdown de sectores reales, con opcion de uno nuevo", async () => {
+    mockCocheras([cochera({ sector: "Planta Baja" }), cochera({ id: "2", numero: "A-02", sector: "Subsuelo" })]);
     render(<CocherasManagement />);
     await screen.findByText("A-01");
 
-    expect(screen.getByRole("button", { name: /quitar fila/i })).toBeDisabled();
+    const select = screen.getByLabelText("Sector de la planta");
+    expect(select.tagName).toBe("SELECT");
+    const opciones = Array.from(select.querySelectorAll("option")).map((o) => o.textContent);
+    expect(opciones).toEqual(["Seleccioná un sector", "Planta Baja", "Subsuelo", "+ Otro (sector nuevo)"]);
   });
 
-  it("envia el lote completo a POST /api/v1/cocheras/bulk", async () => {
+  it("envia sector y cantidades por tipo (sin los que quedaron en 0) a POST alta-por-planta", async () => {
     mockCocheras([cochera({ sector: "Planta Baja" })]);
-    postMock.mockResolvedValue({ data: [cochera(), cochera({ id: "2", numero: "A-02" })] });
+    postMock.mockResolvedValue({ data: [] });
     const user = userEvent.setup();
     render(<CocherasManagement />);
     await screen.findByText("A-01");
 
-    await user.click(screen.getByRole("button", { name: /agregar fila/i }));
-
-    const numeros = screen.getAllByLabelText(/^Número fila/);
-    await user.type(numeros[0], "L-01");
-    await user.type(numeros[1], "L-02");
-
-    const sectores = screen.getAllByLabelText(/^Sector fila/);
-    await user.selectOptions(sectores[0], "Planta Baja");
-    await user.selectOptions(sectores[1], "Planta Baja");
-
-    await user.click(screen.getByRole("button", { name: /crear 2 cocheras/i }));
+    await user.selectOptions(screen.getByLabelText("Sector de la planta"), "Planta Baja");
+    await cargarCantidad(user, "Auto", 3);
+    await cargarCantidad(user, "Accesible", 1);
+    await user.click(screen.getByRole("button", { name: "Crear 4 cocheras" }));
 
     await waitFor(() =>
-      expect(postMock).toHaveBeenCalledWith(
-        "/api/v1/cocheras/bulk",
-        expect.arrayContaining([
-          expect.objectContaining({ numero: "L-01", sector: "Planta Baja" }),
-          expect.objectContaining({ numero: "L-02", sector: "Planta Baja" }),
-        ])
-      )
+      expect(postMock).toHaveBeenCalledWith("/api/v1/cocheras/alta-por-planta", {
+        sector: "Planta Baja",
+        cantidades: { AUTO: 3, ACCESIBLE: 1 },
+      })
     );
-    expect(toastSuccessMock).toHaveBeenCalledWith("2 cocheras creadas correctamente");
   });
 
-  it("si el backend rechaza el lote completo, muestra su mensaje y no limpia el formulario", async () => {
+  it("permite crear la planta en un sector nuevo con '+ Otro'", async () => {
     mockCocheras([cochera({ sector: "Planta Baja" })]);
-    postMock.mockRejectedValue({
-      response: { data: { message: "Ya existe una cochera con el numero 'L-01'." } },
+    postMock.mockResolvedValue({ data: [] });
+    const user = userEvent.setup();
+    render(<CocherasManagement />);
+    await screen.findByText("A-01");
+
+    await user.selectOptions(screen.getByLabelText("Sector de la planta"), "+ Otro (sector nuevo)");
+    await user.type(screen.getByLabelText("Sector de la planta"), "Primer Piso");
+    await cargarCantidad(user, "Moto", 2);
+    await user.click(screen.getByRole("button", { name: "Crear 2 cocheras" }));
+
+    await waitFor(() =>
+      expect(postMock).toHaveBeenCalledWith("/api/v1/cocheras/alta-por-planta", {
+        sector: "Primer Piso",
+        cantidades: { MOTO: 2 },
+      })
+    );
+  });
+
+  it("muestra los numeros que asigno el backend, agrupados por tipo", async () => {
+    mockCocheras([cochera({ sector: "Planta Baja" })]);
+    postMock.mockResolvedValue({
+      data: [
+        cochera({ id: "n1", numero: "A-05", tipo: "AUTO" }),
+        cochera({ id: "n2", numero: "A-06", tipo: "AUTO" }),
+        cochera({ id: "n3", numero: "M-03", tipo: "MOTO" }),
+      ],
     });
     const user = userEvent.setup();
     render(<CocherasManagement />);
     await screen.findByText("A-01");
 
-    await user.type(screen.getByLabelText(/^Número fila/), "L-01");
-    await user.selectOptions(screen.getByLabelText(/^Sector fila/), "Planta Baja");
-    await user.click(screen.getByRole("button", { name: /crear 1 cochera/i }));
+    await user.selectOptions(screen.getByLabelText("Sector de la planta"), "Planta Baja");
+    await cargarCantidad(user, "Auto", 2);
+    await cargarCantidad(user, "Moto", 1);
+    await user.click(screen.getByRole("button", { name: "Crear 3 cocheras" }));
 
-    await waitFor(() =>
-      expect(toastErrorMock).toHaveBeenCalledWith("Ya existe una cochera con el numero 'L-01'.")
-    );
-    // El formulario no se resetea: el admin puede corregir sin volver a tipear todo.
-    expect(screen.getByLabelText(/^Número fila/)).toHaveValue("L-01");
+    const resultado = await screen.findByRole("status");
+    expect(resultado).toHaveTextContent("Se crearon 3 cocheras en Planta Baja");
+    expect(resultado).toHaveTextContent("Auto: A-05, A-06");
+    expect(resultado).toHaveTextContent("Moto: M-03");
+    expect(toastSuccessMock).toHaveBeenCalledWith("Se crearon 3 cocheras");
   });
 
-  it("muestra errores de validacion por fila si falta el numero", async () => {
+  it("despues de crear, vuelve las cantidades a 0 y refresca la lista", async () => {
+    mockCocheras([cochera({ sector: "Planta Baja" })]);
+    postMock.mockResolvedValue({ data: [cochera({ id: "n1", numero: "A-02" })] });
+    const user = userEvent.setup();
+    render(<CocherasManagement />);
+    await screen.findByText("A-01");
+    const pedidosAntes = getMock.mock.calls.filter((c) => c[0] === "/api/v1/cocheras").length;
+
+    await user.selectOptions(screen.getByLabelText("Sector de la planta"), "Planta Baja");
+    await cargarCantidad(user, "Auto", 1);
+    await user.click(screen.getByRole("button", { name: "Crear 1 cochera" }));
+
+    await screen.findByRole("status");
+    expect(cantidad("Auto")).toHaveValue(0);
+    const pedidosDespues = getMock.mock.calls.filter((c) => c[0] === "/api/v1/cocheras").length;
+    expect(pedidosDespues).toBeGreaterThan(pedidosAntes);
+  });
+
+  it("si el backend rechaza el pedido, muestra su mensaje y no borra lo cargado", async () => {
+    mockCocheras([cochera({ sector: "Planta Baja" })]);
+    postMock.mockRejectedValue({
+      response: { data: { message: "Indica al menos un tipo de cochera con cantidad mayor a 0." } },
+    });
+    const user = userEvent.setup();
+    render(<CocherasManagement />);
+    await screen.findByText("A-01");
+
+    await user.selectOptions(screen.getByLabelText("Sector de la planta"), "Planta Baja");
+    await cargarCantidad(user, "Carga", 2);
+    await user.click(screen.getByRole("button", { name: "Crear 2 cocheras" }));
+
+    await waitFor(() =>
+      expect(toastErrorMock).toHaveBeenCalledWith(
+        "Indica al menos un tipo de cochera con cantidad mayor a 0."
+      )
+    );
+    expect(cantidad("Carga")).toHaveValue(2);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("exige elegir un sector antes de enviar", async () => {
     mockCocheras([cochera({ sector: "Planta Baja" })]);
     const user = userEvent.setup();
     render(<CocherasManagement />);
     await screen.findByText("A-01");
 
-    await user.selectOptions(screen.getByLabelText(/^Sector fila/), "Planta Baja");
-    await user.click(screen.getByRole("button", { name: /crear 1 cochera/i }));
+    await cargarCantidad(user, "Auto", 2);
+    await user.click(screen.getByRole("button", { name: "Crear 2 cocheras" }));
 
-    expect(await screen.findByText("El número es obligatorio")).toBeInTheDocument();
+    expect(await screen.findAllByText("El sector es obligatorio")).not.toHaveLength(0);
     expect(postMock).not.toHaveBeenCalled();
+  });
+
+  it("no envia una cantidad negativa", async () => {
+    mockCocheras([cochera({ sector: "Planta Baja" })]);
+    const user = userEvent.setup();
+    render(<CocherasManagement />);
+    await screen.findByText("A-01");
+
+    await user.selectOptions(screen.getByLabelText("Sector de la planta"), "Planta Baja");
+    await cargarCantidad(user, "Auto", 2);
+    // jsdom no escribe bien el "-" tecleado en un input numérico: se setea
+    // el valor directo, que es lo mismo que le llega al formulario.
+    fireEvent.change(cantidad("Moto"), { target: { value: "-1" } });
+    await user.click(screen.getByRole("button", { name: "Crear 2 cocheras" }));
+
+    // El input tiene min=0: el navegador frena el envío con su propio aviso
+    // antes de que llegue al schema. Lo que importa es que no viaja.
+    expect(cantidad("Moto")).toBeInvalid();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(postMock).not.toHaveBeenCalled();
+  });
+
+  it("ya no ofrece la carga fila por fila ni llama al endpoint /bulk", async () => {
+    mockCocheras([cochera()]);
+    render(<CocherasManagement />);
+    await screen.findByText("A-01");
+
+    expect(screen.queryByRole("button", { name: /agregar fila/i })).not.toBeInTheDocument();
+    expect(screen.queryAllByLabelText(/^Número fila/)).toHaveLength(0);
   });
 });
