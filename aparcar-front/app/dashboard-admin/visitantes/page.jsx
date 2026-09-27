@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { requireAuth } from "@/utils/serverAuth";
-import LogoutButton from "@/components/LogoutButton";
 import VisitantesContent from "../VisitantesContent";
 import DashboardHeader from "@/components/DashboardHeader";
 
@@ -17,7 +16,7 @@ export default async function VisitantesAdminPage() {
   return (
     <div className="dashboard-shell">
       <div className="dashboard-container">
-        <DashboardHeader actions={<LogoutButton />}>
+        <DashboardHeader>
           <Link href="/dashboard-admin" className="dashboard-back-link">
             ← Volver al panel
           </Link>

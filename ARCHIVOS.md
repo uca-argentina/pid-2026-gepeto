@@ -1,5 +1,43 @@
 # Mapa de archivos
 
+## Mi cuenta y nombre del estacionamiento
+
+- `components/AccountMenu.jsx` y `DashboardHeader.jsx`: acceso compartido a
+  **Mis datos** y **Cerrar sesión** en todas las pantallas de ambos roles.
+  Reutiliza `LogoutButton`; admite teclado, Escape, clic fuera y pantallas móviles.
+- `app/dashboard-admin/perfil/page.jsx` y `app/dashboard-user/perfil/page.jsx`:
+  rutas protegidas con `requireAuth`, con acceso de regreso al panel.
+- `components/ProfileSettings.jsx`: perfil responsive con identidad, contacto
+  y cambio de contraseña. Reutiliza Axios, React Hook Form, Zod, Sonner y los
+  estilos de ambos temas. Permite descartar cambios, reintentar una carga fallida
+  y conserva la edición si falla el guardado; bloquea controles mientras guarda.
+  USER conserva email, teléfono y declaración de discapacidad; ADMIN puede editar
+  además su documento y el nombre de su estacionamiento.
+- `components/ParkingHeading.jsx`: únicamente el nombre del estacionamiento,
+  centrado sobre el panel operativo, con tipografía más pequeña y de peso medio.
+  Sin icono, subtítulo ni enlace adicional. Usa **Mi estacionamiento** si aún no
+  se configuró el nombre; los nombres largos se ajustan al ancho disponible.
+- `app/dashboard-user/MiPerfilContent.jsx`: muestra únicamente la gestión de
+  vehículos, sin resumen personal ni consulta a `/api/v1/visitantes/me`.
+  Conserva el aviso al formulario de reservas cuando cambian los vehículos.
+  Los datos personales se consultan y editan desde **Mi cuenta → Mis datos**.
+  Al volver del perfil, el panel vuelve a consultar vehículos y disponibilidad.
+- Backend `Visitante`, `VisitanteUpdateDto`, `VisitanteResponseDto` y
+  `VisitanteService`: reutilizan `GET/PUT /api/v1/visitantes/me`. El servidor valida
+  campos exclusivos de ADMIN, normaliza email/documento, evita duplicados y
+  conserva documento, nombre del estacionamiento y discapacidad si no se envían.
+  El teléfono se puede vaciar explícitamente. No se cambian roles ni contraseñas
+  al modificar el documento.
+- `009-nombre-estacionamiento.yaml`: columna opcional de hasta 100 caracteres
+  **por cuenta administradora**, sin modificar las cuentas existentes. Se aplica
+  con Liquibase al arrancar el backend actualizado; no requiere carga inicial.
+- `IRevokedUserCache`, `RevokedUserCache` y filtros JWT: al cambiar de email se
+  invalidan las sesiones anteriores y el frontend pide iniciar sesión nuevamente.
+  La fecha de emisión permite volver a usar un email previo sin reactivar tokens
+  antiguos; la revocación administrativa existente conserva su comportamiento.
+
+Las rutas de frontend de esta sección son relativas a `aparcar-front/`.
+
 ## Gestión de tarifas
 
 - `aparcar-front/app/dashboard-admin/tarifas/page.jsx`: nueva pantalla protegida
@@ -157,7 +195,7 @@ Resumen de lo nuevo, para no tener que leer todo el archivo buscando las marcas.
 - `app/page.jsx` reemplaza a `app/page.js`: landing pública, con redirección automática al dashboard si ya hay sesión.
 - `app/not-found.js`: página 404 propia.
 - `components/LogoutButton.jsx`: botón de cerrar sesión, presente en ambos dashboards.
-- `MiPerfilContent.jsx`: pasó de solo cargar datos a gestionarlos (editar perfil, editar y eliminar vehículos).
+- `MiPerfilContent.jsx`: gestiona únicamente los vehículos en el dashboard. El perfil personal se consulta y edita desde **Mi cuenta → Mis datos**.
 
 **Bugfix: no se podía reservar desde el panel admin**
 
@@ -722,9 +760,9 @@ Sección destinada a usuarios internos con rol `USER`.
 
 | Archivo | Qué hace |
 |---|---|
-| `page.jsx` | Entrada del dashboard USER, protegida con `requireAuth(["USER"])`. Combina "Mis datos" y "Nueva reserva" en una sola página, más el `LogoutButton` |
-| `MiPerfilContent.jsx` ✏️ | El propio visitante carga sus datos (nombre, documento, teléfono, email) una sola vez, vinculados a su cuenta (`/api/v1/visitantes/me`), y gestiona sus vehículos. Ampliado: ahora también **edita su teléfono y email** (`PUT /me`) y **edita o elimina sus vehículos** (`PUT` / `DELETE /api/v1/vehiculos/{id}`, con confirmación antes de borrar). Suma el checkbox "Soy una persona con discapacidad" 🆕 en "Editar mis datos", precargado con el valor actual, y una insignia en sus datos cuando está declarada. Si el valor cambia, avisa con `onDiscapacidadCambiada` para que el formulario de reservas vuelva a pedir las cocheras |
-| `PanelVisitante.jsx` ✏️ | Agrupa "Mis datos" y "Nueva reserva" y guarda el contador que refresca el formulario de reservas. Ahora lo sube también cuando cambia la declaración de discapacidad, porque eso cambia qué cocheras ofrece el backend |
+| `page.jsx` | Entrada del dashboard USER, protegida con `requireAuth(["USER"])`. Combina vehículos y reservas; el encabezado incluye el menú **Mi cuenta** |
+| `MiPerfilContent.jsx` | Lista, agrega, edita y elimina vehículos propios, conservando validaciones, confirmación de baja y avisos al formulario de reservas. No muestra información personal ni consulta `/api/v1/visitantes/me` |
+| `PanelVisitante.jsx` | Agrupa vehículos y reservas y mantiene el contador que refresca las patentes cuando cambia un vehículo |
 | `ReservasContent.jsx` | **Se mudó a `components/`**, porque ahora lo usan los dos dashboards. Ver esa sección |
 
 ---
@@ -806,9 +844,9 @@ Convención: `test/` refleja la estructura de `app/`, `store/` y `utils/` (misma
 | `components/ReservasContent.test.jsx` ✏️ | Resolución de visitante/vehículo por patente, cochera deshabilitada hasta tener match, **regresión del bug de caché de vehículos al hacer foco**, envío de la reserva, y toda la franja horaria: arranque en el bloque de 15 en curso, `step` declarado, horarios fuera de bloque bajados al bloque, rango invertido, atajos de jornada llevados hasta el campo y la modalidad que muestra el listado. Se movió junto con el componente. Suma las cocheras accesibles: ocultas para el admin si el dueño no declaró discapacidad, sin filtrar de nuevo en modo visitante, y el mensaje de rechazo del backend |
 | `components/AtajosJornada.test.jsx` | `components/AtajosJornada.jsx`: que cada atajo caiga **justo** en el umbral con el que el backend clasifica la modalidad, que muevan solo el `Hasta`, que marquen el que coincide con la franja cargada y que queden deshabilitados sin inicio |
 | `dashboard-admin/PanelOperativo.test.jsx` | **Regresión del bug de la reserva que no se agregaba**: que el panel admin incluya el formulario de reservas, que un admin pueda crear una resolviendo el visitante por patente, y que la cuadrícula pase de "0/1 ocupadas" a "1/1 ocupadas" sin recargar |
-| `dashboard-user/MiPerfilContent.test.jsx` ✏️ | Autoregistro del visitante (`/me`), alta de vehículo propio, validaciones y errores del backend, más los casos nuevos de editar el perfil (`PUT /me`), editar un vehículo y eliminarlo con confirmación. Suma el checkbox de discapacidad: se muestra, se precarga (marcado, desmarcado o sin el campo), viaja en el `PUT /me`, y solo avisa al panel si el valor cambió |
+| `dashboard-user/MiPerfilContent.test.jsx` | Carga y gestión de vehículos propios, validaciones, errores, edición y eliminación con confirmación. Verifica que no se consulte el perfil ni se muestren datos personales o un acceso duplicado a Mis datos |
 
-El detalle de qué casos prueba cada archivo (front y back) está en `TESTS.md`, en la raíz del repo: **56 archivos y 662 tests** en total (394 del backend en 36 archivos, 268 del frontend en 20). Los dos suites corren solas en cada pull request, vía `.github/workflows/ci.yml`.
+El detalle de qué casos prueba cada archivo (front y back) está en `TESTS.md`, en la raíz del repo: **68 archivos y 767 tests** en total (455 del backend en 42 archivos, 312 del frontend en 26). Los dos suites corren solas en cada pull request, vía `.github/workflows/ci.yml`.
 
 ---
 

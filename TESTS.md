@@ -11,6 +11,32 @@ Que prueba cada archivo de test del proyecto, caso por caso. Ver `ARCHIVOS.md` p
 
 # Backend (`aparcar-api-back/src/test/java/com/aparcar/api/`)
 
+## `integration/PerfilControllerTests.java`
+
+_12 tests._
+
+- GET y PUT del perfil requieren sesión.
+- ADMIN guarda documento, teléfono y nombre del estacionamiento normalizados;
+  GET recupera el nombre sin modificar otra cuenta ni los roles.
+- USER no puede enviar documento ni nombre del estacionamiento (2 casos).
+- USER conserva contacto y declaración de discapacidad.
+- Rechaza email y documento duplicados, incluso en cuentas inactivas (2 casos).
+- Rechaza documento vacío y email vacío o inválido (3 casos).
+- Limita el nombre a 100 caracteres y permite vaciarlo.
+- Un cliente que omite los campos nuevos conserva el documento y el nombre.
+
+## `integration/PerfilMigracionTests.java`
+
+_1 test._ La migración 009 conserva cuentas y emails existentes, deja el nombre
+inicialmente nulo y puede ejecutarse nuevamente sin repetir cambios.
+
+## `integration/PerfilSessionTests.java`
+
+_1 test._ Servidor real y JWT firmado: login, cambio de email/documento/nombre,
+persistencia del mismo ID y roles, rechazo del token anterior y login con el
+nuevo email. También vuelve al email inicial: el nuevo login funciona y el
+primer token continúa invalidado.
+
 ## `service/TarifaServiceTests.java`
 
 _21 tests._
@@ -84,7 +110,10 @@ marca todas las vencidas de una, no solo la primera
 
 ## `component/RevokedUserCacheTests.java`
 
-_2 tests._
+_3 tests._
+
+También verifica que la revocación por cambio de email rechace sesiones previas
+y permita nuevos logins, sin alterar la revocación administrativa ni `clear()`.
 
 ```
 RevokedUserCache revokes and checks revoked users
@@ -675,7 +704,10 @@ obtenerPropio devuelve la declaracion actual para precargar el formulario
 
 ## `service/VisitanteServiceTests.java`
 
-_20 tests._
+_21 tests._
+
+El guardado de perfil invalida las sesiones del email anterior. Un conflicto de
+unicidad durante el guardado devuelve un error de validación sin revocar la sesión.
 
 Incluye el alta operativa atomica (cuenta + vehiculo + reserva) y el cambio de contraseña propio. ✏️ La respuesta del visitante suma el campo `tieneDiscapacidad`.
 
@@ -969,7 +1001,7 @@ ya no ofrece la carga fila por fila ni llama al endpoint /bulk
 
 ## `dashboard-admin/paginas.test.jsx`
 
-_8 tests._
+_10 tests._
 
 Las paginas `/dashboard-admin/reservas` y `/dashboard-admin/visitantes`: que exijan el rol ADMIN, que secciones arma cada una y la navegacion de regreso.
 
@@ -983,6 +1015,8 @@ Las paginas `/dashboard-admin/reservas` y `/dashboard-admin/visitantes`: que exi
 /dashboard-admin/tarifas > exige ADMIN y permite volver al panel
 /dashboard-admin > incorpora el acceso a Gestionar tarifas
 ```
+
+Las dos rutas de perfil exigen el rol correspondiente (ADMIN/USER) y permiten volver a su panel.
 
 ## `dashboard-admin/usuarios/UserManagement.test.jsx`
 
@@ -1006,32 +1040,42 @@ eliminar cancelado no llama a DELETE
 
 ## `dashboard-user/MiPerfilContent.test.jsx`
 
-_29 tests._
+_11 tests._
 
-Los datos propios del visitante y la **gestion completa de sus vehiculos**, mas el cambio de contraseña. ✏️ Suma la **declaracion de discapacidad**: el checkbox precargado con el valor actual (incluso si el backend no manda el campo), que viaja en el `PUT /me`, la insignia en sus datos, y el aviso al panel solo cuando el valor cambio, para que el formulario de reserva vuelva a pedir las cocheras.
+Gestión de vehículos en el panel, sin resumen personal ni consulta al perfil.
+El acceso a la información personal permanece en **Mi cuenta → Mis datos**.
 
 ```
 muestra el estado de carga inicialmente
-no ofrece ningun formulario de autoregistro: el perfil viene con la cuenta
-muestra sus datos y sus vehiculos
+carga los vehículos sin consultar el perfil personal
+muestra solo los vehículos, sin datos personales ni acceso duplicado al perfil
 pide sus vehiculos sin mandar visitanteId
 si todavia no tiene ningun vehiculo, avisa que no cargo ninguno
-un error al cargar el perfil muestra un toast de error
+un error al cargar vehículos muestra un aviso y no habilita el formulario
 agregar un vehiculo con patente invalida muestra el error de formato
 agregar un vehiculo con patente de auto para un tipo MOTO muestra el error especifico de moto
 agrega un vehiculo propio sin mandar visitanteId y refresca la lista
-el boton 'Editar mis datos' precarga telefono y email actuales
-guarda los cambios de telefono/email con PUT /api/v1/visitantes/me
-no deja vaciar el email, porque es con lo que se inicia sesion
 edita un vehiculo existente con PUT /api/v1/vehiculos/{id}
 elimina un vehiculo con confirmacion
+```
+
+## `components/ProfileSettings.test.jsx`
+
+_18 tests._
+
+Contacto, declaración de discapacidad y cambio de contraseña, trasladados al componente compartido. Conserva las validaciones y endpoints existentes.
+
+```
+precarga telefono y email actuales
+guarda los cambios de telefono/email con PUT /api/v1/visitantes/me
+no deja vaciar el email, porque es con lo que se inicia sesion
 el formulario de edicion muestra el checkbox de discapacidad
 precarga el checkbox marcado si el perfil lo tiene declarado
 precarga el checkbox desmarcado si el perfil no lo tiene declarado
 si el perfil no trae el campo, el checkbox arranca desmarcado
-al marcarlo manda tieneDiscapacidad: true en el PUT y avisa el cambio
+al marcarlo manda tieneDiscapacidad: true en el PUT
 al desmarcarlo manda tieneDiscapacidad: false en el PUT
-si guarda sin tocar el checkbox, no avisa ningun cambio de discapacidad
+si guarda sin tocar el checkbox, conserva la discapacidad
 muestra la insignia en sus datos cuando lo tiene declarado
 no muestra la insignia cuando no lo tiene declarado
 el formulario esta oculto hasta tocar 'Cambiar contraseña'
@@ -1041,6 +1085,30 @@ rechaza una contraseña nueva de menos de 8 caracteres
 avisa si la repeticion no coincide
 si el backend rechaza el cambio, muestra su mensaje
 ```
+
+## `components/PerfilAdmin.test.jsx`
+
+_8 tests._
+
+Campos exclusivos del admin, sesión tras cambiar email, errores y bloqueo durante guardado;
+título limitado al nombre persistido o predeterminado, sin iconos, textos ni enlaces adicionales.
+
+```
+guarda documento, teléfono y nombre normalizados sin consultar vehículos
+un error conserva la edición y permite descartar los cambios
+bloquea los controles durante el guardado y evita envíos dobles
+al cambiar el email termina la sesión e invita a entrar con el nuevo
+reintenta una carga fallida sin dejar un formulario vacío
+el usuario conserva sus permisos y no envía campos exclusivos del admin
+muestra únicamente el nombre persistido como título
+muestra solo el título predeterminado si aún no se configuró el nombre
+```
+
+## `components/AccountMenu.test.jsx`
+
+_5 tests._
+
+Destino del perfil según rol (2 casos), apertura por teclado y Escape, cierre al hacer clic fuera o salir con Tab, y cierre de sesión con borrado de cookie y estado.
 
 ## `login/page.test.jsx`
 
@@ -1192,18 +1260,28 @@ es case-insensitive
 
 | | Archivos | Tests |
 |---|---|---|
-| Backend | 39 | 439 |
-| Frontend | 23 | 297 |
-| **Total** | **62** | **736** |
+| Backend | 42 | 455 |
+| Frontend | 26 | 312 |
+| **Total** | **68** | **767** |
 
 Verificación de tarifas: `mvn verify`, `npm test`, `npm run lint` y
 `npm run build`. La suite agrega 41 casos de backend y 29 de frontend. El
 conteo previo de `UserServiceTests` estaba desactualizado (10 casos, no 6);
 los totales de esta tabla reflejan los reportes reales de Surefire y Vitest.
-El lint conserva dos advertencias previas (React Hook Form en el alta de
-visitantes y dependencias de un efecto en MiPerfilContent), sin errores.
-No se completó revisión visual en navegador por no haber uno disponible en
-el entorno de trabajo.
+Verificación de perfiles: `mvn verify` (455 tests). Para el ajuste final de los
+dashboards se ejecutó la suite completa de frontend (312 tests), además del build
+de producción. No hubo cambios de backend en este último ajuste.
+El lint conserva una advertencia previa de React Hook Form en el alta de
+visitantes, sin errores.
+
+Revisión visual final con Chrome/Playwright sobre el build de producción, usando
+respuestas de API simuladas: dashboards de ambos roles a 320, 390, 768 y 1440 px,
+en temas claro y oscuro (16 combinaciones), sin desbordes. USER muestra vehículos
+y reservas, sin información personal ni consultas al perfil en el dashboard.
+ADMIN muestra solamente el nombre del parking con tipografía más pequeña y fina;
+también se verificó un nombre largo a 320 px. El acceso a **Mi cuenta → Mis datos**
+y la vuelta al panel siguen funcionando. Las pruebas de backend de la feature
+verifican por separado persistencia real, permisos y sesión JWT.
 
 Correr todo:
 

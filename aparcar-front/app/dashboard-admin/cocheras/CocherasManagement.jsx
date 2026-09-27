@@ -8,7 +8,6 @@ import * as z from "zod";
 import { toast } from "sonner";
 
 import api from "@/app/api";
-import LogoutButton from "@/components/LogoutButton";
 import DashboardHeader from "@/components/DashboardHeader";
 
 const cocheraSchema = z.object({
@@ -357,7 +356,7 @@ export default function CocherasManagement() {
   return (
     <div className="dashboard-shell">
       <div className="dashboard-container">
-        <DashboardHeader actions={<LogoutButton />}>
+        <DashboardHeader>
           <Link
             href="/dashboard-admin"
             className="dashboard-back-link"

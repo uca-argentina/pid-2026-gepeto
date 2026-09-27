@@ -1,24 +1,17 @@
 import Link from "next/link";
 import { requireAuth } from "@/utils/serverAuth";
-import ReservasContent from "@/components/ReservasContent";
 import DashboardHeader from "@/components/DashboardHeader";
+import ProfileSettings from "@/components/ProfileSettings";
 
-export default async function ReservasAdminPage() {
+export default async function PerfilAdminPage() {
   await requireAuth(["ADMIN"]);
-
   return (
     <div className="dashboard-shell">
       <div className="dashboard-container">
         <DashboardHeader>
-          <Link
-            href="/dashboard-admin"
-            className="dashboard-back-link"
-          >
-            ← Volver al panel
-          </Link>
+          <Link href="/dashboard-admin" className="dashboard-back-link">← Volver al panel</Link>
         </DashboardHeader>
-
-        <ReservasContent modo="admin" layout="columnas" />
+        <ProfileSettings admin />
       </div>
     </div>
   );
