@@ -24,6 +24,7 @@ const cochera = (overrides = {}) => ({
 
 function mockCocheras(disponibles = []) {
   getMock.mockImplementation((url) => {
+    if (url === "/api/v1/tarifas/cotizacion") return Promise.resolve({ data: { tipo: "AUTO", total: 1000, horas: 1 } });
     if (url === "/api/v1/cocheras/disponibles") return Promise.resolve({ data: disponibles });
     return Promise.reject(new Error(`URL no mockeada: ${url}`));
   });
@@ -61,7 +62,7 @@ describe("VisitantesContent (alta de visitante con reserva)", () => {
     fireEvent.change(screen.getByLabelText("Desde"), { target: { value: desde } });
     fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: hasta } });
 
-    await waitFor(() => expect(getMock).toHaveBeenLastCalledWith(
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith(
       "/api/v1/cocheras/disponibles", { params: { desde, hasta, tipoVehiculo: "AUTO" } }
     ));
     // Cambiar la franja invalida la cochera elegida: podría estar ocupada.
@@ -79,8 +80,15 @@ describe("VisitantesContent (alta de visitante con reserva)", () => {
   // consulta vieja no puede pisar a la nueva.
   it("ignora la respuesta de disponibilidad de una franja que ya cambio", async () => {
     let resolverAnterior;
-    getMock.mockImplementationOnce(() => new Promise((resolve) => { resolverAnterior = resolve; }))
-      .mockResolvedValue({ data: [cochera({ id: "c2", numero: "A-02" })] });
+    let primeraDisponibilidad = true;
+    getMock.mockImplementation((url) => {
+      if (url === "/api/v1/tarifas/cotizacion") return Promise.resolve({ data: { total: 1000, tipo: "AUTO" } });
+      if (primeraDisponibilidad) {
+        primeraDisponibilidad = false;
+        return new Promise((resolve) => { resolverAnterior = resolve; });
+      }
+      return Promise.resolve({ data: [cochera({ id: "c2", numero: "A-02" })] });
+    });
     render(<VisitantesContent />);
 
     fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2099-01-01T12:00" } });

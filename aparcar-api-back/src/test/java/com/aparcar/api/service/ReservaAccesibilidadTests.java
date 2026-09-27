@@ -59,6 +59,9 @@ public class ReservaAccesibilidadTests {
     @Mock
     private CocheraRepository cocheraRepository;
 
+    @Mock
+    private ITarifaService tarifaService;
+
     @InjectMocks
     private ReservaService reservaService;
 
@@ -68,6 +71,9 @@ public class ReservaAccesibilidadTests {
 
     @BeforeEach
     void setUp() {
+        lenient().when(tarifaService.cotizar(any(), any(), any())).thenAnswer(i ->
+                new com.aparcar.api.dto.reserva.CotizacionResponseDto(i.getArgument(0),
+                        new java.math.BigDecimal("1000.00"), "ARS", 0, 0, 1, 0));
         visitante = new Visitante();
         visitante.setId(UUID.randomUUID());
         visitante.setNombre("Juan Perez");

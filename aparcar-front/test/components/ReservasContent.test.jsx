@@ -20,6 +20,7 @@ const cochera = (overrides = {}) => ({ id: "c1", numero: "A-01", sector: "Planta
 
 function mockData({ visitantes = [], vehiculos = [], reservas = [], disponibles = [] }) {
   getMock.mockImplementation((url) => {
+    if (url === "/api/v1/tarifas/cotizacion") return Promise.resolve({ data: { tipo: "AUTO", total: 1000, horas: 1 } });
     if (url === "/api/v1/visitantes") return Promise.resolve({ data: visitantes });
     if (url === "/api/v1/vehiculos") return Promise.resolve({ data: vehiculos });
     if (url === "/api/v1/reservas") return Promise.resolve({ data: reservas });
@@ -420,7 +421,7 @@ describe("ReservasContent: franja horaria", () => {
     fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2099-03-10T18:00" } });
 
     await waitFor(() =>
-      expect(getMock).toHaveBeenLastCalledWith(
+      expect(getMock).toHaveBeenCalledWith(
         "/api/v1/cocheras/disponibles",
         expect.objectContaining({ params: expect.objectContaining({ hasta: "2099-03-10T18:00" }) })
       )

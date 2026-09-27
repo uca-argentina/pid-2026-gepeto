@@ -87,6 +87,7 @@ public class VisitanteService implements IVisitanteService {
         LocalDateTime hasta = dto.getHasta() != null ? dto.getHasta() : desde.plusHours(1);
         reservaDto.setDesde(desde);
         reservaDto.setHasta(hasta);
+        reservaDto.setPrecioEsperado(dto.getPrecioEsperado());
         ReservaResponseDto reserva = reservaService.crear(reservaDto, visitante.getEmail(), true);
 
         return new VisitanteAltaResponseDto(toResponseDto(visitante), vehiculo, reserva);

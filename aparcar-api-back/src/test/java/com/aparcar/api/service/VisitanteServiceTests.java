@@ -104,7 +104,7 @@ public class VisitanteServiceTests {
                 new CocheraResponseDto(COCHERA_ID, "A-01", "Planta Baja", CocheraTipo.AUTO, CocheraEstado.HABILITADA, null),
                 ReservaEstado.CONFIRMADA,
                 ModalidadReserva.FRANJA,
-                Instant.now());
+                Instant.now(), new java.math.BigDecimal("1000.00"), CocheraTipo.AUTO);
     }
 
     @Test

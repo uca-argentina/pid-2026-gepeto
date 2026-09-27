@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import api from "@/app/api";
 import { formatoPatenteValido, MENSAJE_FORMATO_INVALIDO } from "@/utils/patenteValidation";
 import AtajosJornada from "@/components/AtajosJornada";
+import CotizacionReserva from "@/components/CotizacionReserva";
+import useCotizacion from "@/hooks/useCotizacion";
 import { PASO_MINUTOS, alBloqueLocal, franjaPorDefecto } from "@/utils/franjaHoraria";
 
 const visitanteSchema = z
@@ -87,6 +89,8 @@ export default function VisitantesContent({ onAltaCreada }) {
     [cocheras, tieneDiscapacidad]
   );
   const hayAccesiblesOcultas = cocherasOfrecidas.length < cocheras.length;
+  const cocheraElegida = cocherasOfrecidas.find((c) => c.id === cocheraId);
+  const cotizacion = useCotizacion(cocheraElegida?.tipo ?? tipoVehiculo, desde, hasta);
 
   // Si el admin eligió una ACCESIBLE y después desmarca el checkbox, esa
   // cochera deja de estar en la lista: se limpia la selección para no mandar
@@ -116,6 +120,7 @@ export default function VisitantesContent({ onAltaCreada }) {
   }, [tipoVehiculo, desde, hasta, rangoValido, setValue]);
 
   const onSubmit = async (data) => {
+    if (!cotizacion.lista || !cocheraElegida || !rangoValido) return;
     try {
       await api.post("/api/v1/visitantes/alta", {
         nombre: data.nombre,
@@ -128,6 +133,7 @@ export default function VisitantesContent({ onAltaCreada }) {
         cocheraId: data.cocheraId,
         desde: data.desde,
         hasta: data.hasta,
+        precioEsperado: cotizacion.datos.total,
       });
 
       toast.success(
@@ -136,6 +142,7 @@ export default function VisitantesContent({ onAltaCreada }) {
       reset({ tipoVehiculo: "AUTO", cocheraId: "", tieneDiscapacidad: false, ...franjaPorDefecto() });
       onAltaCreada?.();
     } catch (err) {
+      cotizacion.recargar();
       toast.error(
         err.response?.data?.message || "Ocurrió un error al dar de alta al visitante."
       );
@@ -285,10 +292,12 @@ export default function VisitantesContent({ onAltaCreada }) {
               </div>
             </div>
 
+            <CotizacionReserva cotizacion={cotizacion} />
+
             <div>
               <button
                 type="submit"
-                disabled={isSubmitting}
+                disabled={isSubmitting || !cotizacion.lista}
                 className="ui-primary group relative flex w-full justify-center px-3 py-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? "Guardando..." : "Dar de alta y reservar"}

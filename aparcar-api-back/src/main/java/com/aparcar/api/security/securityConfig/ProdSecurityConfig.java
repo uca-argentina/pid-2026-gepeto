@@ -118,6 +118,10 @@ public class ProdSecurityConfig {
 
                 .authorizeHttpRequests(requests -> requests
 
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/tarifas", "/api/v1/tarifas/cotizacion")
+                        .hasAnyAuthority("ADMIN", "USER")
+                        .requestMatchers("/api/v1/tarifas", "/api/v1/tarifas/**").hasAuthority("ADMIN")
+
                         // Endpoints públicos. Van primero para que
                         // /api/v1/cocheras/disponibles se resuelva acá y no
                         // caiga en la regla de ADMIN de /api/v1/cocheras/** de abajo.

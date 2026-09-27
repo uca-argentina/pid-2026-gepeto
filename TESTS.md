@@ -11,6 +11,48 @@ Que prueba cada archivo de test del proyecto, caso por caso. Ver `ARCHIVOS.md` p
 
 # Backend (`aparcar-api-back/src/test/java/com/aparcar/api/`)
 
+## `service/TarifaServiceTests.java`
+
+_21 tests._
+
+- Suma de jornadas, medias jornadas, horas y fracciones con decimales exactos:
+  14 duraciones, incluyendo bordes de 15 min, 1 h, 12 h, 24 h y varios días.
+- Cotización independiente por cada categoría: Auto, Moto, Accesible y Carga
+  (4 casos), conservando tipo y moneda ARS.
+- Rechazo de tarifas sin configurar, aceptación de cero explícito y rechazo de
+  rangos nulos, invertidos, vencidos o fuera de bloques de 15 minutos.
+
+## `integration/TarifaControllerTests.java`
+
+_19 tests._
+
+- Anónimos sin acceso; USER consulta catálogo/cotización pero no modifica.
+- ADMIN guarda los 16 precios y rechaza versiones desactualizadas.
+- Importes negativos, nulos, no numéricos, fuera del máximo o con más de dos
+  decimales se rechazan sin cambios parciales (5 casos).
+- Matrices incompletas, duplicadas o con categoría inválida se rechazan (3 casos).
+- Categoría, fecha o rango inválidos devuelven 400 al cotizar (4 casos).
+- Configuración inicial vacía: no inventa precios, impide cotizar y permite
+  guardar cero explícito.
+- USER crea una reserva, cambia la tarifa, rechaza una cotización vieja y crea
+  otra con el nuevo precio. Consultar y cancelar la anterior conserva su importe.
+- ADMIN aplica la categoría Accesible según la cochera y rechaza un importe
+  manipulado por el cliente.
+- Alta operativa: el cambio de precio revierte la cuenta y reserva; un intento
+  posterior con el importe vigente crea todo y devuelve el total. Se ejecuta
+  sin transacción exterior del test para verificar el rollback real.
+
+## `integration/TarifaMigracionTests.java`
+
+_1 tests._
+
+Ejecuta la migración Liquibase `008-tarifas.yaml` sobre H2 con una reserva previa:
+conserva la fila, deja su importe y categoría nulos, no crea precios ficticios y
+permite un segundo arranque sin volver a ejecutar la migración.
+
+`src/test/resources/tarifas-test.sql` configura precios de prueba para los tests
+de tarifas, reservas, accesibilidad y alta operativa. No se usa en producción.
+
 ## `AparcarApiApplicationTests.java`
 
 _1 tests._
@@ -577,13 +619,17 @@ crear acepta una reserva de exactamente 15 minutos
 
 ## `service/UserServiceTests.java`
 
-_6 tests._
+_10 tests._
 
 Incluye el borrado seguro: se bloquea si el visitante tiene reservas registradas, y se llevan sus vehiculos junto con la cuenta.
 
 ```
 activateUser throws NotFoundException when user not found
+activateUser activates user successfully
 getInactiveUsers returns set of inactive user emails
+deleteUser throws RuntimeException when caller email is null
+deleteUser throws NotFoundException when user not found
+deleteUser throws ValidationException when user tries to delete themselves
 deleteUser lanza ValidationException si el visitante tiene reservas registradas
 deleteUser borra los vehiculos del visitante junto con su cuenta
 updateUser rechaza un documento que ya usa otro visitante
@@ -659,6 +705,45 @@ cambiarPasswordPropia lanza NotFoundException si no existe una cuenta con ese em
 ---
 
 # Frontend (`aparcar-front/test/`)
+
+## `dashboard-admin/tarifas/TarifasManagement.test.jsx`
+
+_13 tests._
+
+- Carga las cuatro categorías y sus 16 importes; guardar queda deshabilitado
+  mientras no haya cambios.
+- Envía toda la matriz, normaliza coma decimal y conserva versiones.
+- Rechaza vacío, negativo, más de dos decimales, exceso del máximo y texto
+  (5 casos); acepta cero explícito.
+- Precios sin configurar permanecen vacíos y exige completar todos.
+- Permite reintentar la carga, conserva cambios si falla el guardado y bloquea
+  campos/botones mientras guarda.
+- Recargar con cambios pendientes requiere aceptar descartarlos.
+
+## `hooks/useCotizacion.test.jsx`
+
+_5 tests._
+
+- No consulta sin tipo o con franja inválida.
+- Ignora respuestas tardías e invalida el precio inmediatamente al cambiar la
+  selección, incluso cuando se vuelve a una categoría anterior.
+- Expone errores del backend y permite reintentar, incluyendo precio cero.
+- Rechaza respuestas sin un precio válido.
+- Cambiar la franja vuelve a consultar el importe.
+
+## `components/ReservasTarifas.test.jsx`
+
+_9 tests._
+
+- ADMIN y USER ven el precio antes de elegir cochera y envían `precioEsperado`
+  al crear (2 casos).
+- ADMIN y USER pasan a tarifa Accesible al elegir esa cochera (2 casos).
+- Impide confirmar mientras falta la cotización.
+- Si cambia el precio al confirmar, muestra el nuevo importe sin reenviar
+  automáticamente la reserva.
+- Muestra el importe histórico y distingue reservas anteriores a las tarifas.
+- El alta operativa muestra y envía el precio Accesible.
+- Sin tarifas configuradas impide crear la reserva.
 
 ## `api.test.jsx`
 
@@ -884,7 +969,7 @@ ya no ofrece la carga fila por fila ni llama al endpoint /bulk
 
 ## `dashboard-admin/paginas.test.jsx`
 
-_6 tests._
+_8 tests._
 
 Las paginas `/dashboard-admin/reservas` y `/dashboard-admin/visitantes`: que exijan el rol ADMIN, que secciones arma cada una y la navegacion de regreso.
 
@@ -895,6 +980,8 @@ Las paginas `/dashboard-admin/reservas` y `/dashboard-admin/visitantes`: que exi
 /dashboard-admin/visitantes > exige el rol ADMIN
 /dashboard-admin/visitantes > trae el alta de visitante
 /dashboard-admin/visitantes > deja volver al panel
+/dashboard-admin/tarifas > exige ADMIN y permite volver al panel
+/dashboard-admin > incorpora el acceso a Gestionar tarifas
 ```
 
 ## `dashboard-admin/usuarios/UserManagement.test.jsx`
@@ -1105,9 +1192,18 @@ es case-insensitive
 
 | | Archivos | Tests |
 |---|---|---|
-| Backend | 36 | 394 |
-| Frontend | 20 | 268 |
-| **Total** | **56** | **662** |
+| Backend | 39 | 439 |
+| Frontend | 23 | 297 |
+| **Total** | **62** | **736** |
+
+Verificación de tarifas: `mvn verify`, `npm test`, `npm run lint` y
+`npm run build`. La suite agrega 41 casos de backend y 29 de frontend. El
+conteo previo de `UserServiceTests` estaba desactualizado (10 casos, no 6);
+los totales de esta tabla reflejan los reportes reales de Surefire y Vitest.
+El lint conserva dos advertencias previas (React Hook Form en el alta de
+visitantes y dependencias de un efecto en MiPerfilContent), sin errores.
+No se completó revisión visual en navegador por no haber uno disponible en
+el entorno de trabajo.
 
 Correr todo:
 

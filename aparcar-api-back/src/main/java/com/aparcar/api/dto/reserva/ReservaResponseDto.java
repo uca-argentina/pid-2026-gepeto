@@ -2,6 +2,8 @@ package com.aparcar.api.dto.reserva;
 
 import com.aparcar.api.entity.reserva.ModalidadReserva;
 import com.aparcar.api.entity.reserva.ReservaEstado;
+import com.aparcar.api.entity.reserva.CocheraTipo;
+import java.math.BigDecimal;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -17,6 +19,8 @@ public record ReservaResponseDto(
         ReservaEstado estado,
         /** Deducida de la duracion; no se guarda en la base. */
         ModalidadReserva modalidad,
-        Instant fechaCreacion
+        Instant fechaCreacion,
+        BigDecimal precioTotal,
+        CocheraTipo tipoTarifa
 ) {
 }

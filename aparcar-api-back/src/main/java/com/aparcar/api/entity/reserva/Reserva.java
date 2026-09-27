@@ -17,6 +17,7 @@ import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -65,6 +66,14 @@ public class Reserva {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ReservaEstado estado;
+
+    /** Importe acordado al crear. Null identifica reservas anteriores a las tarifas. */
+    @Column(name = "precio_total", precision = 18, scale = 2, updatable = false)
+    private BigDecimal precioTotal;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo_tarifa", length = 20, updatable = false)
+    private CocheraTipo tipoTarifa;
 
     @CreationTimestamp
     @Column(name = "fecha_creacion", nullable = false, updatable = false)

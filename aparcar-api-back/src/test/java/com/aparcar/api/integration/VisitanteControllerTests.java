@@ -43,6 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * por separado, que era de donde salian los visitantes fantasma.
  */
 @IntegrationTests
+@org.springframework.test.context.jdbc.Sql("/tarifas-test.sql")
 public class VisitanteControllerTests {
 
     private static final String VISITANTE = "visitante@test.com";

@@ -1,5 +1,57 @@
 # Mapa de archivos
 
+## Gestión de tarifas
+
+- `aparcar-front/app/dashboard-admin/tarifas/page.jsx`: nueva pantalla protegida
+  para ADMIN, con el encabezado y la navegación existentes.
+- `aparcar-front/app/dashboard-admin/tarifas/TarifasManagement.jsx`: edición de
+  los 16 precios en tarjetas responsive, usando `ui-card`, `ui-input`, React
+  Hook Form y Zod. Acepta coma o punto decimal, valida los campos, bloquea el
+  formulario durante el guardado y conserva los cambios ante errores.
+- `aparcar-front/app/dashboard-admin/page.jsx` / `components/DashboardIcon.jsx`:
+  acceso “Gestionar tarifas”; la navegación permite envolver sus enlaces.
+- `aparcar-front/hooks/useCotizacion.js`: consulta el importe al backend al
+  cambiar categoría o franja; invalida inmediatamente la cotización anterior,
+  ignora respuestas tardías y permite reintentar.
+- `aparcar-front/components/CotizacionReserva.jsx` / `utils/tarifas.js`:
+  resumen compartido con total en ARS, categoría, desglose y estados de carga/error.
+- `ReservasContent.jsx` / `VisitantesContent.jsx`: muestran el precio antes de
+  confirmar en USER, ADMIN y alta operativa. Envían `precioEsperado` para detectar
+  cambios de tarifa mientras el formulario estaba abierto. El historial muestra
+  el importe guardado, o “Sin importe registrado” para reservas anteriores.
+- Backend `entity/reserva/Tarifa.java` / `repository/TarifaRepository.java`:
+  cuatro precios decimales por categoría y versión para evitar sobrescribir
+  ediciones concurrentes. No se asignan precios predeterminados de producción.
+- `dto/reserva/TarifaDto.java`, `TarifasRequestDto.java` y
+  `CotizacionResponseDto.java`: contrato de edición de la matriz y cotización.
+- `service/ITarifaService.java` / `service/impl/TarifaService.java`: guardado
+  transaccional de las cuatro categorías y cálculo con `BigDecimal`. Suma
+  jornadas completas de 24 h, medias jornadas de 12 h, horas y fracciones de
+  15 min restantes, en ese orden; no busca la combinación más económica.
+- `controller/TarifaController.java` / ambas configuraciones de seguridad:
+  `GET /api/v1/tarifas` y `GET /api/v1/tarifas/cotizacion?tipo=...&desde=...&hasta=...`
+  para ADMIN/USER; `PUT /api/v1/tarifas` exclusivamente ADMIN. El PUT recibe
+  `{ tarifas: [{ tipo, hora, fraccion, mediaJornada, jornadaCompleta, version }] }`,
+  incluyendo las cuatro categorías una sola vez y las versiones recibidas por GET.
+- `ReservaService` / `Reserva` / `ReservaResponseDto`: el servidor determina
+  la categoría según la cochera validada y guarda `precioTotal` y `tipoTarifa`
+  al crear. Listar, cancelar o finalizar no recalcula importes. `VisitanteService`
+  propaga `precioEsperado` del alta operativa; si cambió el precio, revierte la
+  cuenta, el vehículo y la reserva mediante la transacción existente.
+- `008-tarifas.yaml` / `db.changelog-master.yaml`: tabla `tarifas` y columnas
+  históricas de reserva, inicialmente nulas para las reservas anteriores.
+- Nuevos tests: `TarifaServiceTests`, `TarifaControllerTests`,
+  `TarifaMigracionTests`, `TarifasManagement.test.jsx`, `useCotizacion.test.jsx`
+  y `ReservasTarifas.test.jsx`; `src/test/resources/tarifas-test.sql` provee
+  precios solo para las pruebas de integración que crean reservas.
+
+**Categorías y puesta en marcha:** Auto, Moto, Accesible y Carga. Se conserva
+el modelo existente: Accesible es un tipo de cochera, por lo que se aplica su
+tarifa al elegir esa cochera, respetando la declaración de discapacidad del
+visitante. El administrador debe configurar los 16 precios antes de crear
+nuevas reservas. Un cero explícito indica un período sin cargo; un precio sin
+configurar impide cotizar y reservar. Las reservas anteriores permanecen intactas.
+
 ## Registro público de visitantes
 
 - `aparcar-front/app/register/page.jsx`: formulario público con datos personales,

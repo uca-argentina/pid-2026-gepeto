@@ -43,6 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * desde el contrato HTTP y contra una base real.
  */
 @IntegrationTests
+@org.springframework.test.context.jdbc.Sql("/tarifas-test.sql")
 public class AccesibilidadTests {
 
     private static final String VISITANTE = "visitante@test.com";
