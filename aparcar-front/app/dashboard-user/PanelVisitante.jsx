@@ -18,7 +18,13 @@ export default function PanelVisitante() {
 
   return (
     <div className="visitor-dashboard">
-      <MiPerfilContent onVehiculosCambiaron={() => setVehiculosKey((k) => k + 1)} />
+      {/* Los dos avisos refrescan el formulario de reserva: un vehículo nuevo
+          cambia las patentes, y marcar o desmarcar la discapacidad cambia qué
+          cocheras le ofrece el backend (aparecen o no las ACCESIBLE). */}
+      <MiPerfilContent
+        onVehiculosCambiaron={() => setVehiculosKey((k) => k + 1)}
+        onDiscapacidadCambiada={() => setVehiculosKey((k) => k + 1)}
+      />
       <ReservasContent modo="user" refreshKey={vehiculosKey} />
     </div>
   );

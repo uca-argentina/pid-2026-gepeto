@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -16,6 +16,9 @@ const visitanteSchema = z
     documento: z.string().min(1, "El documento es obligatorio"),
     email: z.string().min(1, "El email es obligatorio").email("Ingresa un correo válido"),
     telefono: z.string().optional(),
+    // Opcional: el admin lo marca si ya sabe que la persona tiene una
+    // discapacidad. Habilita reservar cocheras ACCESIBLE.
+    tieneDiscapacidad: z.boolean().optional(),
     patente: z.string().min(1, "La patente es obligatoria"),
     tipoVehiculo: z.enum(["AUTO", "MOTO", "CARGA"], {
       message: "Selecciona un tipo de vehículo",
@@ -64,13 +67,35 @@ export default function VisitantesContent({ onAltaCreada }) {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(visitanteSchema),
-    defaultValues: { tipoVehiculo: "AUTO", cocheraId: "", ...franjaPorDefecto() },
+    defaultValues: { tipoVehiculo: "AUTO", cocheraId: "", tieneDiscapacidad: false, ...franjaPorDefecto() },
   });
 
   const tipoVehiculo = watch("tipoVehiculo");
   const desde = watch("desde");
   const hasta = watch("hasta");
+  const tieneDiscapacidad = watch("tieneDiscapacidad");
+  const cocheraId = watch("cocheraId");
   const rangoValido = Boolean(desde && hasta && hasta > desde);
+
+  // El backend le muestra todas las cocheras al admin (porque suele reservar
+  // para otra persona) y recién rechaza al confirmar si se elige una ACCESIBLE
+  // para alguien sin discapacidad declarada. Acá ya sabemos si la persona que
+  // se está dando de alta la tiene (es el checkbox de este mismo formulario),
+  // así que no ofrecemos una opción que el backend va a rechazar.
+  const cocherasOfrecidas = useMemo(
+    () => (tieneDiscapacidad ? cocheras : cocheras.filter((c) => c.tipo !== "ACCESIBLE")),
+    [cocheras, tieneDiscapacidad]
+  );
+  const hayAccesiblesOcultas = cocherasOfrecidas.length < cocheras.length;
+
+  // Si el admin eligió una ACCESIBLE y después desmarca el checkbox, esa
+  // cochera deja de estar en la lista: se limpia la selección para no mandar
+  // una opción que ya no se ve.
+  useEffect(() => {
+    if (cocheraId && !cocherasOfrecidas.some((c) => c.id === cocheraId)) {
+      setValue("cocheraId", "");
+    }
+  }, [cocheraId, cocherasOfrecidas, setValue]);
 
   // La disponibilidad depende de la franja y del tipo de vehículo.
   useEffect(() => {
@@ -97,6 +122,7 @@ export default function VisitantesContent({ onAltaCreada }) {
         documento: data.documento,
         email: data.email,
         telefono: data.telefono || undefined,
+        tieneDiscapacidad: Boolean(data.tieneDiscapacidad),
         patente: data.patente,
         tipoVehiculo: data.tipoVehiculo,
         cocheraId: data.cocheraId,
@@ -107,7 +133,7 @@ export default function VisitantesContent({ onAltaCreada }) {
       toast.success(
         `Visitante dado de alta y cochera reservada. Su contraseña inicial es su documento (${data.documento}).`
       );
-      reset({ tipoVehiculo: "AUTO", cocheraId: "", ...franjaPorDefecto() });
+      reset({ tipoVehiculo: "AUTO", cocheraId: "", tieneDiscapacidad: false, ...franjaPorDefecto() });
       onAltaCreada?.();
     } catch (err) {
       toast.error(
@@ -152,6 +178,20 @@ export default function VisitantesContent({ onAltaCreada }) {
                 <div>
                   <label className={labelClasses} htmlFor="telefono">Teléfono (opcional)</label>
                   <input id="telefono" {...register("telefono")} className={inputClasses} placeholder="Teléfono" />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="flex cursor-pointer items-center gap-2 text-sm text-ink/70" htmlFor="alta-discapacidad">
+                    <input
+                      id="alta-discapacidad"
+                      type="checkbox"
+                      {...register("tieneDiscapacidad")}
+                      className="h-4 w-4 rounded border-ink/20 bg-surface accent-accent"
+                    />
+                    Persona con discapacidad (opcional)
+                  </label>
+                  <p className="mt-1 text-xs text-ink/50">
+                    Marcalo si ya lo sabés: habilita las cocheras accesibles. El visitante lo puede cambiar después desde su perfil.
+                  </p>
                 </div>
               </div>
             </div>
@@ -224,16 +264,21 @@ export default function VisitantesContent({ onAltaCreada }) {
                   <label className={labelClasses} htmlFor="alta-cocheraId">Cochera</label>
                   <select id="alta-cocheraId" {...register("cocheraId")} className={inputClasses} disabled={!rangoValido || !tipoVehiculo}>
                     <option value="">Seleccioná una cochera</option>
-                    {cocheras.map((c) => (
+                    {cocherasOfrecidas.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.numero} — {c.sector} ({c.tipo})
                       </option>
                     ))}
                   </select>
                   {errors.cocheraId && <p className="mt-1 text-sm text-red-500">{errors.cocheraId.message}</p>}
-                  {rangoValido && cocheras.length === 0 && (
+                  {rangoValido && cocherasOfrecidas.length === 0 && (
                     <p className="mt-1 text-sm text-ink/50">
                       No hay cocheras libres durante toda esa franja para ese tipo de vehículo.
+                    </p>
+                  )}
+                  {hayAccesiblesOcultas && (
+                    <p className="mt-1 text-xs text-ink/50">
+                      Las cocheras accesibles aparecen al marcar &quot;Persona con discapacidad&quot;.
                     </p>
                   )}
                 </div>
