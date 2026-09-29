@@ -100,13 +100,19 @@ describe("VisitantesContent (alta de visitante con reserva)", () => {
   });
 
   // Se escriba lo que se escriba, el horario cae en un bloque de 15.
-  it("el horario elegido siempre cae en un bloque de 15 minutos", async () => {
+  // Mientras se tipea se permite cualquier minuto; el bloque se aplica al salir,
+  // redondeando al mas cercano. Acomodarlo en cada tecla impedia escribirlos.
+  it("el horario se redondea al bloque de 15 mas cercano al salir del campo", async () => {
     mockCocheras([cochera()]);
     render(<VisitantesContent />);
 
-    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2099-01-01T18:23" } });
+    const hasta = screen.getByLabelText("Hasta");
+    fireEvent.change(hasta, { target: { value: "2099-01-01T18:23" } });
+    expect(hasta).toHaveValue("2099-01-01T18:23");
 
-    expect(screen.getByLabelText("Hasta")).toHaveValue("2099-01-01T18:15");
+    fireEvent.blur(hasta);
+
+    await waitFor(() => expect(hasta).toHaveValue("2099-01-01T18:30"));
     expect(screen.getByLabelText("Desde")).toHaveAttribute("step", "900");
   });
 

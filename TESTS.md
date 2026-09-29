@@ -886,7 +886,11 @@ no manda visitanteId al reservar
 lista solo la patente, sin el nombre del visitante
 arranca en el bloque de 15 en curso y propone una hora de duracion
 los campos declaran el paso de 15 minutos
-un horario fuera de bloque se baja al bloque en curso
+deja escribir cualquier minuto mientras se tipea
+al salir del campo redondea al bloque de 15 mas cercano
+redondea para abajo cuando el minuto esta mas cerca del bloque anterior
+redondear cerca de medianoche pasa al dia siguiente
+el inicio se acomoda con la misma regla
 pide las cocheras libres mandando desde y hasta
 cambiar la franja vuelve a consultar disponibilidad
 avisa al instante si la franja queda invertida
@@ -942,7 +946,7 @@ El alta operativa del admin: crea cuenta, vehiculo y reserva en una sola llamada
 ```
 consulta disponibilidad y reserva para la franja elegida, limpiando la cochera anterior
 ignora la respuesta de disponibilidad de una franja que ya cambio
-el horario elegido siempre cae en un bloque de 15 minutos
+el horario se redondea al bloque de 15 mas cercano al salir del campo
 muestra errores si se envia el formulario vacio
 exige el email porque es con lo que el visitante inicia sesion
 rechaza una patente con formato invalido
@@ -1261,8 +1265,8 @@ es case-insensitive
 | | Archivos | Tests |
 |---|---|---|
 | Backend | 42 | 455 |
-| Frontend | 26 | 312 |
-| **Total** | **68** | **767** |
+| Frontend | 27 | 324 |
+| **Total** | **69** | **779** |
 
 Verificación de tarifas: `mvn verify`, `npm test`, `npm run lint` y
 `npm run build`. La suite agrega 41 casos de backend y 29 de frontend. El
