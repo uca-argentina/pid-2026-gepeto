@@ -10,7 +10,11 @@ import { formatoPatenteValido, MENSAJE_FORMATO_INVALIDO } from "@/utils/patenteV
 import AtajosJornada from "@/components/AtajosJornada";
 import CotizacionReserva from "@/components/CotizacionReserva";
 import useCotizacion from "@/hooks/useCotizacion";
-import { PASO_MINUTOS, alBloqueLocal, franjaPorDefecto } from "@/utils/franjaHoraria";
+import {
+  PASO_MINUTOS,
+  franjaPorDefecto,
+  redondearAlBloqueLocal,
+} from "@/utils/franjaHoraria";
 
 const visitanteSchema = z
   .object({
@@ -109,7 +113,14 @@ export default function VisitantesContent({ onAltaCreada }) {
     if (!tipoVehiculo || !rangoValido) return;
 
     api
-      .get("/api/v1/cocheras/disponibles", { params: { desde, hasta, tipoVehiculo } })
+      // Se pregunta por el bloque y no por el horario a medio escribir.
+      .get("/api/v1/cocheras/disponibles", {
+        params: {
+          desde: redondearAlBloqueLocal(desde),
+          hasta: redondearAlBloqueLocal(hasta),
+          tipoVehiculo,
+        },
+      })
       .then((res) => {
         if (vigente) setCocheras(res.data);
       })
@@ -131,8 +142,10 @@ export default function VisitantesContent({ onAltaCreada }) {
         patente: data.patente,
         tipoVehiculo: data.tipoVehiculo,
         cocheraId: data.cocheraId,
-        desde: data.desde,
-        hasta: data.hasta,
+        // Cinturón: el blur ya lo acomoda, pero el valor también puede venir
+        // de un atajo o de un reset.
+        desde: redondearAlBloqueLocal(data.desde),
+        hasta: redondearAlBloqueLocal(data.hasta),
         precioEsperado: cotizacion.datos.total,
       });
 
@@ -229,14 +242,19 @@ export default function VisitantesContent({ onAltaCreada }) {
                 </div>
                 <div>
                   <label className={labelClasses} htmlFor="alta-desde">Desde</label>
+                  {/* Lo que se escribe se redondea al bloque de 15 más
+                      cercano al salir del campo, no en cada tecla: acomodarlo
+                      en el momento impedía escribir los minutos. */}
                   <input
                     id="alta-desde"
                     type="datetime-local"
                     step={PASO_MINUTOS * 60}
-                    {...register("desde")}
-                    onChange={(e) =>
-                      setValue("desde", alBloqueLocal(e.target.value), { shouldValidate: true })
-                    }
+                    {...register("desde", {
+                      onBlur: (e) =>
+                        setValue("desde", redondearAlBloqueLocal(e.target.value), {
+                          shouldValidate: true,
+                        }),
+                    })}
                     className={inputClasses}
                   />
                   {errors.desde && <p className="mt-1 text-sm text-red-500">{errors.desde.message}</p>}
@@ -248,10 +266,12 @@ export default function VisitantesContent({ onAltaCreada }) {
                     type="datetime-local"
                     step={PASO_MINUTOS * 60}
                     min={desde}
-                    {...register("hasta")}
-                    onChange={(e) =>
-                      setValue("hasta", alBloqueLocal(e.target.value), { shouldValidate: true })
-                    }
+                    {...register("hasta", {
+                      onBlur: (e) =>
+                        setValue("hasta", redondearAlBloqueLocal(e.target.value), {
+                          shouldValidate: true,
+                        }),
+                    })}
                     className={inputClasses}
                   />
                   {errors.hasta && <p className="mt-1 text-sm text-red-500">{errors.hasta.message}</p>}

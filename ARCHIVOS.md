@@ -155,7 +155,7 @@ Resumen de lo nuevo, para no tener que leer todo el archivo buscando las marcas.
 **Reservas por franja horaria**
 
 - Una reserva dejó de ser "por día" y pasó a ser un rango `[desde, hasta)`. Se puede reservar el tiempo que se quiera, incluidos varios días.
-- **Las reservas se toman en bloques de 15 minutos.** La regla se valida en el backend y no solo en la pantalla: si viviera únicamente en la UI, cualquier cliente que pegue a la API podría reservar de 14:07 a 15:23. En el formulario, los campos `Desde` y `Hasta` declaran `step` de 15 min, así que el navegador ofrece los bloques y marca como inválido cualquier horario intermedio. Igual el valor se baja al bloque en `onChange` (`alBloqueLocal`), porque el `step` no frena a quien escribe a mano.
+- **Las reservas se toman en bloques de 15 minutos.** La regla se valida en el backend y no solo en la pantalla: si viviera únicamente en la UI, cualquier cliente que pegue a la API podría reservar de 14:07 a 15:23. En el formulario, los campos `Desde` y `Hasta` declaran `step` de 15 min, así que las flechas del campo se mueven de a un bloque y el navegador marca como inválido cualquier horario intermedio. Lo que se escribe se lleva al bloque **más cercano** (`redondearAlBloqueLocal` 🆕) **al salir del campo**, no en cada tecla ✏️: escribir los minutos pasa por estados intermedios —tipear el `3` de `:30` deja `:03`— y acomodarlos en el momento los borraba, así que no se podía escribir ningún minuto. Se redondea y no se trunca porque quien escribe 18:23 está más cerca de querer 18:30 que 18:15; el **arranque por defecto** sí sigue truncando hacia abajo, por el motivo contrario: cubrir los minutos que ya pasaron. La misma regla se aplica al consultar disponibilidad y al enviar, para que hacia el backend nunca salga un horario fuera de la grilla.
 - El arranque por defecto es el **bloque en curso**, redondeando hacia abajo: si son las 14:07 arranca 14:00, no 14:15, porque si no los ocho minutos en los que el auto ya está estacionado quedarían sin cubrir.
 
 **El sistema detecta la modalidad**
@@ -811,7 +811,7 @@ Las pantallas nuevas basadas en Server Components utilizan preferentemente `requ
 |---|---|
 | `env.js` | Resuelve variables públicas tanto en desarrollo como en Docker |
 | `serverAuth.js` | Protección server-side mediante `requireAuth(allowedRoles)` |
-| `franjaHoraria.js` | Todo lo que necesita la franja horaria en el front: el tamaño del bloque (`PASO_MINUTOS`), bajar un horario al bloque en el que cae, el arranque por defecto, los umbrales de jornada y la traducción de la modalidad que manda el backend. El formato legible (`formatearRango`) se arma a mano y no con `toLocaleString`, porque `es-AR` devuelve reloj de 12 horas (`10:00 a. m.`), peor de leer para horarios de cochera, y el resultado varía según el ICU del entorno |
+| `franjaHoraria.js` | Todo lo que necesita la franja horaria en el front: el tamaño del bloque (`PASO_MINUTOS`), bajar un horario al bloque en el que cae, el arranque por defecto, los umbrales de jornada y la traducción de la modalidad que manda el backend. El formato legible (`formatearRango`) se arma a mano y no con `toLocaleString`, porque `es-AR` devuelve reloj de 12 horas (`10:00 a. m.`), peor de leer para horarios de cochera, y el resultado varía según el ICU del entorno. Distingue dos reglas que conviene no confundir ✏️: `redondearAlBloqueLocal` lleva al bloque más cercano lo que escribe una persona, y `alBloque` trunca hacia abajo el arranque por defecto. El redondeo se resuelve sobre un `Date` y no sobre el texto porque puede empujar a la hora siguiente, y hasta al día siguiente |
 
 Ejemplo:
 
@@ -838,6 +838,7 @@ Convención: `test/` refleja la estructura de `app/`, `store/` y `utils/` (misma
 | `login/page.test.jsx` | `app/login/page.jsx`: validaciones, Basic Auth armado correctamente, redirección según rol (ADMIN vs USER), errores del backend |
 | `store/authStore.test.js` | `store/authStore.js`: decodificación de authorities del JWT, cookie, expiración, `logout`/`checkAuth` |
 | `utils/env.test.js` | `utils/env.js`: prioridad de `window.__ENV` sobre el valor de build |
+| `utils/franjaHoraria.test.js` 🆕 | `utils/franjaHoraria.js`: que el redondeo vaya al bloque más cercano en las dos direcciones, que cruce la hora, el día y el año, y que no se confunda con el truncado del arranque por defecto, que nunca adelanta el horario |
 | `dashboard-admin/VisitantesContent.test.jsx` ✏️ | Alta operativa del admin (una sola llamada), validaciones, errores de duplicados, y el checkbox de discapacidad: desmarcado por defecto, viaja en el alta, y oculta las ACCESIBLE hasta marcarlo |
 | `dashboard-admin/cocheras/CocherasManagement.test.jsx` ✏️ | CRUD completo: filtros, alta, edición (con `window.confirm` al deshabilitar), baja (con confirmación), la navegación de regreso al panel, y el **alta por planta** (cantidades en 0, botón deshabilitado, payload, números asignados por el backend y su error) |
 | `dashboard-admin/usuarios/UserManagement.test.jsx` | Alta de usuario, activar, editar roles, eliminar (con confirmación), y la navegación de regreso al panel |
@@ -846,7 +847,7 @@ Convención: `test/` refleja la estructura de `app/`, `store/` y `utils/` (misma
 | `dashboard-admin/PanelOperativo.test.jsx` | **Regresión del bug de la reserva que no se agregaba**: que el panel admin incluya el formulario de reservas, que un admin pueda crear una resolviendo el visitante por patente, y que la cuadrícula pase de "0/1 ocupadas" a "1/1 ocupadas" sin recargar |
 | `dashboard-user/MiPerfilContent.test.jsx` | Carga y gestión de vehículos propios, validaciones, errores, edición y eliminación con confirmación. Verifica que no se consulte el perfil ni se muestren datos personales o un acceso duplicado a Mis datos |
 
-El detalle de qué casos prueba cada archivo (front y back) está en `TESTS.md`, en la raíz del repo: **68 archivos y 767 tests** en total (455 del backend en 42 archivos, 312 del frontend en 26). Los dos suites corren solas en cada pull request, vía `.github/workflows/ci.yml`.
+El detalle de qué casos prueba cada archivo (front y back) está en `TESTS.md`, en la raíz del repo: **69 archivos y 779 tests** en total (455 del backend en 42 archivos, 324 del frontend en 27). Los dos suites corren solas en cada pull request, vía `.github/workflows/ci.yml`.
 
 ---
 

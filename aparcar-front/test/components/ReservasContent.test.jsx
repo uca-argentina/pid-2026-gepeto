@@ -373,14 +373,68 @@ describe("ReservasContent: franja horaria", () => {
     expect(screen.getByLabelText("Hasta")).toHaveAttribute("step", "900");
   });
 
-  it("un horario fuera de bloque se baja al bloque en curso", async () => {
+  // Escribir los minutos pasa por estados intermedios: tipear el "3" de ":30"
+  // deja ":03" un instante. Si el valor se acomodara en cada tecla, ese ":03"
+  // se volveria ":00" y no habria forma de escribir ningun minuto.
+  it("deja escribir cualquier minuto mientras se tipea", async () => {
     mockData({ vehiculos: [vehiculo()] });
     render(<ReservasContent modo="admin" />);
     await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
 
     fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2099-01-01T18:23" } });
 
-    expect(screen.getByLabelText("Hasta")).toHaveValue("2099-01-01T18:15");
+    expect(screen.getByLabelText("Hasta")).toHaveValue("2099-01-01T18:23");
+  });
+
+  // Al salir se va al bloque MAS CERCANO, no al anterior: quien escribe 18:23
+  // esta mas cerca de querer 18:30 que 18:15.
+  it("al salir del campo redondea al bloque de 15 mas cercano", async () => {
+    mockData({ vehiculos: [vehiculo()] });
+    render(<ReservasContent modo="admin" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+
+    const hasta = screen.getByLabelText("Hasta");
+    fireEvent.change(hasta, { target: { value: "2099-01-01T18:23" } });
+    fireEvent.blur(hasta);
+
+    await waitFor(() => expect(hasta).toHaveValue("2099-01-01T18:30"));
+  });
+
+  it("redondea para abajo cuando el minuto esta mas cerca del bloque anterior", async () => {
+    mockData({ vehiculos: [vehiculo()] });
+    render(<ReservasContent modo="admin" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+
+    const hasta = screen.getByLabelText("Hasta");
+    fireEvent.change(hasta, { target: { value: "2099-01-01T18:07" } });
+    fireEvent.blur(hasta);
+
+    await waitFor(() => expect(hasta).toHaveValue("2099-01-01T18:00"));
+  });
+
+  // El redondeo puede llevar a la hora siguiente, y hasta al dia siguiente.
+  it("redondear cerca de medianoche pasa al dia siguiente", async () => {
+    mockData({ vehiculos: [vehiculo()] });
+    render(<ReservasContent modo="admin" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+
+    const hasta = screen.getByLabelText("Hasta");
+    fireEvent.change(hasta, { target: { value: "2099-01-01T23:53" } });
+    fireEvent.blur(hasta);
+
+    await waitFor(() => expect(hasta).toHaveValue("2099-01-02T00:00"));
+  });
+
+  it("el inicio se acomoda con la misma regla", async () => {
+    mockData({ vehiculos: [vehiculo()] });
+    render(<ReservasContent modo="admin" />);
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos"));
+
+    const desde = screen.getByLabelText("Desde");
+    fireEvent.change(desde, { target: { value: "2099-01-01T08:38" } });
+    fireEvent.blur(desde);
+
+    await waitFor(() => expect(desde).toHaveValue("2099-01-01T08:45"));
   });
 
   // La disponibilidad se pregunta por el rango completo, no por el día.

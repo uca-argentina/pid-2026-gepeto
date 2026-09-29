@@ -45,6 +45,27 @@ export const alBloqueLocal = (valor) => {
 };
 
 /**
+ * Lleva un valor "YYYY-MM-DDTHH:mm" al bloque de 15 **más cercano**.
+ *
+ * Es lo que se aplica a lo que escribe una persona: si tipea 14:23, lo natural
+ * es que quede 14:30 y no 14:15, que es lo que daría truncar. El arranque por
+ * defecto, en cambio, sigue redondeando hacia abajo (`alBloque`), por un motivo
+ * distinto: ahí se quiere cubrir los minutos que ya pasaron.
+ *
+ * Se resuelve sobre un Date y no sobre el texto porque el redondeo puede caer
+ * en la hora siguiente —14:53 va a 15:00— y hasta en el día siguiente.
+ */
+export const redondearAlBloqueLocal = (valor) => {
+  if (!valor) return valor;
+  const d = new Date(valor);
+  if (Number.isNaN(d.getTime())) return valor;
+  d.setSeconds(0, 0);
+  // setMinutes se encarga del acarreo a la hora y al día.
+  d.setMinutes(Math.round(d.getMinutes() / PASO_MINUTOS) * PASO_MINUTOS);
+  return aInputLocal(d);
+};
+
+/**
  * El bloque en curso: dónde arranca una reserva nueva.
  *
  * Se redondea hacia abajo, no hacia arriba, justamente para que cubra "ahora":

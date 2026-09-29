@@ -13,7 +13,7 @@ import { formatearPrecio } from "@/utils/tarifas";
 import {
   MODALIDAD_ETIQUETA,
   PASO_MINUTOS,
-  alBloqueLocal,
+  redondearAlBloqueLocal,
   formatearRango,
   franjaPorDefecto,
 } from "@/utils/franjaHoraria";
@@ -170,8 +170,13 @@ export default function ReservasContent({
 
     // Solo las cocheras libres durante TODA la franja pedida.
     api
+      // Se pregunta por el bloque y no por el horario a medio escribir.
       .get("/api/v1/cocheras/disponibles", {
-        params: { desde, hasta, tipoVehiculo: vehiculoEncontrado.tipo },
+        params: {
+          desde: redondearAlBloqueLocal(desde),
+          hasta: redondearAlBloqueLocal(hasta),
+          tipoVehiculo: vehiculoEncontrado.tipo,
+        },
       })
       .then((res) => { if (vigente) setCocheras(res.data); })
       .catch(() => { if (vigente) toast.error("No se pudieron cargar las cocheras disponibles."); });
@@ -199,8 +204,11 @@ export default function ReservasContent({
         visitanteId: esAdmin ? visitanteEncontrado.id : undefined,
         vehiculoId: vehiculoEncontrado.id,
         cocheraId: data.cocheraId,
-        desde: data.desde,
-        hasta: data.hasta,
+        // Cinturón: al pasar del campo al botón se dispara el blur que ya lo
+        // acomoda, pero el valor también puede venir de un atajo o de un reset,
+        // y el backend rechaza lo que no caiga en la grilla de 15 minutos.
+        desde: redondearAlBloqueLocal(data.desde),
+        hasta: redondearAlBloqueLocal(data.hasta),
         precioEsperado: cotizacion.datos.total,
       });
       toast.success("Reserva creada correctamente");
@@ -311,17 +319,22 @@ export default function ReservasContent({
 
             <div>
               <label className={labelClasses} htmlFor="reserva-desde">Desde</label>
-              {/* step de 15 min: el navegador ofrece los bloques y marca como
-                  inválido cualquier horario intermedio. Igual se baja al bloque
-                  en onChange, porque el step no frena a quien escribe a mano. */}
+              {/* step de 15 min: las flechas del campo se mueven de a un
+                  bloque. Lo que se escribe se redondea al bloque más cercano
+                  **al salir del campo**, no en cada tecla: escribir los minutos
+                  pasa por estados intermedios —tipear el "3" de ":30" deja
+                  ":03"— y acomodarlos en el momento los borraba, así que no se
+                  podía escribir ningún minuto. */}
               <input
                 id="reserva-desde"
                 type="datetime-local"
                 step={PASO_MINUTOS * 60}
-                {...register("desde")}
-                onChange={(e) =>
-                  setValue("desde", alBloqueLocal(e.target.value), { shouldValidate: true })
-                }
+                {...register("desde", {
+                  onBlur: (e) =>
+                    setValue("desde", redondearAlBloqueLocal(e.target.value), {
+                      shouldValidate: true,
+                    }),
+                })}
                 className={inputClasses}
               />
               {errors.desde && <p className="mt-1 text-sm text-red-500">{errors.desde.message}</p>}
@@ -334,10 +347,12 @@ export default function ReservasContent({
                 type="datetime-local"
                 step={PASO_MINUTOS * 60}
                 min={desde}
-                {...register("hasta")}
-                onChange={(e) =>
-                  setValue("hasta", alBloqueLocal(e.target.value), { shouldValidate: true })
-                }
+                {...register("hasta", {
+                  onBlur: (e) =>
+                    setValue("hasta", redondearAlBloqueLocal(e.target.value), {
+                      shouldValidate: true,
+                    }),
+                })}
                 className={inputClasses}
               />
               {errors.hasta && <p className="mt-1 text-sm text-red-500">{errors.hasta.message}</p>}
