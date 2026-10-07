@@ -47,7 +47,11 @@ function Field({ form, name, label, hint, ...props }) {
   );
 }
 
-export default function ProfileSettings({ admin = false }) {
+/**
+ * `children` son secciones extra que se agregan a la columna de la derecha,
+ * después de los datos personales (en el perfil del visitante: sus vehículos).
+ */
+export default function ProfileSettings({ admin = false, children }) {
   const [perfil, setPerfil] = useState(null);
   const [loading, setLoading] = useState(true);
   const [attempt, setAttempt] = useState(0);
@@ -166,6 +170,8 @@ export default function ProfileSettings({ admin = false }) {
               </div>
             </fieldset>
           </form>
+
+          {children}
 
           <section className="ui-card profile-form">
             <div className="profile-security-heading">

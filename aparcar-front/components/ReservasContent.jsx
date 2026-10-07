@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -8,6 +9,7 @@ import { toast } from "sonner";
 import api from "@/app/api";
 import AtajosJornada from "@/components/AtajosJornada";
 import CotizacionReserva from "@/components/CotizacionReserva";
+import PatenteVisual from "@/components/PatenteVisual";
 import useCotizacion from "@/hooks/useCotizacion";
 import { formatearPrecio } from "@/utils/tarifas";
 import {
@@ -141,7 +143,8 @@ export default function ReservasContent({
   // GET /api/v1/vehiculos devuelve el catálogo completo para el ADMIN y solo
   // los propios para un visitante, así que la misma llamada sirve en los dos
   // modos. Se re-llama al enfocar el campo de patente (además de al montar)
-  // porque el vehículo puede haberse cargado recién arriba en esta página.
+  // porque el vehículo puede haberse cargado recién en otra pestaña o
+  // pantalla (el visitante los gestiona desde "Mis datos").
   const cargarCatalogos = () => {
     api
       .get("/api/v1/vehiculos")
@@ -262,7 +265,11 @@ export default function ReservasContent({
       <div className="ui-card p-8">
         {sinVehiculos ? (
           <p className="text-sm text-ink/60">
-            Cargá al menos un vehículo en &quot;Mis datos&quot; para poder reservar.
+            Cargá al menos un vehículo en{" "}
+            <Link href="/dashboard-user/perfil#mis-vehiculos" className="font-semibold text-link underline-offset-2 hover:underline">
+              &quot;Mis datos&quot;
+            </Link>{" "}
+            para poder reservar.
           </p>
         ) : (
         <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
@@ -309,6 +316,13 @@ export default function ReservasContent({
                 <p className="mt-1 text-sm text-ink/50">
                   No hay ningún vehículo registrado con esa patente.
                 </p>
+              )}
+              {/* Un <option> no puede llevar la chapa dibujada: se muestra
+                  debajo del desplegable la del vehículo elegido. */}
+              {!esAdmin && vehiculoEncontrado && (
+                <div className="reserva-patente-elegida">
+                  <PatenteVisual patente={vehiculoEncontrado.patente} tipo={vehiculoEncontrado.tipo} tamano="sm" />
+                </div>
               )}
               {esAdmin && vehiculoEncontrado && visitanteEncontrado && (
                 <p className="mt-1 text-sm text-link">
@@ -443,9 +457,15 @@ export default function ReservasContent({
               {reservas.map((r) => (
                 <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 p-4">
                   <div>
-                    <p className="text-sm font-medium text-ink">
-                      {esAdmin ? `${r.visitante?.nombre} — ${r.vehiculo?.patente}` : r.vehiculo?.patente}
-                    </p>
+                    {esAdmin ? (
+                      <p className="text-sm font-medium text-ink">
+                        {`${r.visitante?.nombre} — ${r.vehiculo?.patente}`}
+                      </p>
+                    ) : (
+                      <div className="mb-2">
+                        <PatenteVisual patente={r.vehiculo?.patente} tipo={r.vehiculo?.tipo} tamano="sm" />
+                      </div>
+                    )}
                     <p className="text-xs text-ink/60">
                       Cochera {r.cochera?.numero} ({r.cochera?.sector}) · {formatearRango(r.desde, r.hasta)}
                     </p>

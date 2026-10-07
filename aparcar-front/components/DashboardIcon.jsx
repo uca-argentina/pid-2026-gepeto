@@ -8,6 +8,7 @@ const paths = {
   users: <><circle cx="9" cy="8" r="3" /><path d="M3 21v-2a6 6 0 0 1 12 0v2m1-16a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 4v2" /></>,
   "user-plus": <><circle cx="9" cy="8" r="3" /><path d="M3 21v-2a6 6 0 0 1 12 0v2M18 8v6m3-3h-6" /></>,
   logout: <><path d="M9 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4m6-4 4-4-4-4m-7 4h11" /></>,
+  car: <><path d="M5 17H3v-5l2-5h14l2 5v5h-2" /><path d="M3 12h18M9 17h6" /><circle cx="7" cy="17" r="2" /><circle cx="17" cy="17" r="2" /></>,
 };
 
 export default function DashboardIcon({ name }) {

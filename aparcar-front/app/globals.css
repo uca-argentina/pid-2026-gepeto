@@ -91,6 +91,43 @@
     .reservas-columnas { grid-template-columns: minmax(0, 1fr); gap: 40px; }
   }
 
+  /* ---- Patente grafica (PatenteVisual) ----
+     Las chapas reales son blancas o negras sin importar el tema, asi que los
+     colores son literales; en modo oscuro solo se agrega un filo claro para
+     que el borde no se pierda contra la superficie. Todo se mide en em: el
+     tamano se cambia solo con el font-size de la raiz. */
+  .patente { display: inline-flex; flex-direction: column; flex-shrink: 0; overflow: hidden; vertical-align: middle; font-size: 15px; line-height: 1; border-radius: .5em; font-family: "Arial Narrow", "Roboto Condensed", "Helvetica Neue", Arial, sans-serif; box-shadow: 0 1px 3px #00214726; user-select: all; }
+  .patente--sm { font-size: 10px; }
+  .dark .patente { box-shadow: 0 0 0 1px #ffffff40, 0 1px 3px #0000004d; }
+  .patente-caracteres { display: flex; font-stretch: condensed; flex-direction: column; align-items: center; justify-content: center; flex: 1; font-weight: 700; white-space: nowrap; }
+  .patente-renglon { display: block; }
+
+  /* Mercosur: chapa blanca, banda azul con el pais, caracteres negros. */
+  .patente--auto-mercosur, .patente--moto-mercosur { border: .14em solid #111; background: #fff; color: #111; }
+  .patente-banda { display: flex; align-items: center; justify-content: space-between; gap: .4em; white-space: nowrap; height: 1.15em; padding: 0 .4em; background: #1d3f94; color: #fff; }
+  .patente-mercosur { font-size: .34em; font-weight: 600; letter-spacing: .02em; }
+  .patente-pais { font-size: .52em; font-weight: 700; letter-spacing: .06em; }
+  .patente-bandera { position: relative; width: 1.15em; height: .75em; flex-shrink: 0; border-radius: .1em; background: linear-gradient(#74acdf 33%, #fff 33% 67%, #74acdf 67%); }
+  .patente-bandera::after { content: ""; position: absolute; top: 50%; left: 50%; width: .2em; height: .2em; border-radius: 50%; background: #f6b40e; transform: translate(-50%, -50%); }
+  .patente--auto-mercosur .patente-caracteres { padding: .1em .35em .18em; font-size: 2.05em; letter-spacing: .03em; }
+  .patente--moto-mercosur .patente-banda { justify-content: center; }
+  .patente--moto-mercosur .patente-mercosur, .patente--moto-mercosur .patente-bandera { display: none; }
+  .patente--moto-mercosur .patente-pais { font-size: .34em; }
+  .patente--moto-mercosur .patente-caracteres { padding: .08em .3em .14em; font-size: 1.85em; line-height: .98; letter-spacing: .03em; }
+
+  /* Anterior: marco plateado con "ARGENTINA" en celeste y fondo negro con
+     caracteres claros. */
+  .patente--auto-anterior, .patente--moto-anterior { padding: 0 .3em .3em; border: 1px solid #aab4bd; background: linear-gradient(#f3f5f7, #d6dce1); color: #f2f2f2; }
+  .patente-argentina { display: block; white-space: nowrap; padding: .18em 0 .14em; color: #3f97d1; font-family: Georgia, "Times New Roman", serif; font-size: .58em; font-weight: 700; letter-spacing: .12em; text-align: center; }
+  .patente--auto-anterior .patente-caracteres, .patente--moto-anterior .patente-caracteres { border-radius: .25em; background: #111; box-shadow: inset 0 0 0 .08em #3a3a3a; font-family: "Arial Rounded MT Bold", "Arial Narrow", Arial, sans-serif; font-weight: 600; }
+  .patente--auto-anterior .patente-caracteres { padding: .12em .25em .16em; font-size: 2em; letter-spacing: .06em; }
+  .patente--moto-anterior .patente-caracteres { padding: .1em .2em .14em; font-size: 1.7em; line-height: 1.02; letter-spacing: .08em; }
+
+  /* Sin formato reconocido: chapa neutra, con la forma del tipo de vehiculo. */
+  .patente--generica { min-width: 7em; padding: .35em .6em; border: .12em dashed var(--color-line); background: var(--color-bg); color: var(--color-ink); box-shadow: none; }
+  .patente--generica .patente-caracteres { font-size: 1.35em; letter-spacing: .06em; }
+  .patente--generica.patente--moto { min-width: 4.5em; }
+
   /* ---- Panel de ocupacion de cocheras (admin) ---- */
   .ocupacion { display: grid; gap: 0; }
 
@@ -358,13 +395,19 @@
   .profile-heading { flex-wrap: wrap; }
   .profile-heading > div:first-child { min-width: 0; overflow-wrap: anywhere; }
   .profile-actions { flex-wrap: wrap; }
-  .visitor-dashboard { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 32px; }
-  .visitor-dashboard > div { width: 100%; min-width: 0; }
-  .visitor-dashboard .profile-actions { flex-shrink: 1; }
-  .visitor-dashboard .vehicle-form { display: flex; flex-wrap: wrap; }
-  .visitor-dashboard .vehicle-form > div { flex: 1 1 140px; }
-  .visitor-dashboard .vehicle-form > select { width: auto; flex: 1 1 100px; }
-  .visitor-dashboard .vehicle-form > button { flex: 0 1 auto; }
+  /* ---- Mis vehiculos (dentro de "Mis datos" del visitante) ---- */
+  .vehicle-list { display: grid; margin-bottom: 24px; border-top: 1px solid var(--color-line); }
+  .vehicle-item { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 16px 0; border-bottom: 1px solid var(--color-line); font-size: 14px; }
+  .vehicle-item.is-editando { display: block; }
+  .vehicle-tipo { color: var(--color-muted); font-size: 13px; }
+  .vehicle-item-acciones { display: flex; gap: 8px; margin-left: auto; }
+  .vehicle-form { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 14px; }
+  .vehicle-form-patente { flex: 2 1 220px; min-width: 0; }
+  .vehicle-form-tipo { flex: 1 1 140px; min-width: 0; }
+  .vehicle-form-acciones { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 29px; }
+  .vehicle-form-ayuda { margin-top: 6px; color: var(--color-muted); font-size: 12px; }
+  .vehicle-form-ayuda strong { color: var(--color-ink); font-weight: 600; letter-spacing: .04em; }
+  .reserva-patente-elegida { margin-top: 10px; }
   .reservation-list > li { padding: 20px 24px; gap: 16px; }
 }
 
@@ -391,7 +434,6 @@
   .auth-mobile-brand { display: block; }
   .auth-layout-wide .auth-mobile-brand { display: none; }
   .auth-content { min-height: 100svh; padding: 64px 24px 32px; gap: 24px; }
-  .visitor-dashboard { grid-template-columns: 1fr; max-width: 760px; margin-inline: auto; }
 }
 @media (max-width: 640px) {
   .account-trigger { width: 44px; padding: 5px; justify-content: center; }
@@ -438,6 +480,10 @@
   .reservation-list > li > div:first-child { min-width: 0; overflow-wrap: anywhere; }
   .reservation-list > li > div:last-child { width: 100%; justify-content: space-between; }
   .reservation-list button, .profile-actions button { min-height: 40px; }
+  .vehicle-item-acciones { width: 100%; margin-left: 0; }
+  .vehicle-item-acciones button { flex: 1; min-height: 40px; }
+  .vehicle-form-acciones { width: 100%; padding-top: 0; }
+  .vehicle-form-acciones button { flex: 1; }
 }
 /* El formato responde al espacio real de la tabla, también junto a un formulario. */
 @container (max-width: 820px) {
