@@ -49,7 +49,7 @@ export default function AccountMenu({ visitor = false }) {
           <Link href={visitor ? "/dashboard-user/perfil" : "/dashboard-admin/perfil"}
             className="account-menu-item" onClick={() => setOpen(false)}>
             <DashboardIcon name="profile" />
-            <span>Mis datos<span className="account-item-description">{visitor ? "Perfil y seguridad" : "Perfil, estacionamiento y seguridad"}</span></span>
+            <span>Mis datos<span className="account-item-description">{visitor ? "Perfil, vehículos y seguridad" : "Perfil, estacionamiento y seguridad"}</span></span>
           </Link>
           <div className="account-menu-divider" />
           <LogoutButton className="account-menu-item account-menu-logout" />
