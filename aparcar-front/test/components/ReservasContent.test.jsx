@@ -292,9 +292,22 @@ describe("ReservasContent en modo visitante", () => {
     mockData({ vehiculos: [] });
     render(<ReservasContent modo="user" />);
 
-    expect(
-      await screen.findByText(/Cargá al menos un vehículo en "Mis datos"/)
-    ).toBeInTheDocument();
+    const link = await screen.findByRole("link", { name: '"Mis datos"' });
+    expect(link).toHaveAttribute("href", "/dashboard-user/perfil#mis-vehiculos");
+    expect(link.closest("p")).toHaveTextContent('Cargá al menos un vehículo en "Mis datos" para poder reservar.');
+  });
+
+  it("al elegir un vehiculo muestra su patente grafica debajo del desplegable", async () => {
+    mockData({ vehiculos: [vehiculo(), vehiculo({ id: "veh2", patente: "A123BCD", tipo: "MOTO" })] });
+    const user = userEvent.setup();
+    render(<ReservasContent modo="user" />);
+
+    await screen.findByRole("option", { name: /A123BCD — MOTO/ });
+    expect(screen.queryByRole("img", { name: /^Patente/ })).not.toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Patente"), "A123BCD");
+
+    expect(screen.getByRole("img", { name: "Patente A123BCD" })).toHaveAttribute("data-formato", "moto-mercosur");
   });
 
   // El backend ignora el visitanteId que mande un USER, pero el frontend
@@ -337,6 +350,28 @@ describe("ReservasContent en modo visitante", () => {
 
     expect(await screen.findByText("Mis reservas")).toBeInTheDocument();
     expect(screen.queryByText("Juan Perez — ABC123")).not.toBeInTheDocument();
+  });
+
+  it("en Mis reservas la patente se ve como una chapa grafica", async () => {
+    mockData({
+      vehiculos: [vehiculo()],
+      reservas: [
+        {
+          id: "r1",
+          desde: "2026-01-01T10:00",
+          hasta: "2026-01-01T12:00",
+          estado: "CONFIRMADA",
+          vehiculo: { patente: "ABC123", tipo: "AUTO" },
+          cochera: { numero: "A-01", sector: "Planta Baja" },
+        },
+      ],
+    });
+    render(<ReservasContent modo="user" />);
+
+    const lista = (await screen.findByText(/Cochera A-01/)).closest("ul");
+    const chapa = within(lista).getByRole("img", { name: "Patente ABC123" });
+    expect(chapa).toHaveAttribute("data-formato", "auto-anterior");
+    expect(chapa).toHaveClass("patente--sm");
   });
 });
 
@@ -593,6 +628,8 @@ describe("ReservasContent: modalidad en el listado", () => {
     render(<ReservasContent modo="admin" />);
 
     expect(await screen.findByText("Juan Perez — ABC123")).toBeInTheDocument();
+    // La chapa grafica es solo del visitante: el listado del admin no cambia.
+    expect(screen.queryByRole("img", { name: /^Patente/ })).not.toBeInTheDocument();
   });
 });
 
