@@ -6,11 +6,21 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
 import api from "@/app/api";
-import { formatoPatenteValido, MENSAJE_FORMATO_INVALIDO } from "@/utils/patenteValidation";
+import DashboardIcon from "@/components/DashboardIcon";
+import PatenteVisual from "@/components/PatenteVisual";
+import {
+  ejemplosPatente,
+  formatoPatenteValido,
+  mensajeFormatoInvalido,
+  normalizarPatente,
+} from "@/utils/patenteValidation";
 
+// La patente se normaliza (sin espacios ni guiones, en mayúsculas) antes de
+// validar y de enviar: la leyenda la muestra separada en bloques, como en la
+// chapa, y el backend espera el formato compacto.
 const vehiculoSchema = z
   .object({
-    patente: z.string().min(1, "La patente es obligatoria"),
+    patente: z.string().transform(normalizarPatente).pipe(z.string().min(1, "La patente es obligatoria")),
     tipo: z.enum(["AUTO", "MOTO", "CARGA"], {
       message: "Selecciona un tipo de vehículo",
     }),
@@ -18,18 +28,66 @@ const vehiculoSchema = z
   .superRefine((data, ctx) => {
     if (!formatoPatenteValido(data.patente, data.tipo)) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["patente"],
-        message: MENSAJE_FORMATO_INVALIDO[data.tipo],
+        message: mensajeFormatoInvalido(data.tipo),
       });
     }
   });
 
+const TIPO_ETIQUETA = { AUTO: "Auto", MOTO: "Moto", CARGA: "Carga" };
 
-const inputClasses = "ui-input";
+/**
+ * Campos de patente y tipo, compartidos por el alta y la edición. La leyenda
+ * de formato sigue al tipo elegido: moto y auto/carga usan esquemas distintos.
+ */
+function CamposVehiculo({ form, idPrefijo }) {
+  const tipo = form.watch("tipo");
+  const { actual, anterior } = ejemplosPatente(tipo);
+  const error = form.formState.errors.patente;
+  const idPatente = `${idPrefijo}-patente`;
+  const idAyuda = `${idPrefijo}-patente-ayuda`;
+  const idError = `${idPrefijo}-patente-error`;
 
-// Los datos personales se editan desde Mi cuenta. Los vehículos siguen junto
-// a las reservas para conservar el refresco de patentes del panel.
+  return (
+    <>
+      <div className="vehicle-form-patente">
+        <label className="ui-label" htmlFor={idPatente}>Patente</label>
+        <input
+          id={idPatente}
+          {...form.register("patente")}
+          className="ui-input uppercase"
+          placeholder={`${actual} / ${anterior}`}
+          autoComplete="off"
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? `${idError} ${idAyuda}` : idAyuda}
+        />
+        <p id={idAyuda} className="vehicle-form-ayuda">
+          Formato actual: <strong>{actual}</strong> · anterior: <strong>{anterior}</strong>
+        </p>
+        {error && (
+          <p id={idError} role="alert" className="mt-1 text-sm text-red-500">{error.message}</p>
+        )}
+      </div>
+      <div className="vehicle-form-tipo">
+        <label className="ui-label" htmlFor={`${idPrefijo}-tipo`}>Tipo de vehículo</label>
+        <select id={`${idPrefijo}-tipo`} {...form.register("tipo")} className="ui-input">
+          <option value="AUTO">Auto</option>
+          <option value="MOTO">Moto</option>
+          <option value="CARGA">Carga</option>
+        </select>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Gestión de los vehículos del visitante (alta, edición y baja). Vive dentro
+ * de "Mis datos" (/dashboard-user/perfil). El formulario de reserva vuelve a
+ * pedir los vehículos al montarse y al enfocar la patente, así que al volver
+ * al panel ya ve los cambios sin un aviso explícito; `onVehiculosCambiaron`
+ * queda para quien lo renderice junto a otra cosa que dependa de la lista.
+ */
 export default function MiPerfilContent({ onVehiculosCambiaron }) {
   const [vehiculos, setVehiculos] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -99,64 +157,46 @@ export default function MiPerfilContent({ onVehiculosCambiaron }) {
     }
   };
 
-
-  if (loading) return <p className="p-8 text-center text-sm text-ink/60">Cargando tus vehículos...</p>;
-  if (!vehiculos) return <p className="p-8 text-center text-sm text-ink/60">No se pudieron cargar tus vehículos.</p>;
-
-  return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-ink mb-2">Mis vehículos</h1>
-        <p className="text-sm text-ink/60">Tus vehículos, listos para tu próxima reserva.</p>
-      </div>
-      <div className="ui-card p-6">
+  let contenido;
+  if (loading) {
+    contenido = <p role="status" className="text-sm text-ink/60">Cargando tus vehículos...</p>;
+  } else if (!vehiculos) {
+    contenido = <p className="text-sm text-ink/60">No se pudieron cargar tus vehículos.</p>;
+  } else {
+    contenido = (
+      <>
         {vehiculos.length === 0 ? (
-          <p className="text-sm text-ink/60 mb-4">Todavía no cargaste ningún vehículo.</p>
+          <p className="mb-6 text-sm text-ink/60">Todavía no cargaste ningún vehículo.</p>
         ) : (
-          <ul className="mb-4 divide-y divide-ink/10">
+          <ul className="vehicle-list" aria-label="Tus vehículos">
             {vehiculos.map((v) =>
               editandoVehiculoId === v.id ? (
-                <li key={v.id} className="py-3">
+                <li key={v.id} className="vehicle-item is-editando">
                   <form
-                    className="vehicle-form flex flex-wrap items-start gap-2"
+                    className="vehicle-form"
                     onSubmit={editVehiculoForm.handleSubmit(onEditarVehiculo)}
+                    noValidate
                   >
-                    <div>
-                      <input
-                        {...editVehiculoForm.register("patente")}
-                        className={`${inputClasses} uppercase`}
-                      />
-                      {editVehiculoForm.formState.errors.patente && (
-                        <p className="mt-1 text-sm text-red-500">
-                          {editVehiculoForm.formState.errors.patente.message}
-                        </p>
-                      )}
+                    <CamposVehiculo form={editVehiculoForm} idPrefijo={`vehiculo-${v.id}`} />
+                    <div className="vehicle-form-acciones">
+                      <button type="submit" className="ui-primary px-4 text-sm font-semibold">
+                        Guardar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditandoVehiculoId(null)}
+                        className="profile-secondary"
+                      >
+                        Cancelar
+                      </button>
                     </div>
-                    <select {...editVehiculoForm.register("tipo")} className={inputClasses}>
-                      <option value="AUTO">Auto</option>
-                      <option value="MOTO">Moto</option>
-                      <option value="CARGA">Carga</option>
-                    </select>
-                    <button
-                      type="submit"
-                      className="ui-primary px-4 py-3 text-sm font-semibold transition-all"
-                    >
-                      Guardar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditandoVehiculoId(null)}
-                      className="rounded-xl px-4 py-3 text-sm font-medium text-ink/70 hover:bg-ink/5 transition-colors"
-                    >
-                      Cancelar
-                    </button>
                   </form>
                 </li>
               ) : (
-                <li key={v.id} className="flex flex-wrap items-center justify-between gap-3 py-4 text-sm">
-                  <span className="font-medium text-ink">{v.patente}</span>
-                  <span className="text-ink/60">{v.tipo}</span>
-                  <div className="flex gap-2">
+                <li key={v.id} className="vehicle-item">
+                  <PatenteVisual patente={v.patente} tipo={v.tipo} />
+                  <span className="vehicle-tipo">{TIPO_ETIQUETA[v.tipo] ?? v.tipo}</span>
+                  <div className="vehicle-item-acciones">
                     <button
                       type="button"
                       onClick={() => startEditandoVehiculo(v)}
@@ -179,33 +219,35 @@ export default function MiPerfilContent({ onVehiculosCambiaron }) {
         )}
 
         <form
-          className="vehicle-form flex flex-wrap items-start gap-3"
+          className="vehicle-form vehicle-form-alta"
           onSubmit={vehiculoForm.handleSubmit(onAgregarVehiculo)}
+          noValidate
         >
-          <div>
-            <input
-              {...vehiculoForm.register("patente")}
-              className={`${inputClasses} uppercase`}
-              placeholder="ABC123 / AB123CD"
-            />
-            {vehiculoForm.formState.errors.patente && (
-              <p className="mt-1 text-sm text-red-500">{vehiculoForm.formState.errors.patente.message}</p>
-            )}
+          <CamposVehiculo form={vehiculoForm} idPrefijo="vehiculo-nuevo" />
+          <div className="vehicle-form-acciones">
+            <button
+              type="submit"
+              disabled={vehiculoForm.formState.isSubmitting}
+              className="ui-primary px-4 text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Agregar
+            </button>
           </div>
-          <select {...vehiculoForm.register("tipo")} className={inputClasses}>
-            <option value="AUTO">Auto</option>
-            <option value="MOTO">Moto</option>
-            <option value="CARGA">Carga</option>
-          </select>
-          <button
-            type="submit"
-            disabled={vehiculoForm.formState.isSubmitting}
-            className="ui-primary px-4 py-3 text-sm font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Agregar
-          </button>
         </form>
+      </>
+    );
+  }
+
+  return (
+    <section id="mis-vehiculos" className="ui-card profile-form" aria-labelledby="mis-vehiculos-titulo">
+      <div className="profile-section-heading">
+        <span className="profile-section-icon"><DashboardIcon name="car" /></span>
+        <div>
+          <h2 id="mis-vehiculos-titulo">Mis vehículos</h2>
+          <p>Cargá, editá o eliminá los vehículos con los que vas a reservar.</p>
+        </div>
       </div>
-    </div>
+      {contenido}
+    </section>
   );
 }
