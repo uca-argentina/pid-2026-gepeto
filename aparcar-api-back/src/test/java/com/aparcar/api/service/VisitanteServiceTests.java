@@ -41,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -109,7 +110,7 @@ public class VisitanteServiceTests {
                 new CocheraResponseDto(COCHERA_ID, "A-01", "Planta Baja", CocheraTipo.AUTO, CocheraEstado.HABILITADA, null),
                 ReservaEstado.CONFIRMADA,
                 ModalidadReserva.FRANJA,
-                Instant.now(), new java.math.BigDecimal("1000.00"), CocheraTipo.AUTO);
+                Instant.now(), new java.math.BigDecimal("1000.00"), CocheraTipo.AUTO, null, List.of());
     }
 
     @Test
@@ -117,7 +118,7 @@ public class VisitanteServiceTests {
     void altaLanzaValidationExceptionSiDocumentoYaExiste() {
         when(visitanteRepository.existsByDocumento(dto.getDocumento())).thenReturn(true);
 
-        assertThrows(ValidationException.class, () -> visitanteService.altaConReserva(dto));
+        assertThrows(ValidationException.class, () -> visitanteService.altaConReserva(dto, "admin@test.com"));
         verify(visitanteRepository, never()).save(any());
     }
 
@@ -129,14 +130,14 @@ public class VisitanteServiceTests {
         when(visitanteRepository.existsByDocumento(dto.getDocumento())).thenReturn(false);
         when(visitanteRepository.existsByEmail(dto.getEmail())).thenReturn(true);
 
-        assertThrows(ValidationException.class, () -> visitanteService.altaConReserva(dto));
+        assertThrows(ValidationException.class, () -> visitanteService.altaConReserva(dto, "admin@test.com"));
         verify(visitanteRepository, never()).save(any());
     }
 
     @Test
     @DisplayName("altaConReserva usa el documento como contraseña inicial, hasheado")
     void altaUsaElDocumentoComoContraseñaInicial() {
-        visitanteService.altaConReserva(dto);
+        visitanteService.altaConReserva(dto, "admin@test.com");
 
         ArgumentCaptor<Visitante> captor = ArgumentCaptor.forClass(Visitante.class);
         verify(visitanteRepository).save(captor.capture());
@@ -148,7 +149,7 @@ public class VisitanteServiceTests {
     @Test
     @DisplayName("altaConReserva crea la cuenta activa y con rol USER")
     void altaCreaLaCuentaActivaYConRolUser() {
-        visitanteService.altaConReserva(dto);
+        visitanteService.altaConReserva(dto, "admin@test.com");
 
         ArgumentCaptor<Visitante> captor = ArgumentCaptor.forClass(Visitante.class);
         verify(visitanteRepository).save(captor.capture());
@@ -160,7 +161,7 @@ public class VisitanteServiceTests {
     @Test
     @DisplayName("altaConReserva carga el vehiculo a nombre del visitante recien creado")
     void altaCargaElVehiculoANombreDelVisitanteCreado() {
-        var response = visitanteService.altaConReserva(dto);
+        var response = visitanteService.altaConReserva(dto, "admin@test.com");
 
         ArgumentCaptor<VehiculoRequestDto> captor = ArgumentCaptor.forClass(VehiculoRequestDto.class);
         verify(vehiculoService).crear(captor.capture());
@@ -174,10 +175,10 @@ public class VisitanteServiceTests {
     @Test
     @DisplayName("altaConReserva reserva la cochera indicada para hoy")
     void altaReservaLaCocheraParaHoy() {
-        visitanteService.altaConReserva(dto);
+        visitanteService.altaConReserva(dto, "admin@test.com");
 
         ArgumentCaptor<ReservaRequestDto> captor = ArgumentCaptor.forClass(ReservaRequestDto.class);
-        verify(reservaService).crear(captor.capture(), any(), anyBoolean());
+        verify(reservaService).crear(captor.capture(), eq("admin@test.com"), eq(true));
 
         // Sin franja explicita, el alta arranca ahora y dura una hora.
         assertEquals(60, java.time.Duration.between(
@@ -194,10 +195,10 @@ public class VisitanteServiceTests {
         dto.setDesde(desde);
         dto.setHasta(hasta);
 
-        visitanteService.altaConReserva(dto);
+        visitanteService.altaConReserva(dto, "admin@test.com");
 
         ArgumentCaptor<ReservaRequestDto> captor = ArgumentCaptor.forClass(ReservaRequestDto.class);
-        verify(reservaService).crear(captor.capture(), any(), anyBoolean());
+        verify(reservaService).crear(captor.capture(), eq("admin@test.com"), eq(true));
         assertEquals(desde, captor.getValue().getDesde());
         assertEquals(hasta, captor.getValue().getHasta());
     }
@@ -211,7 +212,7 @@ public class VisitanteServiceTests {
         when(reservaService.crear(any(), any(), anyBoolean()))
                 .thenThrow(new ValidationException("La cochera ya tiene una reserva confirmada."));
 
-        assertThrows(ValidationException.class, () -> visitanteService.altaConReserva(dto));
+        assertThrows(ValidationException.class, () -> visitanteService.altaConReserva(dto, "admin@test.com"));
     }
 
     @Test

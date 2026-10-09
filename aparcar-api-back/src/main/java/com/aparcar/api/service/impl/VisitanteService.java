@@ -41,7 +41,7 @@ public class VisitanteService implements IVisitanteService {
 
     @Override
     @Transactional
-    public VisitanteAltaResponseDto altaConReserva(VisitanteAltaDto dto) {
+    public VisitanteAltaResponseDto altaConReserva(VisitanteAltaDto dto, String requesterEmail) {
         if (visitanteRepository.existsByDocumento(dto.getDocumento())) {
             throw new ValidationException("Ya existe un visitante con ese documento.");
         }
@@ -92,7 +92,7 @@ public class VisitanteService implements IVisitanteService {
         reservaDto.setDesde(desde);
         reservaDto.setHasta(hasta);
         reservaDto.setPrecioEsperado(dto.getPrecioEsperado());
-        ReservaResponseDto reserva = reservaService.crear(reservaDto, visitante.getEmail(), true);
+        ReservaResponseDto reserva = reservaService.crear(reservaDto, requesterEmail, true);
 
         return new VisitanteAltaResponseDto(toResponseDto(visitante), vehiculo, reserva);
     }

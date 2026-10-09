@@ -1,6 +1,8 @@
 package com.aparcar.api.entity.reserva;
 
+import com.aparcar.api.entity.auth.AppAuthority;
 import com.aparcar.api.entity.auth.Visitante;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -10,15 +12,21 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import org.hibernate.annotations.CreationTimestamp;
 
-import java.time.Instant;
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -78,6 +86,40 @@ public class Reserva {
     @CreationTimestamp
     @Column(name = "fecha_creacion", nullable = false, updatable = false)
     private Instant fechaCreacion;
+
+    /** Evita que dos bajas simultaneas sobrescriban al autor y al motivo. */
+    @Version
+    @Column(nullable = false)
+    private Long version;
+
+    @OneToMany(mappedBy = "reserva", cascade = CascadeType.ALL)
+    @OrderBy("fecha ASC, id ASC")
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private List<ReservaMovimiento> historial = new ArrayList<>();
+
+    public List<ReservaMovimiento> getHistorial() {
+        return List.copyOf(historial);
+    }
+
+    public void registrarAccion(ReservaAccion accion, Visitante actor, boolean esAdmin) {
+        historial.add(new ReservaMovimiento(this, accion, actor, esAdmin));
+    }
+
+    /** Null para reservas anteriores a la trazabilidad: no se infiere un autor. */
+    public ReservaMotivoCancelacion getMotivoCancelacion() {
+        if (estado != ReservaEstado.CANCELADA) return null;
+        for (ReservaMovimiento movimiento : historial) {
+            if (movimiento.getAccion() == ReservaAccion.DESHABILITACION) {
+                return ReservaMotivoCancelacion.DESHABILITACION;
+            }
+            if (movimiento.getAccion() == ReservaAccion.CANCELACION) {
+                return movimiento.getActorRol() == AppAuthority.ADMIN
+                        ? ReservaMotivoCancelacion.ADMINISTRACION : ReservaMotivoCancelacion.USUARIO;
+            }
+        }
+        return null;
+    }
 
     /** Como se esta reservando: por franja, media jornada o jornada completa. */
     public ModalidadReserva getModalidad() {

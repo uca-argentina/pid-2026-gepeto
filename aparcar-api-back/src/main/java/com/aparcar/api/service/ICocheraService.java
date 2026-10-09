@@ -78,7 +78,7 @@ public interface ICocheraService {
      * @throws NotFoundException   Si no existe una cochera con ese id.
      * @throws ValidationException Si el nuevo numero ya está en uso por otra cochera.
      */
-    CocheraResponseDto editar(UUID id, CocheraRequestDto dto);
+    CocheraResponseDto editar(UUID id, CocheraRequestDto dto, String requesterEmail);
 
     /**
      * @throws NotFoundException   Si no existe una cochera con ese id.

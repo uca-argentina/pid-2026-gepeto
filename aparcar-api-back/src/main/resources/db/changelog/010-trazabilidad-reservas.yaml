@@ -1,0 +1,69 @@
+databaseChangeLog:
+  - changeSet:
+      id: 010-trazabilidad-reservas
+      author: aparcar
+      changes:
+        - addColumn:
+            tableName: reservas
+            columns:
+              - column:
+                  name: version
+                  type: bigint
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        # No se inventan autores ni motivos para las reservas anteriores.
+        - createTable:
+            tableName: reserva_movimientos
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: reserva_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_reserva_movimientos_reserva
+                    references: reservas(id)
+              - column:
+                  name: accion
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: fecha
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actor_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actor_nombre
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actor_email
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actor_rol
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: reserva_movimientos
+            indexName: idx_reserva_movimientos_reserva_fecha
+            columns:
+              - column:
+                  name: reserva_id
+              - column:
+                  name: fecha

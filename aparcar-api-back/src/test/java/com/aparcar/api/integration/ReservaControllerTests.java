@@ -41,7 +41,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * una base real (sin mocks), a diferencia de ReservaServiceTests.
  */
 @IntegrationTests
-@org.springframework.test.context.jdbc.Sql("/tarifas-test.sql")
+@org.springframework.test.context.jdbc.Sql({"/tarifas-test.sql", "/admin-test.sql"})
 public class ReservaControllerTests {
 
     @Autowired

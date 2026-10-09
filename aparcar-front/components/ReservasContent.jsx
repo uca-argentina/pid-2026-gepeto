@@ -10,10 +10,9 @@ import api from "@/app/api";
 import AtajosJornada from "@/components/AtajosJornada";
 import CotizacionReserva from "@/components/CotizacionReserva";
 import PatenteVisual from "@/components/PatenteVisual";
+import ReservasListado from "@/components/ReservasListado";
 import useCotizacion from "@/hooks/useCotizacion";
-import { formatearPrecio } from "@/utils/tarifas";
 import {
-  MODALIDAD_ETIQUETA,
   PASO_MINUTOS,
   redondearAlBloqueLocal,
   formatearRango,
@@ -35,20 +34,6 @@ const reservaSchema = z
 const inputClasses =
   "ui-input";
 const labelClasses = "ui-label";
-function EstadoBadge({ estado }) {
-  const isConfirmada = estado === "CONFIRMADA";
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-        isConfirmada
-          ? "bg-accent/10 text-link ring-1 ring-inset ring-accent/30"
-          : "bg-ink/5 text-ink/50 ring-1 ring-inset ring-ink/10"
-      }`}
-    >
-      {estado}
-    </span>
-  );
-}
 
 // Lo usan los dos dashboards, pero no hacen lo mismo:
 //
@@ -78,6 +63,7 @@ export default function ReservasContent({
   const [cocheras, setCocheras] = useState([]);
   const [reservas, setReservas] = useState([]);
   const [loadingReservas, setLoadingReservas] = useState(true);
+  const [errorReservas, setErrorReservas] = useState(false);
 
   const {
     register,
@@ -128,12 +114,14 @@ export default function ReservasContent({
 
   const cargarReservas = async () => {
     setLoadingReservas(true);
+    setErrorReservas(false);
     try {
       // El backend ya devuelve todas las reservas si sos ADMIN, y solo las
       // propias si sos visitante. Acá no hay nada que filtrar.
       const res = await api.get("/api/v1/reservas");
       setReservas(res.data);
     } catch {
+      setErrorReservas(true);
       toast.error("No se pudieron cargar las reservas.");
     } finally {
       setLoadingReservas(false);
@@ -236,7 +224,7 @@ export default function ReservasContent({
     try {
       await api.post(`/api/v1/reservas/${reserva.id}/cancelar`);
       toast.success("Reserva cancelada correctamente");
-      cargarReservas();
+      await cargarReservas();
       onOcupacionCambiada?.();
     } catch (err) {
       toast.error(err.response?.data?.message || "No se pudo cancelar la reserva.");
@@ -439,63 +427,14 @@ export default function ReservasContent({
       </div>
       </div>
 
-      <div>
-        <h2 className="text-xl font-bold text-ink mb-4">
-          {esAdmin ? "Todas las reservas" : "Mis reservas"}
-        </h2>
-        <div className="ui-card overflow-hidden">
-          {loadingReservas ? (
-            <div className="flex items-center justify-center p-8">
-              <div className="h-6 w-6 animate-spin rounded-full border-4 border-accent border-t-transparent" />
-            </div>
-          ) : reservas.length === 0 ? (
-            <p className="p-6 text-sm text-ink/60">
-              {esAdmin ? "Todavía no hay reservas cargadas." : "Todavía no tenés reservas."}
-            </p>
-          ) : (
-            <ul className="reservation-list divide-y divide-ink/10">
-              {reservas.map((r) => (
-                <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 p-4">
-                  <div>
-                    {esAdmin ? (
-                      <p className="text-sm font-medium text-ink">
-                        {`${r.visitante?.nombre} — ${r.vehiculo?.patente}`}
-                      </p>
-                    ) : (
-                      <div className="mb-2">
-                        <PatenteVisual patente={r.vehiculo?.patente} tipo={r.vehiculo?.tipo} tamano="sm" />
-                      </div>
-                    )}
-                    <p className="text-xs text-ink/60">
-                      Cochera {r.cochera?.numero} ({r.cochera?.sector}) · {formatearRango(r.desde, r.hasta)}
-                    </p>
-                    {/* La modalidad la calcula el backend a partir de la
-                        duración, así que el listado no la vuelve a deducir. */}
-                    {r.modalidad && (
-                      <p className="franja-modalidad-badge">{MODALIDAD_ETIQUETA[r.modalidad] ?? r.modalidad}</p>
-                    )}
-                    <p className="mt-1 text-sm font-semibold text-ink">
-                      {r.precioTotal == null ? "Sin importe registrado" : `Total: ${formatearPrecio(r.precioTotal)} ARS`}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <EstadoBadge estado={r.estado} />
-                    {r.estado === "CONFIRMADA" && (
-                      <button
-                        type="button"
-                        onClick={() => cancelarReserva(r)}
-                        className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors dark:bg-red-500/10 dark:text-red-300 dark:ring-red-400/20 dark:border-red-400/25 dark:hover:bg-red-500/20"
-                      >
-                        Cancelar
-                      </button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      </div>
+      <ReservasListado
+        modo={modo}
+        reservas={reservas}
+        cargando={loadingReservas}
+        error={errorReservas}
+        onReintentar={cargarReservas}
+        onCancelar={cancelarReserva}
+      />
     </div>
   );
 }

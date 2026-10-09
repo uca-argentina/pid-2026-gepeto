@@ -26,3 +26,7 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# browser tests
+/test-results/
+/playwright-report/

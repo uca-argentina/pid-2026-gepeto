@@ -26,7 +26,7 @@ public interface IVisitanteService {
      *                             para hoy.
      * @throws NotFoundException   Si la cochera indicada no existe.
      */
-    VisitanteAltaResponseDto altaConReserva(VisitanteAltaDto dto);
+    VisitanteAltaResponseDto altaConReserva(VisitanteAltaDto dto, String requesterEmail);
 
     /**
      * @throws NotFoundException Si no existe un visitante con ese id.

@@ -38,6 +38,9 @@ public class CocheraServiceTests {
     @Mock
     private ReservaRepository reservaRepository;
 
+    @Mock
+    private com.aparcar.api.repository.VisitanteRepository visitanteRepository;
+
     @InjectMocks
     private CocheraService cocheraService;
 
@@ -118,7 +121,7 @@ public class CocheraServiceTests {
 
         when(cocheraRepository.findById(id)).thenReturn(Optional.empty());
 
-        assertThrows(NotFoundException.class, () -> cocheraService.editar(id, dto));
+        assertThrows(NotFoundException.class, () -> cocheraService.editar(id, dto, "admin@test.com"));
     }
 
     @Test
@@ -134,7 +137,7 @@ public class CocheraServiceTests {
         when(cocheraRepository.findById(cochera.getId())).thenReturn(Optional.of(cochera));
         when(cocheraRepository.existsByNumero("A-02")).thenReturn(true);
 
-        assertThrows(ValidationException.class, () -> cocheraService.editar(cochera.getId(), dto));
+        assertThrows(ValidationException.class, () -> cocheraService.editar(cochera.getId(), dto, "admin@test.com"));
     }
 
     @Test
@@ -150,7 +153,7 @@ public class CocheraServiceTests {
         when(cocheraRepository.findById(cochera.getId())).thenReturn(Optional.of(cochera));
         when(cocheraRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        var response = cocheraService.editar(cochera.getId(), dto);
+        var response = cocheraService.editar(cochera.getId(), dto, "admin@test.com");
 
         assertEquals("Subsuelo", response.sector());
         assertEquals(CocheraEstado.DESHABILITADA, response.estado());
@@ -251,6 +254,12 @@ public class CocheraServiceTests {
         dto.setTipo(CocheraTipo.AUTO);
         dto.setEstado(CocheraEstado.DESHABILITADA);
 
+        var admin = new com.aparcar.api.entity.auth.Visitante();
+        admin.setId(UUID.randomUUID());
+        admin.setNombre("Administrador");
+        admin.setEmail("admin@test.com");
+        when(visitanteRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+
         Reserva reservaConfirmada = new Reserva();
         reservaConfirmada.setEstado(ReservaEstado.CONFIRMADA);
 
@@ -259,7 +268,7 @@ public class CocheraServiceTests {
         when(reservaRepository.findByCocheraIdAndEstado(cochera.getId(), ReservaEstado.CONFIRMADA))
                 .thenReturn(List.of(reservaConfirmada));
 
-        cocheraService.editar(cochera.getId(), dto);
+        cocheraService.editar(cochera.getId(), dto, "admin@test.com");
 
         assertEquals(ReservaEstado.CANCELADA, reservaConfirmada.getEstado());
     }

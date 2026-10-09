@@ -43,7 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * desde el contrato HTTP y contra una base real.
  */
 @IntegrationTests
-@org.springframework.test.context.jdbc.Sql("/tarifas-test.sql")
+@org.springframework.test.context.jdbc.Sql({"/tarifas-test.sql", "/admin-test.sql"})
 public class AccesibilidadTests {
 
     private static final String VISITANTE = "visitante@test.com";
@@ -154,7 +154,7 @@ public class AccesibilidadTests {
                 .andExpect(status().isBadRequest());
 
         // Todo o nada: ni cuenta, ni vehiculo, ni reserva.
-        assertEquals(0, visitanteRepository.count());
+        assertEquals(1, visitanteRepository.count()); // Solo queda el admin autenticado.
         assertEquals(0, vehiculoRepository.count());
         assertEquals(0, reservaRepository.count());
     }

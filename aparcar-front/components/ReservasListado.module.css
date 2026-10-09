@@ -1,0 +1,62 @@
+/* Se importa desde el componente para que su CSS forme parte de la misma ruta. */
+@layer components {
+  /* Compartido por Ver reservas y Mis reservas. Se adapta al ancho de su columna. */
+  .listado { min-width: 0; container-type: inline-size; }
+  .encabezado { margin-bottom: 24px; }
+  .encabezado > p { margin-top: 8px; color: var(--color-muted); font-size: 14px; line-height: 1.6; }
+  .controles { padding: 20px; border-bottom: 1px solid var(--color-line); }
+  .filtros { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: var(--color-bg); }
+  .filtros button { display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 44px; min-width: 0; border: 1px solid transparent; border-radius: 9px; padding: 8px 6px; color: var(--color-muted); font-size: 12px; font-weight: 600; transition: background .15s, border-color .15s, color .15s; }
+  .filtros button:hover { color: var(--color-ink); }
+  .filtros button[aria-pressed="true"] { border-color: var(--color-line); background: var(--color-surface); color: var(--color-link); box-shadow: var(--shadow-card); }
+  .filtros button > span { padding: 1px 6px; border-radius: 6px; background: color-mix(in srgb, var(--color-ink) 6%, transparent); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .filtros button[aria-pressed="true"] > span { background: color-mix(in srgb, var(--color-accent) 12%, transparent); }
+  .orden { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: end; gap: 16px; margin-top: 18px; }
+  .orden :global(.ui-label) { margin-bottom: 6px; font-size: 12px; }
+  .orden :global(.ui-input) { font-size: 13px; padding-left: 10px; padding-right: 10px; }
+  .ayuda { padding-bottom: 4px; color: var(--color-muted); font-size: 12px; line-height: 1.6; }
+  .resumen { padding: 12px 22px; background: color-mix(in srgb, var(--color-bg) 55%, var(--color-surface)); color: var(--color-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .item { min-width: 0; padding: 22px; }
+  .item + .item { border-top: 1px solid var(--color-line); }
+  .cabecera { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+  .cabecera > div { min-width: 0; }
+  .etiqueta, .datos dt { color: var(--color-muted); font-size: 11px; font-weight: 500; line-height: 1.5; }
+  .cabecera h3 { margin-top: 3px; color: var(--color-ink); font-size: 15px; font-weight: 650; line-height: 1.5; overflow-wrap: anywhere; text-wrap: initial; }
+  .cabecera > span { flex-shrink: 0; max-width: 48%; padding: 5px 9px; border-radius: 8px; font-size: 10px; line-height: 1.5; }
+  .datos { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 16px; margin-top: 18px; }
+  .datos dd { margin-top: 4px; font-size: 13px; line-height: 1.6; font-weight: 500; overflow-wrap: anywhere; }
+  .datos :global(.franja-modalidad-badge) { font-size: 11px; font-weight: 500; }
+  .sector { color: var(--color-muted); font-weight: 400; }
+  .pie { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
+  .pie > div { min-width: 0; }
+  .importe { font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
+  .alta { margin-top: 4px; color: var(--color-muted); font-size: 11px; overflow-wrap: anywhere; }
+  .boton { min-height: 44px; border: 1px solid var(--color-line); border-radius: 9px; background: var(--color-surface); padding: 8px 12px; color: var(--color-ink); font-size: 12px; font-weight: 600; transition: background .15s, border-color .15s; }
+  .boton:hover:not(:disabled) { background: var(--color-bg); border-color: var(--color-accent); }
+  .boton:disabled { opacity: .45; cursor: not-allowed; }
+  .cancelar { color: #b4232a; }
+  .cancelar:hover:not(:disabled) { border-color: currentColor; background: color-mix(in srgb, #b4232a 5%, var(--color-surface)); }
+  :global(.dark) .cancelar { color: #ff8a8f; }
+  .historial { margin-top: 16px; padding-top: 12px; border-top: 1px dashed var(--color-line); overflow-wrap: anywhere; }
+  .historial details { margin-top: 0; }
+  .historial summary { width: fit-content; padding: 6px 0; }
+  .historial ol { padding: 12px; border-radius: 9px; background: var(--color-bg); }
+  .historial ol > li + li { padding-top: 10px; border-top: 1px solid var(--color-line); }
+  .vacio { display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 36px 22px; color: var(--color-muted); text-align: center; font-size: 14px; line-height: 1.7; }
+  .paginacion { display: flex; align-items: center; justify-content: space-between; gap: 8px; border-top: 1px solid var(--color-line); padding: 16px 20px; color: var(--color-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+
+  @container (max-width: 560px) {
+    .filtros { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .orden { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    .ayuda { padding-bottom: 0; }
+    .cabecera { flex-direction: column; gap: 9px; }
+    .cabecera > span { max-width: 100%; }
+  }
+  @container (max-width: 360px) {
+    .controles, .item { padding: 16px; }
+    .datos { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+    .resumen { padding-inline: 16px; }
+    .paginacion { flex-wrap: wrap; padding: 12px; }
+    .paginacion > span { width: 100%; order: -1; text-align: center; }
+  }
+}

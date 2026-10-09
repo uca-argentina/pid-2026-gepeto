@@ -11,6 +11,34 @@ Que prueba cada archivo de test del proyecto, caso por caso. Ver `ARCHIVOS.md` p
 
 # Backend (`aparcar-api-back/src/test/java/com/aparcar/api/`)
 
+## `integration/ReservaTrazabilidadTests.java`
+
+_9 tests._
+
+- Alta propia: ignora autores y destinatarios falsificados; solo ADMIN recibe historial.
+- Alta administrativa y cancelación por otro admin: conserva ambos autores,
+  ocupante, fecha e identidad histórica aunque cambien roles o se elimine una cuenta.
+- Cancelación del usuario: libera la cochera sin borrar el registro; rechaza
+  cancelaciones ajenas y repetidas sin agregar movimientos.
+- Deshabilitación de cochera: registra al admin en todas las reservas afectadas,
+  conserva las canceladas previamente y no duplica registros al editar o rehabilitar.
+- Alta operativa de visitante con vehículo y reserva: identifica al admin creador.
+- Un error al resolver al autor revierte alta, cancelación y deshabilitación completas.
+- Reservas anteriores: no reciben autores ni motivos inventados.
+- Una baja con versión desactualizada no sobrescribe el movimiento ya confirmado.
+- Una cancelación rechazada sobre una reserva finalizada no agrega movimientos.
+
+## `integration/ReservaTrazabilidadMigracionTests.java`
+
+_1 test._ La migración 010 conserva reservas previas, inicializa su versión sin
+inventar historial, admite movimientos sin FK a la cuenta del autor, exige una
+reserva existente y se puede ejecutar nuevamente sin repetir cambios.
+
+Las suites existentes que realizan altas o bajas administrativas usan
+`admin-test.sql` para que el principal autenticado tenga una cuenta persistida.
+Los tests de servicios también verifican que el alta operativa propague al admin
+y que la accesibilidad se valide sobre el ocupante, independientemente del autor.
+
 ## `integration/PerfilControllerTests.java`
 
 _12 tests._
@@ -857,9 +885,74 @@ una reserva finalizada no ofrece cancelar
 el confirm nombra la patente y la cochera, para no cancelar la que no era
 ```
 
+## `components/ReservasListado.test.jsx`
+
+_15 tests._ Estado inicial, información visible, filtros con contadores,
+deshabilitaciones, orden por fecha de alta, conservación del filtro al recargar,
+paginación y reinicio al cambiar de criterio, ajuste de página al cancelar,
+vacíos diferenciados, error con reintento, bloqueo de cancelaciones duplicadas
+y conservación del historial de reservas anteriores. Los seis casos de usuario
+verifican el modo predeterminado sin datos administrativos, patente gráfica,
+los cuatro mensajes de cancelación y conservación del orden/página al recargar.
+
+## `test/browser/reservas.ui.mjs` (Playwright)
+
+_21 tests de navegador, independientes de Vitest._ Cinco anchos (320, 390,
+768, 1024 y 1440 px) en claro y oscuro para ambos roles, más cancelación propia.
+Comprueban estilos calculados: filtros
+en grilla con separación, controles de al menos 44 px, padding de las reservas,
+columnas según el ancho del panel, paginación, filtros, historial abierto con
+textos largos, ausencia de desbordes y carga de estilos al recargar la ruta.
+En USER verifican patente gráfica, mensajes propios y ausencia de historial,
+autores y datos del ocupante, incluso cuando el fixture incluye esos datos.
+La cancelación comprueba la actualización de contadores sin perder el orden.
+La regresión reportada tenía los filtros con `display: block` y padding cero:
+verificar solamente que no hubiera overflow no alcanzaba para detectarla.
+
+Desde `aparcar-front`, instalar el navegador una vez y ejecutar:
+
+```sh
+npx playwright install chromium
+npm run test:ui:reservas
+```
+
+El runner inicia desarrollo en el puerto 3000 o reutiliza el servidor existente
+fuera de CI. `PLAYWRIGHT_BASE_URL` permite probar un servidor ya iniciado,
+incluido `npm run start` después de `npm run build`. `PLAYWRIGHT_CHANNEL=chrome`
+permite usar Chrome instalado en lugar del Chromium descargado. En PowerShell:
+
+```powershell
+$env:PLAYWRIGHT_CHANNEL = "chrome"
+$env:PLAYWRIGHT_BASE_URL = "http://localhost:3000"
+npm run test:ui:reservas
+```
+
+Las peticiones de API se interceptan con fixtures; no se usa ni modifica la base
+real. Capturas/trazas de fallos quedan en `test-results/` (ignorado por Git).
+
+## `utils/reservasListado.test.js`
+
+_18 tests._ Filtros y contadores; cuatro sentidos de orden; fechas de reserva
+versus fecha de alta; ausencia de mutación de los datos; fechas ausentes o
+inválidas al final; desempates estables; offsets de auditoría; listas vacías y
+estados desconocidos; horario argentino y rangos con año sin cambiar el formato
+predeterminado que usa el resto del proyecto.
+
 ## `components/ReservasContent.test.jsx`
 
-_45 tests._
+_63 tests._
+
+Los listados de ambos roles conservan los casos de alta, cancelación y
+trazabilidad; los casos de reservas canceladas seleccionan su filtro explícitamente.
+Mis reservas incorpora filtros y orden. También se verifica el reintento tras un
+error de carga y que un rechazo al cancelar conserve la reserva y habilite otro
+intento. El caso de importe histórico en `ReservasTarifas.test.jsx` selecciona
+Finalizadas antes de verificar los importes.
+
+La trazabilidad agrega 9 casos: los tres motivos de cancelación y el estado
+histórico sin motivo; privacidad del historial en modo USER; acción, autor,
+ocupante y horarios del historial admin; ausencia explícita de autor histórico;
+y actualización del mensaje después de cancelar desde Mis reservas.
 
 El formulario de reserva, que comparten los dos dashboards. Cubre la **franja horaria** (arranque por defecto en el bloque de 15 en curso, rango invertido, varios dias), los atajos de jornada llevados hasta el campo, la modalidad que muestra el listado y la **regresion del bug de cache de vehiculos al hacer foco**. ✏️ Suma las **cocheras accesibles**: en modo admin se ocultan si el dueño del vehiculo no declaro discapacidad, explicando por que (y si el dato no viene, no se oculta nada); en modo visitante se muestra lo que ya filtro el backend; y el rechazo del backend llega tal cual al usuario.
 
@@ -1264,9 +1357,28 @@ es case-insensitive
 
 | | Archivos | Tests |
 |---|---|---|
-| Backend | 42 | 455 |
-| Frontend | 27 | 324 |
-| **Total** | **69** | **779** |
+| Backend | 44 | 465 |
+| Frontend (Vitest) | 31 | 418 |
+| Frontend UI (Playwright) | 1 | 21 |
+| **Total** | **76** | **904** |
+
+Refactors de Ver reservas y Mis reservas (solo frontend): agregan 36 tests de Vitest.
+`npm test -- --maxWorkers=2` pasa los 418 casos y `npm run build` compila.
+`npm run lint` no tiene errores y conserva la advertencia previa de React Hook
+Form. Revisión de ambas rutas en Chrome
+sobre el build de producción, con API simulada: 320, 390, 768, 1024 y 1440 px,
+en claro y oscuro, recorriendo los cuatro filtros y abriendo historial en ADMIN
+(80 combinaciones), sin desbordes horizontales ni errores de navegador.
+
+Corrección de carga de CSS: el listado importa `ReservasListado.module.css`
+en forma directa. La regresión de Playwright valida
+estilos efectivos y geometría en desarrollo y producción, además del overflow.
+
+Trazabilidad agrega 10 casos de backend y 9 de frontend. Los totales incluyen
+los tests que ya estaban en la branch y se actualizaron desde los runners.
+Verificación final de trazabilidad: `mvn verify` (465 tests, sin fallos),
+`npm test` (382 tests, sin fallos), `npm run build` y `npm run lint` (sin errores;
+conserva la advertencia previa de React Hook Form en `VisitantesContent.jsx`).
 
 Verificación de tarifas: `mvn verify`, `npm test`, `npm run lint` y
 `npm run build`. La suite agrega 41 casos de backend y 29 de frontend. El
