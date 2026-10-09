@@ -8,6 +8,7 @@ import com.aparcar.api.entity.reserva.Cochera;
 import com.aparcar.api.entity.reserva.CocheraEstado;
 import com.aparcar.api.entity.reserva.CocheraTipo;
 import com.aparcar.api.entity.reserva.Reserva;
+import com.aparcar.api.entity.reserva.ReservaAccion;
 import com.aparcar.api.entity.reserva.ReservaEstado;
 import com.aparcar.api.entity.reserva.VehiculoTipo;
 import com.aparcar.api.exception.NotFoundException;
@@ -170,7 +171,8 @@ public class CocheraService implements ICocheraService {
     }
 
     @Override
-    public CocheraResponseDto editar(UUID id, CocheraRequestDto dto) {
+    @Transactional
+    public CocheraResponseDto editar(UUID id, CocheraRequestDto dto, String requesterEmail) {
         Cochera cochera = buscarOLanzar(id);
 
         boolean cambiaNumero = !cochera.getNumero().equals(dto.getNumero());
@@ -186,7 +188,7 @@ public class CocheraService implements ICocheraService {
         Cochera guardada = cocheraRepository.save(cochera);
 
         if (guardada.getEstado() == CocheraEstado.DESHABILITADA) {
-            cancelarReservasConfirmadas(guardada.getId());
+            cancelarReservasConfirmadas(guardada.getId(), requesterEmail);
         }
 
         return toResponseDto(guardada);
@@ -236,9 +238,16 @@ public class CocheraService implements ICocheraService {
                 .orElse(false);
     }
 
-    private void cancelarReservasConfirmadas(UUID cocheraId) {
+    private void cancelarReservasConfirmadas(UUID cocheraId, String requesterEmail) {
         List<Reserva> reservas = reservaRepository.findByCocheraIdAndEstado(cocheraId, ReservaEstado.CONFIRMADA);
-        reservas.forEach(reserva -> reserva.setEstado(ReservaEstado.CANCELADA));
+        if (reservas.isEmpty()) return;
+
+        Visitante actor = visitanteRepository.findByEmail(requesterEmail)
+                .orElseThrow(() -> new NotFoundException("Cuenta del autor no encontrada."));
+        reservas.forEach(reserva -> {
+            reserva.setEstado(ReservaEstado.CANCELADA);
+            reserva.registrarAccion(ReservaAccion.DESHABILITACION, actor, true);
+        });
         reservaRepository.saveAll(reservas);
     }
 

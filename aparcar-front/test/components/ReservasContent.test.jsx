@@ -18,6 +18,84 @@ const visitante = (overrides = {}) => ({ id: "v1", nombre: "Juan Perez", documen
 const vehiculo = (overrides = {}) => ({ id: "veh1", patente: "ABC123", tipo: "AUTO", visitanteId: "v1", ...overrides });
 const cochera = (overrides = {}) => ({ id: "c1", numero: "A-01", sector: "Planta Baja", tipo: "AUTO", ...overrides });
 
+describe("ReservasContent: trazabilidad", () => {
+  const alta = {
+    id: "m1", accion: "ALTA", fecha: "2026-10-09T15:30:00Z",
+    actorId: "a1", actorNombre: "Ana Admin", actorEmail: "ana@test.com", actorRol: "ADMIN",
+  };
+  const reserva = {
+    id: "r1", desde: "2026-10-10T10:00", hasta: "2026-10-10T11:00",
+    visitante: visitante(), vehiculo: vehiculo(), cochera: cochera(), estado: "CANCELADA",
+  };
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it.each([
+    ["USUARIO", "CANCELASTE ESTA RESERVA"],
+    ["ADMINISTRACION", "CANCELADA POR ADMINISTRACIÓN"],
+    ["DESHABILITACION", "DESHABILITADA POR ADMINISTRACIÓN"],
+    [null, "CANCELADA"],
+  ])("muestra al usuario el motivo %s sin exponer el historial administrativo", async (motivoCancelacion, mensaje) => {
+    // Incluso si una respuesta trajera historial, el modo user no lo renderiza.
+    mockData({ reservas: [{ ...reserva, motivoCancelacion, historial: [alta] }] });
+    render(<ReservasContent modo="user" />);
+    expect(await screen.findByText(mensaje)).toBeInTheDocument();
+    expect(screen.queryByText("Historial de la reserva")).not.toBeInTheDocument();
+    expect(screen.queryByText(/Ana Admin/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/ana@test.com/)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["CANCELACION", "USUARIO", "USER", "Cancelación de reserva", "CANCELADA POR USUARIO"],
+    ["CANCELACION", "ADMINISTRACION", "ADMIN", "Cancelación de reserva", "CANCELADA POR ADMINISTRACIÓN"],
+    ["DESHABILITACION", "DESHABILITACION", "ADMIN", "Deshabilitación por baja de cochera", "DESHABILITADA POR ADMINISTRACIÓN"],
+  ])("admin ve al ocupante y los autores de alta y %s (%s)", async (accion, motivoCancelacion, actorRol, etiqueta, estado) => {
+    const movimiento = {
+      id: "m2", accion, actorRol, fecha: "2026-10-09T16:45:00Z",
+      actorId: "a2", actorNombre: "Luis", actorEmail: "luis@test.com",
+    };
+    mockData({ reservas: [{ ...reserva, motivoCancelacion, historial: [alta, movimiento] }] });
+    render(<ReservasContent modo="admin" />);
+    expect(await screen.findByText("Juan Perez — ABC123")).toBeInTheDocument();
+    expect(screen.getByText(estado)).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByText("Historial de la reserva"));
+    const historial = screen.getByRole("list", { name: "Movimientos de la reserva" });
+    expect(within(historial).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(historial).getByText("Alta de reserva")).toBeInTheDocument();
+    expect(within(historial).getByText(etiqueta)).toBeInTheDocument();
+    expect(within(historial).getByText(/Ana Admin \(Administrador\).*ana@test.com/)).toBeInTheDocument();
+    expect(within(historial).getByText(new RegExp(`Luis \\(${actorRol === "ADMIN" ? "Administrador" : "Usuario"}\\).*luis@test.com`))).toBeInTheDocument();
+    const fechas = historial.querySelectorAll("time");
+    expect(fechas[0]).toHaveAttribute("dateTime", alta.fecha);
+    expect(fechas[0]).toHaveTextContent(/12:30/);
+    expect(fechas[1]).toHaveTextContent(/13:45/);
+  });
+
+  it("las reservas anteriores informan la falta de autor sin atribuir el alta al ocupante", async () => {
+    mockData({ reservas: [{ ...reserva, historial: [] }] });
+    render(<ReservasContent modo="admin" />);
+    await userEvent.setup().click(await screen.findByText("Historial de la reserva"));
+    expect(screen.getByText("Alta sin autor registrado.")).toBeInTheDocument();
+    expect(screen.getByText("Sin movimientos registrados.")).toBeInTheDocument();
+  });
+
+  it("actualiza el motivo visible luego de cancelar una reserva propia", async () => {
+    mockData({ reservas: [{ ...reserva, estado: "CONFIRMADA" }] });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    postMock.mockImplementation(async () => {
+      mockData({ reservas: [{ ...reserva, motivoCancelacion: "USUARIO" }] });
+      return { data: {} };
+    });
+    render(<ReservasContent modo="user" />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Cancelar" }));
+    expect(await screen.findByText("CANCELASTE ESTA RESERVA")).toBeInTheDocument();
+    expect(postMock).toHaveBeenCalledWith("/api/v1/reservas/r1/cancelar");
+    expect(screen.queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
+    vi.restoreAllMocks();
+  });
+});
+
 function mockData({ visitantes = [], vehiculos = [], reservas = [], disponibles = [] }) {
   getMock.mockImplementation((url) => {
     if (url === "/api/v1/tarifas/cotizacion") return Promise.resolve({ data: { tipo: "AUTO", total: 1000, horas: 1 } });

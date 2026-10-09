@@ -11,6 +11,34 @@ Que prueba cada archivo de test del proyecto, caso por caso. Ver `ARCHIVOS.md` p
 
 # Backend (`aparcar-api-back/src/test/java/com/aparcar/api/`)
 
+## `integration/ReservaTrazabilidadTests.java`
+
+_9 tests._
+
+- Alta propia: ignora autores y destinatarios falsificados; solo ADMIN recibe historial.
+- Alta administrativa y cancelación por otro admin: conserva ambos autores,
+  ocupante, fecha e identidad histórica aunque cambien roles o se elimine una cuenta.
+- Cancelación del usuario: libera la cochera sin borrar el registro; rechaza
+  cancelaciones ajenas y repetidas sin agregar movimientos.
+- Deshabilitación de cochera: registra al admin en todas las reservas afectadas,
+  conserva las canceladas previamente y no duplica registros al editar o rehabilitar.
+- Alta operativa de visitante con vehículo y reserva: identifica al admin creador.
+- Un error al resolver al autor revierte alta, cancelación y deshabilitación completas.
+- Reservas anteriores: no reciben autores ni motivos inventados.
+- Una baja con versión desactualizada no sobrescribe el movimiento ya confirmado.
+- Una cancelación rechazada sobre una reserva finalizada no agrega movimientos.
+
+## `integration/ReservaTrazabilidadMigracionTests.java`
+
+_1 test._ La migración 010 conserva reservas previas, inicializa su versión sin
+inventar historial, admite movimientos sin FK a la cuenta del autor, exige una
+reserva existente y se puede ejecutar nuevamente sin repetir cambios.
+
+Las suites existentes que realizan altas o bajas administrativas usan
+`admin-test.sql` para que el principal autenticado tenga una cuenta persistida.
+Los tests de servicios también verifican que el alta operativa propague al admin
+y que la accesibilidad se valide sobre el ocupante, independientemente del autor.
+
 ## `integration/PerfilControllerTests.java`
 
 _12 tests._
@@ -859,7 +887,12 @@ el confirm nombra la patente y la cochera, para no cancelar la que no era
 
 ## `components/ReservasContent.test.jsx`
 
-_45 tests._
+_60 tests._
+
+La trazabilidad agrega 9 casos: los tres motivos de cancelación y el estado
+histórico sin motivo; privacidad del historial en modo USER; acción, autor,
+ocupante y horarios del historial admin; ausencia explícita de autor histórico;
+y actualización del mensaje después de cancelar desde Mis reservas.
 
 El formulario de reserva, que comparten los dos dashboards. Cubre la **franja horaria** (arranque por defecto en el bloque de 15 en curso, rango invertido, varios dias), los atajos de jornada llevados hasta el campo, la modalidad que muestra el listado y la **regresion del bug de cache de vehiculos al hacer foco**. ✏️ Suma las **cocheras accesibles**: en modo admin se ocultan si el dueño del vehiculo no declaro discapacidad, explicando por que (y si el dato no viene, no se oculta nada); en modo visitante se muestra lo que ya filtro el backend; y el rechazo del backend llega tal cual al usuario.
 
@@ -1264,9 +1297,15 @@ es case-insensitive
 
 | | Archivos | Tests |
 |---|---|---|
-| Backend | 42 | 455 |
-| Frontend | 27 | 324 |
-| **Total** | **69** | **779** |
+| Backend | 44 | 465 |
+| Frontend | 29 | 382 |
+| **Total** | **73** | **847** |
+
+Trazabilidad agrega 10 casos de backend y 9 de frontend. Los totales incluyen
+los tests que ya estaban en la branch y se actualizaron desde los runners.
+Verificación final de trazabilidad: `mvn verify` (465 tests, sin fallos),
+`npm test` (382 tests, sin fallos), `npm run build` y `npm run lint` (sin errores;
+conserva la advertencia previa de React Hook Form en `VisitantesContent.jsx`).
 
 Verificación de tarifas: `mvn verify`, `npm test`, `npm run lint` y
 `npm run build`. La suite agrega 41 casos de backend y 29 de frontend. El

@@ -43,7 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * por separado, que era de donde salian los visitantes fantasma.
  */
 @IntegrationTests
-@org.springframework.test.context.jdbc.Sql("/tarifas-test.sql")
+@org.springframework.test.context.jdbc.Sql({"/tarifas-test.sql", "/admin-test.sql"})
 public class VisitanteControllerTests {
 
     private static final String VISITANTE = "visitante@test.com";
@@ -134,7 +134,7 @@ public class VisitanteControllerTests {
                         .content(cuerpo.replace("}", ",\"desde\":\"" + alBloque(LocalDateTime.now().minusDays(2))
                                 + "\",\"hasta\":\"" + alBloque(LocalDateTime.now().minusDays(1)) + "\"}")))
                 .andExpect(status().isBadRequest());
-        assertEquals(0, visitanteRepository.count());
+        assertEquals(1, visitanteRepository.count()); // Solo queda el admin autenticado.
         assertEquals(0, vehiculoRepository.count());
         assertEquals(0, reservaRepository.count());
 
@@ -233,7 +233,7 @@ public class VisitanteControllerTests {
                 .andExpect(jsonPath("$.reserva.estado").value("CONFIRMADA"))
                 .andExpect(jsonPath("$.reserva.cochera.numero").value("A-01"));
 
-        assertEquals(1, visitanteRepository.count());
+        assertEquals(2, visitanteRepository.count()); // Incluye al admin autenticado.
         assertEquals(1, vehiculoRepository.count());
         assertEquals(1, reservaRepository.count());
     }
@@ -312,7 +312,7 @@ public class VisitanteControllerTests {
                         .content(cuerpoAlta("40222333", "ana@test.com", "XYZ789", cochera.getId())))
                 .andExpect(status().isBadRequest());
 
-        assertEquals(1, visitanteRepository.count());
+        assertEquals(2, visitanteRepository.count()); // Incluye al admin autenticado.
         assertEquals(1, vehiculoRepository.count());
         assertEquals(1, reservaRepository.count());
     }

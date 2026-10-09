@@ -1,5 +1,35 @@
 # Mapa de archivos
 
+## Trazabilidad de reservas
+
+- `entity/reserva/ReservaMovimiento`, `ReservaAccion` y `ReservaMotivoCancelacion`:
+  historial de altas, cancelaciones y deshabilitaciones. Cada movimiento conserva
+  fecha e identidad del autor (ID, nombre, email y rol al actuar), incluso si su
+  cuenta cambia o se elimina. `Reserva` mantiene la relación y una versión para
+  impedir que bajas concurrentes sobrescriban el registro.
+- `ReservaService`: registra al usuario autenticado en el alta y la cancelación.
+  Los DTO incluyen `motivoCancelacion`; `historial` se envía únicamente a ADMIN,
+  tanto al consultar como al crear o cancelar. Se conserva el filtro de reservas
+  propias para USER. `ReservaRepository` carga el historial junto con el listado.
+- `VisitanteController` / `IVisitanteService` / `VisitanteService`: el alta con
+  vehículo y reserva propaga el email del administrador autenticado, conservando
+  al visitante nuevo como ocupante.
+- `CocheraController` / `ICocheraService` / `CocheraService`: al deshabilitar una
+  cochera, cada reserva confirmada recibe un movimiento de deshabilitación con
+  el admin responsable. La cochera, las reservas y sus movimientos se guardan en
+  una misma transacción. Las reservas ya canceladas conservan su motivo original.
+- `010-trazabilidad-reservas.yaml`: crea `reserva_movimientos` y agrega `version`
+  a `reservas`. Liquibase la aplica al arrancar el backend actualizado. No completa
+  autores ni motivos de reservas anteriores con suposiciones.
+- Frontend `components/ReservasContent.jsx`: diferencia «Cancelaste esta reserva»,
+  «Cancelada por administración» y «Deshabilitada por administración». Conserva
+  `CANCELADA` si una reserva histórica no tiene motivo registrado.
+- Frontend `components/HistorialReserva.jsx`: historial desplegable exclusivo del
+  listado admin, junto al ocupante y su vehículo. Muestra acción, autor y fecha
+  en horario argentino; identifica altas anteriores sin autor registrado.
+
+Las rutas Java de esta sección son relativas a `aparcar-api-back/src/main/java/com/aparcar/api/`.
+
 ## Mi cuenta y nombre del estacionamiento
 
 - `components/AccountMenu.jsx` y `DashboardHeader.jsx`: acceso compartido a

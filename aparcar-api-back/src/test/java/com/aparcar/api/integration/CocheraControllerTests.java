@@ -42,6 +42,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@code /api/v1/cocheras}.
  */
 @IntegrationTests
+@org.springframework.test.context.jdbc.Sql("/admin-test.sql")
 public class CocheraControllerTests {
 
     @Autowired

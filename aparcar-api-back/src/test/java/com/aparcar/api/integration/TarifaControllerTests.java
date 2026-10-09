@@ -25,7 +25,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @IntegrationTests
 @Transactional
-@Sql("/tarifas-test.sql")
+@Sql({"/tarifas-test.sql", "/admin-test.sql"})
 class TarifaControllerTests {
     private org.springframework.security.core.context.SecurityContext auth;
     @org.junit.jupiter.api.BeforeEach

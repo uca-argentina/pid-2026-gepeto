@@ -28,6 +28,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -94,7 +95,7 @@ public class VisitanteDiscapacidadTests {
                         CocheraEstado.HABILITADA, null),
                 ReservaEstado.CONFIRMADA,
                 ModalidadReserva.FRANJA,
-                Instant.now(), new java.math.BigDecimal("1000.00"), CocheraTipo.AUTO);
+                Instant.now(), new java.math.BigDecimal("1000.00"), CocheraTipo.AUTO, null, List.of());
     }
 
     private static VisitanteAltaDto alta(Boolean tieneDiscapacidad) {
@@ -125,7 +126,7 @@ public class VisitanteDiscapacidadTests {
     @Test
     @DisplayName("altaConReserva guarda la discapacidad cuando el admin la marca")
     void altaGuardaLaDiscapacidadMarcada() {
-        var response = visitanteService.altaConReserva(alta(true));
+        var response = visitanteService.altaConReserva(alta(true), "admin@test.com");
 
         ArgumentCaptor<Visitante> captor = ArgumentCaptor.forClass(Visitante.class);
         verify(visitanteRepository).save(captor.capture());
@@ -136,7 +137,7 @@ public class VisitanteDiscapacidadTests {
     @Test
     @DisplayName("altaConReserva deja la discapacidad en false si el admin no la manda")
     void altaSinElCampoQuedaEnFalse() {
-        var response = visitanteService.altaConReserva(alta(null));
+        var response = visitanteService.altaConReserva(alta(null), "admin@test.com");
 
         ArgumentCaptor<Visitante> captor = ArgumentCaptor.forClass(Visitante.class);
         verify(visitanteRepository).save(captor.capture());

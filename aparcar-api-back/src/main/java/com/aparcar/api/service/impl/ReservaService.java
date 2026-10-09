@@ -1,6 +1,7 @@
 package com.aparcar.api.service.impl;
 
 import com.aparcar.api.dto.reserva.CocheraResponseDto;
+import com.aparcar.api.dto.reserva.ReservaMovimientoResponseDto;
 import com.aparcar.api.dto.reserva.ReservaRequestDto;
 import com.aparcar.api.dto.reserva.ReservaResponseDto;
 import com.aparcar.api.dto.reserva.VehiculoResponseDto;
@@ -9,6 +10,7 @@ import com.aparcar.api.entity.auth.Visitante;
 import com.aparcar.api.entity.reserva.Cochera;
 import com.aparcar.api.entity.reserva.CocheraTipo;
 import com.aparcar.api.entity.reserva.Reserva;
+import com.aparcar.api.entity.reserva.ReservaAccion;
 import com.aparcar.api.entity.reserva.ReservaEstado;
 import com.aparcar.api.entity.reserva.Vehiculo;
 import com.aparcar.api.exception.NotFoundException;
@@ -77,10 +79,13 @@ public class ReservaService implements IReservaService {
         reserva.setPrecioTotal(cotizacion.total());
         reserva.setTipoTarifa(cotizacion.tipo());
 
-        return toResponseDto(reservaRepository.save(reserva));
+        Visitante actor = requesterIsAdmin ? buscarActor(requesterEmail) : visitante;
+        reserva.registrarAccion(ReservaAccion.ALTA, actor, requesterIsAdmin);
+        return toResponseDto(reservaRepository.save(reserva), requesterIsAdmin);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public ReservaResponseDto obtenerPorId(UUID id, String requesterEmail, boolean requesterIsAdmin) {
         Reserva reserva = buscarPorId(id);
 
@@ -88,16 +93,17 @@ public class ReservaService implements IReservaService {
             throw new AccessDeniedException("No podes ver una reserva que no es tuya.");
         }
 
-        return toResponseDto(reserva);
+        return toResponseDto(reserva, requesterIsAdmin);
     }
 
     @Override
+    @Transactional(readOnly = true)
     public List<ReservaResponseDto> listar(String requesterEmail, boolean requesterIsAdmin) {
         List<Reserva> reservas = requesterIsAdmin
                 ? reservaRepository.findAll()
                 : reservaRepository.findByVisitanteEmail(requesterEmail);
 
-        return reservas.stream().map(this::toResponseDto).toList();
+        return reservas.stream().map(reserva -> toResponseDto(reserva, requesterIsAdmin)).toList();
     }
 
     @Override
@@ -117,9 +123,11 @@ public class ReservaService implements IReservaService {
             throw new ValidationException("La reserva ya termino, no se puede cancelar.");
         }
 
+        Visitante actor = requesterIsAdmin ? buscarActor(requesterEmail) : reserva.getVisitante();
         reserva.setEstado(ReservaEstado.CANCELADA);
+        reserva.registrarAccion(ReservaAccion.CANCELACION, actor, requesterIsAdmin);
 
-        return toResponseDto(reservaRepository.save(reserva));
+        return toResponseDto(reservaRepository.save(reserva), requesterIsAdmin);
     }
 
     /**
@@ -238,7 +246,12 @@ public class ReservaService implements IReservaService {
                 .orElseThrow(() -> new NotFoundException("Reserva no encontrada."));
     }
 
-    private ReservaResponseDto toResponseDto(Reserva reserva) {
+    private Visitante buscarActor(String email) {
+        return visitanteRepository.findByEmail(email)
+                .orElseThrow(() -> new NotFoundException("Cuenta del autor no encontrada."));
+    }
+
+    private ReservaResponseDto toResponseDto(Reserva reserva, boolean requesterIsAdmin) {
         VisitanteResponseDto visitanteDto = new VisitanteResponseDto(
                 reserva.getVisitante().getId(),
                 reserva.getVisitante().getNombre(),
@@ -272,6 +285,11 @@ public class ReservaService implements IReservaService {
                 reserva.getModalidad(),
                 reserva.getFechaCreacion(),
                 reserva.getPrecioTotal(),
-                reserva.getTipoTarifa());
+                reserva.getTipoTarifa(),
+                reserva.getMotivoCancelacion(),
+                requesterIsAdmin ? reserva.getHistorial().stream().map(movimiento ->
+                        new ReservaMovimientoResponseDto(movimiento.getId(), movimiento.getAccion(),
+                                movimiento.getFecha(), movimiento.getActorId(), movimiento.getActorNombre(),
+                                movimiento.getActorEmail(), movimiento.getActorRol())).toList() : null);
     }
 }

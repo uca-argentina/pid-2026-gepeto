@@ -72,6 +72,11 @@ public class ReservaServiceTests {
 
     @BeforeEach
     void setUp() {
+        Visitante admin = new Visitante();
+        admin.setId(UUID.randomUUID());
+        admin.setNombre("Administrador");
+        admin.setEmail(ADMIN_EMAIL);
+        lenient().when(visitanteRepository.findByEmail(ADMIN_EMAIL)).thenReturn(Optional.of(admin));
         lenient().when(tarifaService.cotizar(any(), any(), any())).thenAnswer(i ->
                 new com.aparcar.api.dto.reserva.CotizacionResponseDto(i.getArgument(0),
                         new java.math.BigDecimal("1000.00"), "ARS", 0, 0, 1, 0));

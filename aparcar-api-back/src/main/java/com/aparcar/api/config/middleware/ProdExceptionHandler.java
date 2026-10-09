@@ -20,6 +20,13 @@ import static com.aparcar.api.config.ApplicationConstants.NOT_DEV_ENV;
 @ControllerAdvice
 @Profile(NOT_DEV_ENV)
 public class ProdExceptionHandler {
+    @ExceptionHandler(org.springframework.dao.OptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponseDto> handleOptimisticLockingFailureException() {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponseDto(
+                HttpStatus.CONFLICT.value(),
+                "El registro cambio mientras operabas. Actualiza la pantalla y volve a intentarlo.", null));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponseDto> handleException(Exception e) {
         return ResponseEntity.internalServerError().body(

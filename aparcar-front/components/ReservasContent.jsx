@@ -10,6 +10,7 @@ import api from "@/app/api";
 import AtajosJornada from "@/components/AtajosJornada";
 import CotizacionReserva from "@/components/CotizacionReserva";
 import PatenteVisual from "@/components/PatenteVisual";
+import HistorialReserva from "@/components/HistorialReserva";
 import useCotizacion from "@/hooks/useCotizacion";
 import { formatearPrecio } from "@/utils/tarifas";
 import {
@@ -35,8 +36,13 @@ const reservaSchema = z
 const inputClasses =
   "ui-input";
 const labelClasses = "ui-label";
-function EstadoBadge({ estado }) {
+function EstadoBadge({ estado, motivoCancelacion, esAdmin }) {
   const isConfirmada = estado === "CONFIRMADA";
+  const motivos = {
+    USUARIO: esAdmin ? "CANCELADA POR USUARIO" : "CANCELASTE ESTA RESERVA",
+    ADMINISTRACION: "CANCELADA POR ADMINISTRACIÓN",
+    DESHABILITACION: "DESHABILITADA POR ADMINISTRACIÓN",
+  };
   return (
     <span
       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -45,7 +51,7 @@ function EstadoBadge({ estado }) {
           : "bg-ink/5 text-ink/50 ring-1 ring-inset ring-ink/10"
       }`}
     >
-      {estado}
+      {estado === "CANCELADA" ? motivos[motivoCancelacion] ?? estado : estado}
     </span>
   );
 }
@@ -477,9 +483,10 @@ export default function ReservasContent({
                     <p className="mt-1 text-sm font-semibold text-ink">
                       {r.precioTotal == null ? "Sin importe registrado" : `Total: ${formatearPrecio(r.precioTotal)} ARS`}
                     </p>
+                    {esAdmin && <HistorialReserva historial={r.historial ?? []} />}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <EstadoBadge estado={r.estado} />
+                  <div className="flex flex-wrap items-center gap-3">
+                    <EstadoBadge estado={r.estado} motivoCancelacion={r.motivoCancelacion} esAdmin={esAdmin} />
                     {r.estado === "CONFIRMADA" && (
                       <button
                         type="button"

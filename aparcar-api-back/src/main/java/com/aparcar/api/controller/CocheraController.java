@@ -76,8 +76,9 @@ public class CocheraController {
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<CocheraResponseDto> editar(@PathVariable UUID id, @Valid @RequestBody CocheraRequestDto dto) {
-        return ResponseEntity.ok(cocheraService.editar(id, dto));
+    public ResponseEntity<CocheraResponseDto> editar(@PathVariable UUID id, @Valid @RequestBody CocheraRequestDto dto,
+                                                    Authentication authentication) {
+        return ResponseEntity.ok(cocheraService.editar(id, dto, authentication.getName()));
     }
 
     @DeleteMapping("/{id}")

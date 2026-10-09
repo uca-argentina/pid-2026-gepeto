@@ -29,7 +29,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -71,6 +70,11 @@ public class ReservaAccesibilidadTests {
 
     @BeforeEach
     void setUp() {
+        Visitante admin = new Visitante();
+        admin.setId(UUID.randomUUID());
+        admin.setNombre("Administrador");
+        admin.setEmail(ADMIN_EMAIL);
+        lenient().when(visitanteRepository.findByEmail(ADMIN_EMAIL)).thenReturn(Optional.of(admin));
         lenient().when(tarifaService.cotizar(any(), any(), any())).thenAnswer(i ->
                 new com.aparcar.api.dto.reserva.CotizacionResponseDto(i.getArgument(0),
                         new java.math.BigDecimal("1000.00"), "ARS", 0, 0, 1, 0));
@@ -143,7 +147,7 @@ public class ReservaAccesibilidadTests {
     }
 
     @Test
-    @DisplayName("si un ADMIN reserva para otro con discapacidad declarada, se permite sin mirar la cuenta del admin")
+    @DisplayName("si un ADMIN reserva para otro con discapacidad declarada, se valida al ocupante y se registra al admin")
     void adminReservandoParaOtroConDiscapacidadSePermite() {
         visitante.setTieneDiscapacidad(true);
 
@@ -151,8 +155,9 @@ public class ReservaAccesibilidadTests {
 
         assertEquals(ReservaEstado.CONFIRMADA, response.estado());
         assertEquals(visitante.getId(), response.visitante().id());
-        // La cuenta del admin ni siquiera se consulta: el dueño sale del dto.
-        verify(visitanteRepository, never()).findByEmail(anyString());
+        // El admin se consulta para el historial; su discapacidad no condiciona la reserva.
+        verify(visitanteRepository).findByEmail(ADMIN_EMAIL);
+        assertEquals(ADMIN_EMAIL, response.historial().getFirst().actorEmail());
     }
 
     @Test

@@ -75,10 +75,12 @@ public interface ReservaRepository extends JpaRepository<Reserva, UUID> {
     // sin importar el fetch por defecto de Hibernate para @ManyToOne.
 
     @Override
-    @Query("SELECT r FROM Reserva r JOIN FETCH r.visitante JOIN FETCH r.vehiculo JOIN FETCH r.cochera")
+    @Query("SELECT DISTINCT r FROM Reserva r JOIN FETCH r.visitante JOIN FETCH r.vehiculo JOIN FETCH r.cochera "
+            + "LEFT JOIN FETCH r.historial")
     List<Reserva> findAll();
 
-    @Query("SELECT r FROM Reserva r JOIN FETCH r.visitante JOIN FETCH r.vehiculo JOIN FETCH r.cochera "
+    @Query("SELECT DISTINCT r FROM Reserva r JOIN FETCH r.visitante JOIN FETCH r.vehiculo JOIN FETCH r.cochera "
+            + "LEFT JOIN FETCH r.historial "
             + "WHERE r.visitante.email = :email")
     List<Reserva> findByVisitanteEmail(@Param("email") String email);
 }
