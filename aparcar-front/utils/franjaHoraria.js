@@ -114,13 +114,14 @@ export const hora = (x) => `${dosDigitos(x.getHours())}:${dosDigitos(x.getMinute
  * reloj de 12 horas ("10:00 a. m."), que para horarios de cochera es peor de
  * leer, y además el formato varía según el ICU que tenga instalado el entorno.
  */
-export const formatearRango = (desde, hasta) => {
+export const formatearRango = (desde, hasta, { incluirAnio = false } = {}) => {
   if (!desde || !hasta) return "";
   const d = new Date(desde);
   const h = new Date(hasta);
-  return dia(d) === dia(h)
-    ? `${dia(d)} de ${hora(d)} a ${hora(h)}`
-    : `${dia(d)} ${hora(d)} → ${dia(h)} ${hora(h)}`;
+  const fecha = (valor) => incluirAnio ? `${dia(valor)}/${valor.getFullYear()}` : dia(valor);
+  return fecha(d) === fecha(h)
+    ? `${fecha(d)} de ${hora(d)} a ${hora(h)}`
+    : `${fecha(d)} ${hora(d)} → ${fecha(h)} ${hora(h)}`;
 };
 
 /**

@@ -885,9 +885,60 @@ una reserva finalizada no ofrece cancelar
 el confirm nombra la patente y la cochera, para no cancelar la que no era
 ```
 
+## `components/ReservasAdminListado.test.jsx`
+
+_9 tests._ Estado inicial, información visible, filtros con contadores,
+deshabilitaciones, orden por fecha de alta, conservación del filtro al recargar,
+paginación y reinicio al cambiar de criterio, ajuste de página al cancelar,
+vacíos diferenciados, error con reintento, bloqueo de cancelaciones duplicadas
+y conservación del historial de reservas anteriores.
+
+## `test/browser/reservas-admin.ui.mjs` (Playwright)
+
+_10 tests de navegador, independientes de Vitest._ Cinco anchos (320, 390,
+768, 1024 y 1440 px) en claro y oscuro. Comprueban estilos calculados: filtros
+en grilla con separación, controles de al menos 44 px, padding de las reservas,
+columnas según el ancho del panel, paginación, filtros, historial abierto con
+textos largos, ausencia de desbordes y carga de estilos al recargar la ruta.
+La regresión reportada tenía los filtros con `display: block` y padding cero:
+verificar solamente que no hubiera overflow no alcanzaba para detectarla.
+
+Desde `aparcar-front`, instalar el navegador una vez y ejecutar:
+
+```sh
+npx playwright install chromium
+npm run test:ui:reservas
+```
+
+El runner inicia desarrollo en el puerto 3000 o reutiliza el servidor existente
+fuera de CI. `PLAYWRIGHT_BASE_URL` permite probar un servidor ya iniciado,
+incluido `npm run start` después de `npm run build`. `PLAYWRIGHT_CHANNEL=chrome`
+permite usar Chrome instalado en lugar del Chromium descargado. En PowerShell:
+
+```powershell
+$env:PLAYWRIGHT_CHANNEL = "chrome"
+$env:PLAYWRIGHT_BASE_URL = "http://localhost:3000"
+npm run test:ui:reservas
+```
+
+Las peticiones de API se interceptan con fixtures; no se usa ni modifica la base
+real. Capturas/trazas de fallos quedan en `test-results/` (ignorado por Git).
+
+## `utils/reservasAdmin.test.js`
+
+_18 tests._ Filtros y contadores; cuatro sentidos de orden; fechas de reserva
+versus fecha de alta; ausencia de mutación de los datos; fechas ausentes o
+inválidas al final; desempates estables; offsets de auditoría; listas vacías y
+estados desconocidos; horario argentino y rangos con año sin cambiar el formato
+predeterminado que usa el resto del proyecto.
+
 ## `components/ReservasContent.test.jsx`
 
-_60 tests._
+_61 tests._
+
+El refactor admin conserva los casos de alta, cancelación y trazabilidad; los
+casos de reservas canceladas ahora seleccionan su filtro explícitamente.
+Agrega la regresión de que Mis reservas no incorpora filtros, orden o paginación.
 
 La trazabilidad agrega 9 casos: los tres motivos de cancelación y el estado
 histórico sin motivo; privacidad del historial en modo USER; acción, autor,
@@ -1298,8 +1349,20 @@ es case-insensitive
 | | Archivos | Tests |
 |---|---|---|
 | Backend | 44 | 465 |
-| Frontend | 29 | 382 |
-| **Total** | **73** | **847** |
+| Frontend (Vitest) | 31 | 410 |
+| Frontend UI (Playwright) | 1 | 10 |
+| **Total** | **76** | **885** |
+
+Refactor de Ver reservas (solo frontend): agrega 28 tests de Vitest. `npm test` pasa los
+410 casos y `npm run build` compila. `npm run lint` no tiene errores y conserva
+la advertencia previa de React Hook Form. Revisión de la ruta admin en Chrome
+sobre el build de producción, con API simulada: 320, 390, 768, 1024 y 1440 px,
+en claro y oscuro, recorriendo los cuatro filtros y abriendo historial
+(40 combinaciones), sin desbordes horizontales ni errores de navegador.
+
+Corrección de carga de CSS: el listado importa `ReservasAdminListado.module.css`
+en forma directa. Se agrega la regresión de Playwright anterior, que valida
+estilos efectivos y geometría en desarrollo y producción, además del overflow.
 
 Trazabilidad agrega 10 casos de backend y 9 de frontend. Los totales incluyen
 los tests que ya estaban en la branch y se actualizaron desde los runners.

@@ -1,5 +1,32 @@
 # Mapa de archivos
 
+## Listado de reservas del administrador
+
+- `aparcar-front/components/ReservasAdminListado.jsx`: listado exclusivo de **Ver
+  reservas**, separado del formulario compartido. Abre en Activas (CONFIRMADA)
+  por inicio ascendente, útil para atender reservas en curso y próximos ingresos.
+  También filtra Finalizadas, Canceladas (incluye deshabilitadas) y Todas, con
+  contadores; admite inicio descendente y fecha de alta en ambos sentidos.
+  Muestra diez reservas por página, conserva filtro y orden al recargar y corrige
+  la página cuando desaparece su último resultado. Reutiliza la cancelación y
+  el historial existentes, con bloqueo durante la acción y reintento de carga.
+- `aparcar-front/utils/reservasAdmin.js`: filtros, orden y formato de fechas de
+  auditoría; ordena copias de los datos, desempata por alta/ID y coloca fechas
+  ausentes al final. Los estados siguen siendo los que informa el backend.
+- `aparcar-front/components/EstadoReservaBadge.jsx`: extrae el badge que ya
+  compartían ambos roles, conservando los mensajes de trazabilidad.
+- `aparcar-front/utils/franjaHoraria.js`: opción `incluirAnio` para diferenciar
+  períodos históricos en el listado admin; el formato predeterminado no cambia.
+- `aparcar-front/components/ReservasAdminListado.module.css`: estilos importados
+  por el propio listado, con nombres locales y consultas al ancho del contenedor.
+  Controles y datos se apilan en columnas estrechas; respeta claro/oscuro y las
+  variables compartidas. La hoja específica viaja con el componente, sin depender
+  de incorporar sus reglas a la hoja global de todas las pantallas.
+- `aparcar-front/playwright.config.mjs` y `test/browser/reservas-admin.ui.mjs`:
+  regresión de navegador para la carga efectiva de estilos, distribución y
+  responsive del listado. Reutiliza desarrollo o acepta una URL de producción;
+  toda la API se simula y no modifica datos reales.
+
 ## Trazabilidad de reservas
 
 - `entity/reserva/ReservaMovimiento`, `ReservaAccion` y `ReservaMotivoCancelacion`:

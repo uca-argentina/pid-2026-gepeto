@@ -57,6 +57,7 @@ describe("ReservasContent: trazabilidad", () => {
     };
     mockData({ reservas: [{ ...reserva, motivoCancelacion, historial: [alta, movimiento] }] });
     render(<ReservasContent modo="admin" />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: /^Canceladas/ }));
     expect(await screen.findByText("Juan Perez — ABC123")).toBeInTheDocument();
     expect(screen.getByText(estado)).toBeInTheDocument();
     await userEvent.setup().click(screen.getByText("Historial de la reserva"));
@@ -75,6 +76,7 @@ describe("ReservasContent: trazabilidad", () => {
   it("las reservas anteriores informan la falta de autor sin atribuir el alta al ocupante", async () => {
     mockData({ reservas: [{ ...reserva, historial: [] }] });
     render(<ReservasContent modo="admin" />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: /^Canceladas/ }));
     await userEvent.setup().click(await screen.findByText("Historial de la reserva"));
     expect(screen.getByText("Alta sin autor registrado.")).toBeInTheDocument();
     expect(screen.getByText("Sin movimientos registrados.")).toBeInTheDocument();
@@ -307,6 +309,7 @@ describe("ReservasContent: cancelar una reserva", () => {
   it("no ofrece cancelar una reserva que ya esta cancelada", async () => {
     mockData({ reservas: [{ ...RESERVA_CONFIRMADA, estado: "CANCELADA" }] });
     render(<ReservasContent modo="admin" />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: /^Canceladas/ }));
 
     expect(await screen.findByText("CANCELADA")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^cancelar$/i })).not.toBeInTheDocument();
@@ -346,6 +349,16 @@ describe("ReservasContent: cancelar una reserva", () => {
 describe("ReservasContent en modo visitante", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it("conserva Mis reservas sin los filtros, orden ni paginación exclusivos del admin", async () => {
+    mockData({ vehiculos: [vehiculo()], reservas: [] });
+    render(<ReservasContent modo="user" />);
+    expect(await screen.findByText("Todavía no tenés reservas.")).toBeInTheDocument();
+    expect(screen.getByText("Mis reservas")).toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Filtrar reservas por estado" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Ordenar por")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Páginas de reservas" })).not.toBeInTheDocument();
   });
 
   // Un visitante solo puede reservar a su nombre, asi que no tiene por que
@@ -631,7 +644,7 @@ describe("ReservasContent: franja horaria", () => {
     render(<ReservasContent modo="admin" />);
 
     // Mismo día: se nombra una sola vez y se muestran las dos horas.
-    expect(await screen.findByText(/01\/01 de 10:00 a 12:00/)).toBeInTheDocument();
+    expect(await screen.findByText(/01\/01\/2026 de 10:00 a 12:00/)).toBeInTheDocument();
   });
 
   it("muestra los dos dias cuando la franja cruza la medianoche", async () => {
@@ -650,7 +663,7 @@ describe("ReservasContent: franja horaria", () => {
     });
     render(<ReservasContent modo="admin" />);
 
-    expect(await screen.findByText(/01\/01 22:00 → 03\/01 08:00/)).toBeInTheDocument();
+    expect(await screen.findByText(/01\/01\/2026 22:00 → 03\/01\/2026 08:00/)).toBeInTheDocument();
   });
 });
 

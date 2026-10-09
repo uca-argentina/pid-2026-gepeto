@@ -1,15 +1,10 @@
+import { formatearFechaRegistro } from "@/utils/reservasAdmin";
+
 const ACCION_ETIQUETA = {
   ALTA: "Alta de reserva",
   CANCELACION: "Cancelación de reserva",
   DESHABILITACION: "Deshabilitación por baja de cochera",
 };
-
-const formatoFecha = new Intl.DateTimeFormat("es-AR", {
-  dateStyle: "short",
-  timeStyle: "short",
-  hour12: false,
-  timeZone: "America/Argentina/Buenos_Aires",
-});
 
 /** El backend solo incluye este historial en respuestas para administradores. */
 export default function HistorialReserva({ historial = [] }) {
@@ -30,7 +25,7 @@ export default function HistorialReserva({ historial = [] }) {
                 {movimiento.actorNombre} ({movimiento.actorRol === "ADMIN" ? "Administrador" : "Usuario"})
                 {" · "}{movimiento.actorEmail}
               </p>
-              <time dateTime={movimiento.fecha}>{formatoFecha.format(new Date(movimiento.fecha))}</time>
+              <time dateTime={movimiento.fecha}>{formatearFechaRegistro(movimiento.fecha)}</time>
             </li>
           ))}
         </ol>
