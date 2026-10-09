@@ -27,7 +27,7 @@ const compararFechas = (a, b, direccion) => {
 };
 
 /** Solo presentación: el estado y los vencimientos siguen siendo responsabilidad del backend. */
-export const seleccionarReservasAdmin = (reservas, filtro, orden) => {
+export const seleccionarReservas = (reservas, filtro, orden) => {
   const cantidades = { TODAS: reservas.length, CONFIRMADA: 0, FINALIZADA: 0, CANCELADA: 0 };
   for (const reserva of reservas) {
     if (Object.hasOwn(cantidades, reserva.estado) && reserva.estado !== "TODAS") {

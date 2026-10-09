@@ -1,4 +1,4 @@
-import { formatearFechaRegistro } from "@/utils/reservasAdmin";
+import { formatearFechaRegistro } from "@/utils/reservasListado";
 
 const ACCION_ETIQUETA = {
   ALTA: "Alta de reserva",

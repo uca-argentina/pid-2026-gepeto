@@ -1,6 +1,6 @@
 /* Se importa desde el componente para que su CSS forme parte de la misma ruta. */
 @layer components {
-  /* Listado exclusivo de Ver reservas (admin). Se adapta al ancho de su columna. */
+  /* Compartido por Ver reservas y Mis reservas. Se adapta al ancho de su columna. */
   .listado { min-width: 0; container-type: inline-size; }
   .encabezado { margin-bottom: 24px; }
   .encabezado > p { margin-top: 8px; color: var(--color-muted); font-size: 14px; line-height: 1.6; }

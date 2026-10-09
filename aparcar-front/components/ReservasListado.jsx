@@ -1,19 +1,21 @@
 "use client";
 
 import { useId, useMemo, useRef, useState } from "react";
-import styles from "./ReservasAdminListado.module.css";
+import styles from "./ReservasListado.module.css";
 import EstadoReservaBadge from "@/components/EstadoReservaBadge";
 import HistorialReserva from "@/components/HistorialReserva";
+import PatenteVisual from "@/components/PatenteVisual";
 import { formatearRango, MODALIDAD_ETIQUETA } from "@/utils/franjaHoraria";
 import { formatearPrecio } from "@/utils/tarifas";
 import {
-  FILTROS_RESERVAS, ORDENES_RESERVAS, formatearFechaRegistro, seleccionarReservasAdmin,
-} from "@/utils/reservasAdmin";
+  FILTROS_RESERVAS, ORDENES_RESERVAS, formatearFechaRegistro, seleccionarReservas,
+} from "@/utils/reservasListado";
 
 const POR_PAGINA = 10;
 
-/** Listado exclusivo de /dashboard-admin/reservas; reutiliza las acciones del formulario. */
-export default function ReservasAdminListado({ reservas, cargando, error, onReintentar, onCancelar }) {
+/** Presentación compartida; solo el modo admin muestra ocupantes y auditoría. */
+export default function ReservasListado({ modo = "user", reservas, cargando, error, onReintentar, onCancelar }) {
+  const esAdmin = modo === "admin";
   const id = useId();
   const resultadosRef = useRef(null);
   const [filtro, setFiltro] = useState("CONFIRMADA");
@@ -21,7 +23,7 @@ export default function ReservasAdminListado({ reservas, cargando, error, onRein
   const [pagina, setPagina] = useState(1);
   const [cancelando, setCancelando] = useState(null);
   const { visibles, cantidades } = useMemo(
-    () => seleccionarReservasAdmin(reservas, filtro, orden), [reservas, filtro, orden]
+    () => seleccionarReservas(reservas, filtro, orden), [reservas, filtro, orden]
   );
   // Una cancelación o recarga puede dejar vacía la última página.
   const paginas = Math.max(1, Math.ceil(visibles.length / POR_PAGINA));
@@ -57,8 +59,9 @@ export default function ReservasAdminListado({ reservas, cargando, error, onRein
   return (
     <section className={styles.listado} aria-labelledby={`${id}-titulo`}>
       <div className={styles.encabezado}>
-        <h2 id={`${id}-titulo`} className="text-xl font-bold text-ink">Todas las reservas</h2>
-        <p>Consultá los próximos ingresos y el historial de cada reserva.</p>
+        <h2 id={`${id}-titulo`} className="text-xl font-bold text-ink">{esAdmin ? "Todas las reservas" : "Mis reservas"}</h2>
+        <p>{esAdmin ? "Consultá los próximos ingresos y el historial de cada reserva."
+          : "Consultá tus próximas reservas y las que ya finalizaron o se cancelaron."}</p>
       </div>
 
       <div className="ui-card">
@@ -109,22 +112,24 @@ export default function ReservasAdminListado({ reservas, cargando, error, onRein
             </div>
           ) : visibles.length === 0 ? (
             <div className={styles.vacio}>
-              <p>{reservas.length === 0 ? "Todavía no hay reservas cargadas."
+              <p>{reservas.length === 0 ? (esAdmin ? "Todavía no hay reservas cargadas." : "Todavía no tenés reservas.")
                 : FILTROS_RESERVAS.find((opcion) => opcion.clave === filtro).vacio}</p>
               {reservas.length > 0 && filtro !== "TODAS" && (
                 <button type="button" className={styles.boton} onClick={() => cambiarFiltro("TODAS")}>Ver todas las reservas</button>
               )}
             </div>
           ) : (
-            <ul aria-label="Reservas del administrador">
+            <ul aria-label={esAdmin ? "Reservas del administrador" : "Mis reservas"}>
               {paginaReservas.map((reserva) => (
                 <li key={reserva.id} className={styles.item}>
                   <div className={styles.cabecera}>
                     <div>
-                      <p className={styles.etiqueta}>Ocupante · Vehículo</p>
-                      <h3>{reserva.visitante?.nombre ?? "Sin nombre"} — {reserva.vehiculo?.patente ?? "Sin patente"}</h3>
+                      <p className={styles.etiqueta}>{esAdmin ? "Ocupante · Vehículo" : "Vehículo"}</p>
+                      <h3>{esAdmin
+                        ? <>{reserva.visitante?.nombre ?? "Sin nombre"} — {reserva.vehiculo?.patente ?? "Sin patente"}</>
+                        : <PatenteVisual patente={reserva.vehiculo?.patente} tipo={reserva.vehiculo?.tipo} tamano="sm" />}</h3>
                     </div>
-                    <EstadoReservaBadge estado={reserva.estado} motivoCancelacion={reserva.motivoCancelacion} esAdmin />
+                    <EstadoReservaBadge estado={reserva.estado} motivoCancelacion={reserva.motivoCancelacion} esAdmin={esAdmin} />
                   </div>
 
                   <dl className={styles.datos}>
@@ -142,7 +147,7 @@ export default function ReservasAdminListado({ reservas, cargando, error, onRein
                   <div className={styles.pie}>
                     <div>
                       <p className={styles.importe}>{reserva.precioTotal == null ? "Sin importe registrado" : `Total: ${formatearPrecio(reserva.precioTotal)} ARS`}</p>
-                      <p className={styles.alta}>Alta: {formatearFechaRegistro(reserva.fechaCreacion)}</p>
+                      <p className={styles.alta}>{esAdmin ? "Alta" : "Fecha de alta"}: {formatearFechaRegistro(reserva.fechaCreacion)}</p>
                     </div>
                     {reserva.estado === "CONFIRMADA" && (
                       <button type="button" className={`${styles.boton} ${styles.cancelar}`}
@@ -151,7 +156,7 @@ export default function ReservasAdminListado({ reservas, cargando, error, onRein
                       </button>
                     )}
                   </div>
-                  <div className={styles.historial}><HistorialReserva historial={reserva.historial ?? []} /></div>
+                  {esAdmin && <div className={styles.historial}><HistorialReserva historial={reserva.historial ?? []} /></div>}
                 </li>
               ))}
             </ul>

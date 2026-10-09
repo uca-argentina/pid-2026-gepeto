@@ -39,6 +39,7 @@ describe("ReservasContent: trazabilidad", () => {
     // Incluso si una respuesta trajera historial, el modo user no lo renderiza.
     mockData({ reservas: [{ ...reserva, motivoCancelacion, historial: [alta] }] });
     render(<ReservasContent modo="user" />);
+    await userEvent.setup().click(await screen.findByRole("button", { name: /^Canceladas 1$/ }));
     expect(await screen.findByText(mensaje)).toBeInTheDocument();
     expect(screen.queryByText("Historial de la reserva")).not.toBeInTheDocument();
     expect(screen.queryByText(/Ana Admin/)).not.toBeInTheDocument();
@@ -91,6 +92,8 @@ describe("ReservasContent: trazabilidad", () => {
     });
     render(<ReservasContent modo="user" />);
     await userEvent.setup().click(await screen.findByRole("button", { name: "Cancelar" }));
+    expect(await screen.findByText("No hay reservas activas.")).toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Canceladas 1" }));
     expect(await screen.findByText("CANCELASTE ESTA RESERVA")).toBeInTheDocument();
     expect(postMock).toHaveBeenCalledWith("/api/v1/reservas/r1/cancelar");
     expect(screen.queryByRole("button", { name: "Cancelar" })).not.toBeInTheDocument();
@@ -351,14 +354,53 @@ describe("ReservasContent en modo visitante", () => {
     vi.clearAllMocks();
   });
 
-  it("conserva Mis reservas sin los filtros, orden ni paginación exclusivos del admin", async () => {
+  it("muestra filtros y orden en Mis reservas sin paginar una lista vacía", async () => {
     mockData({ vehiculos: [vehiculo()], reservas: [] });
     render(<ReservasContent modo="user" />);
     expect(await screen.findByText("Todavía no tenés reservas.")).toBeInTheDocument();
     expect(screen.getByText("Mis reservas")).toBeInTheDocument();
-    expect(screen.queryByRole("group", { name: "Filtrar reservas por estado" })).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Ordenar por")).not.toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Filtrar reservas por estado" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Ordenar por")).toHaveValue("INICIO_ASC");
     expect(screen.queryByRole("navigation", { name: "Páginas de reservas" })).not.toBeInTheDocument();
+  });
+
+  it("permite reintentar la carga de Mis reservas sin confundir un error con una lista vacía", async () => {
+    mockData({});
+    const cargarDatos = getMock.getMockImplementation();
+    let fallo = true;
+    getMock.mockImplementation((url) => {
+      if (url === "/api/v1/reservas" && fallo) {
+        fallo = false;
+        return Promise.reject(new Error("Sin conexión"));
+      }
+      return cargarDatos(url);
+    });
+    render(<ReservasContent modo="user" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("No se pudieron cargar las reservas.");
+    expect(screen.queryByText("Todavía no tenés reservas.")).not.toBeInTheDocument();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Reintentar" }));
+    expect(await screen.findByText("Todavía no tenés reservas.")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("un rechazo al cancelar conserva la reserva propia y habilita un nuevo intento", async () => {
+    mockData({ reservas: [{
+      id: "r1", estado: "CONFIRMADA", desde: "2026-10-10T10:00", hasta: "2026-10-10T12:00",
+      vehiculo: vehiculo(), cochera: cochera(),
+    }] });
+    postMock.mockRejectedValue({ response: { data: { message: "No se pudo cancelar la reserva." } } });
+    const confirmar = vi.spyOn(window, "confirm").mockReturnValue(true);
+    try {
+      render(<ReservasContent modo="user" />);
+      const cancelar = await screen.findByRole("button", { name: "Cancelar" });
+      await userEvent.setup().click(cancelar);
+      await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith("No se pudo cancelar la reserva."));
+      await waitFor(() => expect(cancelar).toBeEnabled());
+      expect(screen.getByRole("button", { name: "Activas 1" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("img", { name: "Patente ABC123" })).toBeInTheDocument();
+    } finally {
+      confirmar.mockRestore();
+    }
   });
 
   // Un visitante solo puede reservar a su nombre, asi que no tiene por que
@@ -459,7 +501,7 @@ describe("ReservasContent en modo visitante", () => {
     });
     render(<ReservasContent modo="user" />);
 
-    const lista = (await screen.findByText(/Cochera A-01/)).closest("ul");
+    const lista = await screen.findByRole("list", { name: "Mis reservas" });
     const chapa = within(lista).getByRole("img", { name: "Patente ABC123" });
     expect(chapa).toHaveAttribute("data-formato", "auto-anterior");
     expect(chapa).toHaveClass("patente--sm");

@@ -10,12 +10,9 @@ import api from "@/app/api";
 import AtajosJornada from "@/components/AtajosJornada";
 import CotizacionReserva from "@/components/CotizacionReserva";
 import PatenteVisual from "@/components/PatenteVisual";
-import EstadoReservaBadge from "@/components/EstadoReservaBadge";
-import ReservasAdminListado from "@/components/ReservasAdminListado";
+import ReservasListado from "@/components/ReservasListado";
 import useCotizacion from "@/hooks/useCotizacion";
-import { formatearPrecio } from "@/utils/tarifas";
 import {
-  MODALIDAD_ETIQUETA,
   PASO_MINUTOS,
   redondearAlBloqueLocal,
   formatearRango,
@@ -430,67 +427,14 @@ export default function ReservasContent({
       </div>
       </div>
 
-      {esAdmin ? (
-        <ReservasAdminListado
-          reservas={reservas}
-          cargando={loadingReservas}
-          error={errorReservas}
-          onReintentar={cargarReservas}
-          onCancelar={cancelarReserva}
-        />
-      ) : (
-        <div>
-          <h2 className="text-xl font-bold text-ink mb-4">
-            Mis reservas
-          </h2>
-          <div className="ui-card overflow-hidden">
-            {loadingReservas ? (
-              <div className="flex items-center justify-center p-8">
-                <div className="h-6 w-6 animate-spin rounded-full border-4 border-accent border-t-transparent" />
-              </div>
-            ) : reservas.length === 0 ? (
-              <p className="p-6 text-sm text-ink/60">
-                Todavía no tenés reservas.
-              </p>
-            ) : (
-              <ul className="reservation-list divide-y divide-ink/10">
-                {reservas.map((r) => (
-                  <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 p-4">
-                    <div>
-                      <div className="mb-2">
-                        <PatenteVisual patente={r.vehiculo?.patente} tipo={r.vehiculo?.tipo} tamano="sm" />
-                      </div>
-                      <p className="text-xs text-ink/60">
-                        Cochera {r.cochera?.numero} ({r.cochera?.sector}) · {formatearRango(r.desde, r.hasta)}
-                      </p>
-                      {/* La modalidad la calcula el backend a partir de la
-                          duración, así que el listado no la vuelve a deducir. */}
-                      {r.modalidad && (
-                        <p className="franja-modalidad-badge">{MODALIDAD_ETIQUETA[r.modalidad] ?? r.modalidad}</p>
-                      )}
-                      <p className="mt-1 text-sm font-semibold text-ink">
-                        {r.precioTotal == null ? "Sin importe registrado" : `Total: ${formatearPrecio(r.precioTotal)} ARS`}
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <EstadoReservaBadge estado={r.estado} motivoCancelacion={r.motivoCancelacion} />
-                      {r.estado === "CONFIRMADA" && (
-                        <button
-                          type="button"
-                          onClick={() => cancelarReserva(r)}
-                          className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors dark:bg-red-500/10 dark:text-red-300 dark:ring-red-400/20 dark:border-red-400/25 dark:hover:bg-red-500/20"
-                        >
-                          Cancelar
-                        </button>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </div>
-      )}
+      <ReservasListado
+        modo={modo}
+        reservas={reservas}
+        cargando={loadingReservas}
+        error={errorReservas}
+        onReintentar={cargarReservas}
+        onCancelar={cancelarReserva}
+      />
     </div>
   );
 }

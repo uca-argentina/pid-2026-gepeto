@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { seleccionarReservasAdmin, formatearFechaRegistro } from "@/utils/reservasAdmin";
+import { seleccionarReservas, formatearFechaRegistro } from "@/utils/reservasListado";
 import { formatearRango } from "@/utils/franjaHoraria";
 
 const reservas = [
@@ -9,14 +9,14 @@ const reservas = [
   { id: "r4", estado: "CANCELADA", motivoCancelacion: "DESHABILITACION", desde: "2026-10-09T10:00:00", fechaCreacion: "2026-10-04T10:00:00Z" },
   { id: "r5", estado: "FINALIZADA", desde: "2026-10-08T10:00:00", fechaCreacion: "2026-10-02T10:00:00Z" },
 ];
-const ids = (datos, filtro, orden) => seleccionarReservasAdmin(datos, filtro, orden).visibles.map((r) => r.id);
+const ids = (datos, filtro, orden) => seleccionarReservas(datos, filtro, orden).visibles.map((r) => r.id);
 
-describe("seleccionarReservasAdmin", () => {
+describe("seleccionarReservas", () => {
   it.each([
     ["CONFIRMADA", ["r2", "r1"]], ["FINALIZADA", ["r5"]],
     ["CANCELADA", ["r4", "r3"]], ["TODAS", ["r5", "r4", "r2", "r3", "r1"]],
   ])("filtra %s sin alterar los contadores del conjunto completo", (filtro, esperado) => {
-    const seleccion = seleccionarReservasAdmin(reservas, filtro, "INICIO_ASC");
+    const seleccion = seleccionarReservas(reservas, filtro, "INICIO_ASC");
     expect(seleccion.visibles.map((r) => r.id)).toEqual(esperado);
     expect(seleccion.cantidades).toEqual({ TODAS: 5, CONFIRMADA: 2, FINALIZADA: 1, CANCELADA: 2 });
   });
@@ -32,7 +32,7 @@ describe("seleccionarReservasAdmin", () => {
 
   it("no modifica la lista ni los objetos recibidos de la API", () => {
     const datos = Object.freeze(reservas.map((r) => Object.freeze({ ...r })));
-    seleccionarReservasAdmin(datos, "TODAS", "ALTA_DESC");
+    seleccionarReservas(datos, "TODAS", "ALTA_DESC");
     expect(datos.map((r) => r.id)).toEqual(["r1", "r2", "r3", "r4", "r5"]);
   });
 
@@ -62,7 +62,7 @@ describe("seleccionarReservasAdmin", () => {
   });
 
   it("tolera una lista vacía y conserva estados desconocidos en Todas", () => {
-    expect(seleccionarReservasAdmin([], "TODAS", "INICIO_ASC").visibles).toEqual([]);
+    expect(seleccionarReservas([], "TODAS", "INICIO_ASC").visibles).toEqual([]);
     expect(ids([{ id: "r1", estado: "OTRO" }], "TODAS", "INICIO_ASC")).toEqual(["r1"]);
   });
 });

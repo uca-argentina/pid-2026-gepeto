@@ -85,6 +85,7 @@ it("si cambia el precio al confirmar, lo actualiza sin reenviar la reserva", asy
 it("muestra el importe histórico y distingue las reservas anteriores a las tarifas", async () => {
   historial = [100, null].map((precioTotal, i) => ({ id: `r${i}`, precioTotal, estado: "FINALIZADA", vehiculo: { patente: "ABC123" } }));
   render(<ReservasContent modo="user" />);
+  await userEvent.setup().click(await screen.findByRole("button", { name: "Finalizadas 2" }));
   expect(await screen.findByText(/Total:.*100,00/)).toBeInTheDocument();
   expect(screen.getByText("Sin importe registrado")).toBeInTheDocument();
 });
