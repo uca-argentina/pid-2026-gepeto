@@ -1014,6 +1014,7 @@ Convención: `test/` refleja la estructura de `app/`, `store/` y `utils/` (misma
 | `components/ReservasListadoAcceso.test.jsx` 🆕 | Insignias nuevas, filtros Activas/Vencidas, *Ver QR* y la línea de ingreso/egreso |
 | `components/ReservasContentCodigo.test.jsx` 🆕 | El QR al reservar y desde *Ver QR* |
 | `components/LectorQR.test.jsx` 🆕 | Cámara simulada: permiso denegado, sin cámara, contexto inseguro, lectura con `BarcodeDetector` y con `jsqr`, liberación al desmontar |
+| `browser/accesos.ui.mjs` | Navegador con API aislada: alta con QR real decodificable, ingreso/egreso con código equivalente, rechazo de reutilización, cámara sintética y fallback manual |
 | `components/OcupacionCocherasAcceso.test.jsx` 🆕 | "Vehículo adentro" y exceso en el panel de ocupación |
 | `dashboard-admin/accesos/ControlAccesoContent.test.jsx` 🆕 | Código tipeado válido e inválido, normalización, ingreso, egreso, doble clic, errores del backend, escaneo y movimientos |
 | `dashboard-admin/accesos/pagina.test.jsx` 🆕 | La ruta exige ADMIN y el panel enlaza a Control de acceso |

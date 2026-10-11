@@ -22,6 +22,8 @@ const MOTIVO_TITULO = {
   PERMANENCIA_MINIMA: "Ingreso recién registrado",
   INGRESO_YA_REGISTRADO: "El ingreso ya estaba registrado",
   SIN_INGRESO: "No tiene ingreso registrado",
+  COCHERA_OCUPADA: "La cochera sigue ocupada",
+  VEHICULO_EN_CURSO: "El vehículo ya tiene un ingreso registrado",
 };
 
 const mensajeDeError = (err, porDefecto) => {
@@ -45,6 +47,7 @@ export default function ControlAccesoContent() {
   const [modo, setModo] = useState("escanear");
   const [texto, setTexto] = useState("");
   const [consultando, setConsultando] = useState(false);
+  const consultandoRef = useRef(false);
   const [resultado, setResultado] = useState(null);
   const [error, setError] = useState(null);
   const [registrando, setRegistrando] = useState(false);
@@ -73,6 +76,9 @@ export default function ControlAccesoContent() {
   }, [cargarMovimientos]);
 
   const consultar = async (entrada, origen) => {
+    // Una lectura tardía o un segundo envío no pueden reemplazar la reserva
+    // mientras se está validando o registrando su movimiento.
+    if (consultandoRef.current || registrandoRef.current) return;
     const codigo = normalizarCodigo(entrada);
     setResultado(null);
     setRegistro(null);
@@ -84,6 +90,7 @@ export default function ControlAccesoContent() {
     }
 
     setError(null);
+    consultandoRef.current = true;
     setConsultando(true);
     try {
       const res = await api.post("/api/v1/accesos/consulta", { codigo });
@@ -91,6 +98,7 @@ export default function ControlAccesoContent() {
     } catch (err) {
       setError(mensajeDeError(err, "No se pudo validar el código. Revisá la conexión y volvé a intentar."));
     } finally {
+      consultandoRef.current = false;
       setConsultando(false);
     }
   };
@@ -104,7 +112,7 @@ export default function ControlAccesoContent() {
   };
 
   const registrar = async () => {
-    if (registrandoRef.current || !resultado?.accion) return;
+    if (consultandoRef.current || registrandoRef.current || !resultado?.valido || !resultado.accion) return;
     registrandoRef.current = true;
     setRegistrando(true);
     try {
@@ -131,6 +139,7 @@ export default function ControlAccesoContent() {
   };
 
   const reserva = resultado?.reserva;
+  const ocupado = consultando || registrando;
 
   return (
     <div className="acceso">
@@ -150,6 +159,7 @@ export default function ControlAccesoContent() {
                 id={`${id}-tab-${clave}`}
                 aria-selected={modo === clave}
                 aria-controls={`${id}-panel`}
+                disabled={ocupado}
                 className={`acceso-tab ${modo === clave ? "is-activa" : ""}`}
                 onClick={() => {
                   setModo(clave);
@@ -166,6 +176,7 @@ export default function ControlAccesoContent() {
               <LectorQR
                 key={lecturas}
                 autoIniciar={lecturas > 0}
+                disabled={ocupado}
                 onLectura={(leido) => consultar(leido, "qr")}
                 onUsarCodigo={() => setModo("escribir")}
               />
@@ -183,7 +194,11 @@ export default function ControlAccesoContent() {
                   id={`${id}-codigo`}
                   className="ui-input acceso-input"
                   value={texto}
-                  onChange={(e) => setTexto(e.target.value.toUpperCase())}
+                  readOnly={ocupado}
+                  onChange={(e) => {
+                    setTexto(e.target.value.toUpperCase());
+                    setResultado(null);
+                  }}
                   placeholder="ABCDE-12345"
                   autoComplete="off"
                   autoCapitalize="characters"
@@ -191,7 +206,7 @@ export default function ControlAccesoContent() {
                   autoFocus
                 />
                 <p className="acceso-ayuda">Con o sin guion; mayúsculas y espacios no importan.</p>
-                <button type="submit" className="ui-primary acceso-boton" disabled={consultando || !texto.trim()}>
+                <button type="submit" className="ui-primary acceso-boton" disabled={ocupado || !texto.trim()}>
                   {consultando ? "Validando…" : "Validar"}
                 </button>
               </form>

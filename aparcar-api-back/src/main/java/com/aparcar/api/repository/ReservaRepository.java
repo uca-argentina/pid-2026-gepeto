@@ -65,21 +65,24 @@ public interface ReservaRepository extends JpaRepository<Reserva, UUID> {
     // "hasta": si se paso de hora sigue bloqueando la cochera. Su fin efectivo
     // es el mayor entre "hasta" y ahora, asi que se pisa con [desde, hasta) si
     //
-    //     r.desde < :hasta AND (r.hasta > :desde OR ahora > :desde)
+    //     (r.desde < :hasta OR r.ingresoAt < :hasta)
+    //     AND (r.hasta > :desde OR ahora >= :desde)
     //
-    // "ahora > desde" no depende de la fila: se calcula en Java y viaja como
+    // Un ingreso anticipado ocupa desde ingresoAt. Si la franja pedida empieza
+    // exactamente ahora tambien ocupa: el vehiculo todavia no egreso.
+    // "ahora >= desde" no depende de la fila: se calcula en Java y viaja como
     // booleano (comparar dos parametros entre si deja a Hibernate sin tipo).
 
     /** True si hay un vehiculo adentro de la cochera durante el rango. */
     default boolean existeEnCursoEnCochera(UUID cocheraId, LocalDateTime desde, LocalDateTime hasta,
                                            LocalDateTime ahora) {
-        return existeEnCursoEnCochera(cocheraId, desde, hasta, ahora.isAfter(desde));
+        return existeEnCursoEnCochera(cocheraId, desde, hasta, !ahora.isBefore(desde));
     }
 
     @Query("SELECT COUNT(r) > 0 FROM Reserva r "
             + "WHERE r.cochera.id = :cocheraId "
             + "AND r.estado = com.aparcar.api.entity.reserva.ReservaEstado.EN_CURSO "
-            + "AND r.desde < :hasta AND (r.hasta > :desde OR :yaEmpezo = true)")
+            + "AND (r.desde < :hasta OR r.ingresoAt < :hasta) AND (r.hasta > :desde OR :yaEmpezo = true)")
     boolean existeEnCursoEnCochera(@Param("cocheraId") UUID cocheraId,
                                    @Param("desde") LocalDateTime desde,
                                    @Param("hasta") LocalDateTime hasta,
@@ -88,13 +91,13 @@ public interface ReservaRepository extends JpaRepository<Reserva, UUID> {
     /** True si el vehiculo esta adentro de alguna cochera durante el rango. */
     default boolean existeEnCursoConVehiculo(UUID vehiculoId, LocalDateTime desde, LocalDateTime hasta,
                                              LocalDateTime ahora) {
-        return existeEnCursoConVehiculo(vehiculoId, desde, hasta, ahora.isAfter(desde));
+        return existeEnCursoConVehiculo(vehiculoId, desde, hasta, !ahora.isBefore(desde));
     }
 
     @Query("SELECT COUNT(r) > 0 FROM Reserva r "
             + "WHERE r.vehiculo.id = :vehiculoId "
             + "AND r.estado = com.aparcar.api.entity.reserva.ReservaEstado.EN_CURSO "
-            + "AND r.desde < :hasta AND (r.hasta > :desde OR :yaEmpezo = true)")
+            + "AND (r.desde < :hasta OR r.ingresoAt < :hasta) AND (r.hasta > :desde OR :yaEmpezo = true)")
     boolean existeEnCursoConVehiculo(@Param("vehiculoId") UUID vehiculoId,
                                      @Param("desde") LocalDateTime desde,
                                      @Param("hasta") LocalDateTime hasta,
@@ -102,12 +105,12 @@ public interface ReservaRepository extends JpaRepository<Reserva, UUID> {
 
     /** Las reservas EN_CURSO que ocupan el rango, sin importar la cochera. */
     default List<Reserva> findEnCursoSolapadas(LocalDateTime desde, LocalDateTime hasta, LocalDateTime ahora) {
-        return findEnCursoSolapadas(desde, hasta, ahora.isAfter(desde));
+        return findEnCursoSolapadas(desde, hasta, !ahora.isBefore(desde));
     }
 
     @Query("SELECT r FROM Reserva r JOIN FETCH r.cochera "
             + "WHERE r.estado = com.aparcar.api.entity.reserva.ReservaEstado.EN_CURSO "
-            + "AND r.desde < :hasta AND (r.hasta > :desde OR :yaEmpezo = true)")
+            + "AND (r.desde < :hasta OR r.ingresoAt < :hasta) AND (r.hasta > :desde OR :yaEmpezo = true)")
     List<Reserva> findEnCursoSolapadas(@Param("desde") LocalDateTime desde,
                                        @Param("hasta") LocalDateTime hasta,
                                        @Param("yaEmpezo") boolean yaEmpezo);
@@ -130,6 +133,10 @@ public interface ReservaRepository extends JpaRepository<Reserva, UUID> {
     List<Reserva> findByEstadoAndCodigoIsNullAndHastaAfter(ReservaEstado estado, LocalDateTime momento);
 
     boolean existsByCocheraId(UUID cocheraId);
+
+    boolean existsByCocheraIdAndEstadoAndIdNot(UUID cocheraId, ReservaEstado estado, UUID reservaId);
+
+    boolean existsByVehiculoIdAndEstadoAndIdNot(UUID vehiculoId, ReservaEstado estado, UUID reservaId);
 
     List<Reserva> findByCocheraIdAndEstado(UUID cocheraId, ReservaEstado estado);
 

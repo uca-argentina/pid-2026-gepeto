@@ -41,9 +41,8 @@ const mensajeDeError = (error) => {
 /**
  * Arma la función que busca un QR en un cuadro del video.
  *
- * Primero `BarcodeDetector`, que es nativo (Chrome y Edge en Android y
- * escritorio, Safari reciente): no agrega peso y decodifica en el hilo del
- * navegador. Donde no existe o no soporta QR, `jsqr`: JavaScript puro, sin
+ * Primero `BarcodeDetector`, si el navegador lo ofrece y soporta QR.
+ * Donde no existe o falla al decodificar, `jsqr`: JavaScript puro, sin
  * dependencias nativas, que se descarga recién acá y solo en ese caso.
  */
 export async function crearDetector(canvas) {
@@ -52,13 +51,28 @@ export async function crearDetector(canvas) {
       const formatos = (await window.BarcodeDetector.getSupportedFormats?.()) ?? ["qr_code"];
       if (formatos.includes("qr_code")) {
         const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
-        return async (video) => (await detector.detect(video))[0]?.rawValue ?? null;
+        let alternativo;
+        return async (video) => {
+          if (!alternativo) {
+            try {
+              return (await detector.detect(video))[0]?.rawValue ?? null;
+            } catch {
+              // Algunos navegadores exponen la API pero no pueden leer video.
+              alternativo = await crearDetectorJsQR(canvas);
+            }
+          }
+          return alternativo(video);
+        };
       }
     } catch {
       // Si el nativo falla, se sigue con jsqr.
     }
   }
 
+  return crearDetectorJsQR(canvas);
+}
+
+async function crearDetectorJsQR(canvas) {
   const { default: jsQR } = await import("jsqr");
   return async (video) => {
     const ancho = video.videoWidth;
@@ -82,7 +96,7 @@ export async function crearDetector(canvas) {
  * prefiere la trasera, y se libera al leer un código, al detenerla y al salir
  * de la pantalla. Lo leído se entrega tal cual: validarlo es cosa del backend.
  */
-export default function LectorQR({ onLectura, onUsarCodigo, autoIniciar = false }) {
+export default function LectorQR({ onLectura, onUsarCodigo, autoIniciar = false, disabled = false }) {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
@@ -104,6 +118,7 @@ export default function LectorQR({ onLectura, onUsarCodigo, autoIniciar = false 
   }, []);
 
   const activar = useCallback(async () => {
+    if (disabled) return;
     const problema = problemaDeEntorno();
     if (problema) {
       setError(problema);
@@ -129,6 +144,7 @@ export default function LectorQR({ onLectura, onUsarCodigo, autoIniciar = false 
       const video = videoRef.current;
       video.srcObject = stream;
       await video.play?.();
+      if (!vigente()) return;
       const detectar = await crearDetector(canvasRef.current);
       if (!vigente()) return;
       setEstado("escaneando");
@@ -157,7 +173,7 @@ export default function LectorQR({ onLectura, onUsarCodigo, autoIniciar = false 
       setError(mensajeDeError(e));
       setEstado("error");
     }
-  }, [detener, onLectura]);
+  }, [detener, onLectura, disabled]);
 
   // Avisa de entrada si la cámara no va a funcionar, sin esperar al clic.
   useEffect(() => {
@@ -171,6 +187,15 @@ export default function LectorQR({ onLectura, onUsarCodigo, autoIniciar = false 
     // Solo al montar: autoIniciar vale para esta instancia.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Validar o registrar pausa también una cámara ya activa o con permiso
+  // pendiente: una lectura tardía no debe consumir el siguiente código.
+  useEffect(() => {
+    if (disabled) {
+      detener();
+      setEstado((actual) => actual === "error" ? actual : "inactivo");
+    }
+  }, [disabled, detener]);
 
   // Al salir de la pantalla, la cámara se apaga.
   useEffect(() => detener, [detener]);
@@ -203,7 +228,7 @@ export default function LectorQR({ onLectura, onUsarCodigo, autoIniciar = false 
         <div className="lector-qr-error" role="alert">
           <p>{error}</p>
           {onUsarCodigo && (
-            <button type="button" className="lector-qr-boton" onClick={onUsarCodigo}>
+            <button type="button" className="lector-qr-boton" onClick={onUsarCodigo} disabled={disabled}>
               Escribir el código
             </button>
           )}
@@ -223,7 +248,7 @@ export default function LectorQR({ onLectura, onUsarCodigo, autoIniciar = false 
         </button>
       ) : (
         estado !== "error" || error !== MENSAJES_CAMARA.INSEGURO ? (
-          <button type="button" className="ui-primary lector-qr-activar" onClick={activar}>
+          <button type="button" className="ui-primary lector-qr-activar" onClick={activar} disabled={disabled}>
             {estado === "error" ? "Reintentar con la cámara" : "Activar cámara"}
           </button>
         ) : null

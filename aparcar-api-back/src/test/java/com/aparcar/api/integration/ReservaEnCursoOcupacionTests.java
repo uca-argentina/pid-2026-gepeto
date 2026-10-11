@@ -71,7 +71,7 @@ class ReservaEnCursoOcupacionTests {
         visitantes.deleteAll();
     }
 
-    private void reserva(ReservaEstado estado, LocalDateTime desde, LocalDateTime hasta) {
+    private Reserva reserva(ReservaEstado estado, LocalDateTime desde, LocalDateTime hasta) {
         Reserva reserva = new Reserva();
         reserva.setDesde(desde);
         reserva.setHasta(hasta);
@@ -79,7 +79,7 @@ class ReservaEnCursoOcupacionTests {
         reserva.setVehiculo(vehiculo);
         reserva.setCochera(cochera);
         reserva.setEstado(estado);
-        reservas.save(reserva);
+        return reservas.save(reserva);
     }
 
     @Test
@@ -103,6 +103,29 @@ class ReservaEnCursoOcupacionTests {
         // Sin el, esa misma franja estaria libre: la reserva termino hace una hora.
         assertFalse(reservas.existeSolapadaEnCochera(cochera.getId(), ReservaEstado.CONFIRMADA,
                 AHORA.minusMinutes(15), AHORA.plusHours(1)));
+    }
+
+    @Test
+    @DisplayName("un ingreso anticipado ocupa desde la entrada real, antes de la franja reservada")
+    void ingresoAnticipadoOcupa() {
+        Reserva anticipada = reserva(ReservaEstado.EN_CURSO, AHORA.plusMinutes(15), AHORA.plusHours(1));
+        anticipada.setIngresoAt(AHORA);
+        reservas.save(anticipada);
+
+        assertTrue(reservas.existeEnCursoEnCochera(cochera.getId(), AHORA, AHORA.plusMinutes(15), AHORA));
+        assertTrue(reservas.existeEnCursoConVehiculo(vehiculo.getId(), AHORA, AHORA.plusMinutes(15), AHORA));
+        assertEquals(1, reservas.findEnCursoSolapadas(AHORA, AHORA.plusMinutes(15), AHORA).size());
+        assertFalse(reservas.existeEnCursoEnCochera(cochera.getId(), AHORA.minusMinutes(15), AHORA, AHORA));
+    }
+
+    @Test
+    @DisplayName("un vehiculo excedido ocupa tambien un rango que empieza exactamente ahora")
+    void excedidoOcupaDesdeAhoraInclusive() {
+        reserva(ReservaEstado.EN_CURSO, AHORA.minusHours(3), AHORA.minusHours(1));
+
+        assertTrue(reservas.existeEnCursoEnCochera(cochera.getId(), AHORA, AHORA.plusHours(1), AHORA));
+        assertTrue(reservas.existeEnCursoConVehiculo(vehiculo.getId(), AHORA, AHORA.plusHours(1), AHORA));
+        assertEquals(1, reservas.findEnCursoSolapadas(AHORA, AHORA.plusHours(1), AHORA).size());
     }
 
     @Test

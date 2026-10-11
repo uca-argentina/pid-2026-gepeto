@@ -20,6 +20,7 @@ describe("CodigoAccesoQR", () => {
     expect(img.getAttribute("src")).toMatch(/^data:image\/svg\+xml/);
     expect(toStringMock).toHaveBeenCalledWith("APARCAR:ABCDE12345", expect.objectContaining({
       type: "svg",
+      margin: 4,
       color: { dark: "#000000", light: "#ffffff" },
     }));
   });

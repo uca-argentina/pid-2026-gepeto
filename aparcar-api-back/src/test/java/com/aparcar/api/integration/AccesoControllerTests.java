@@ -2,15 +2,18 @@ package com.aparcar.api.integration;
 
 import com.aparcar.api.config.IntegrationTests;
 import com.aparcar.api.dto.acceso.AccesoAccion;
+import com.aparcar.api.dto.acceso.AccesoRegistroResponseDto;
 import com.aparcar.api.entity.auth.AppAuthority;
 import com.aparcar.api.entity.auth.Visitante;
 import com.aparcar.api.entity.reserva.Cochera;
 import com.aparcar.api.entity.reserva.CocheraEstado;
 import com.aparcar.api.entity.reserva.CocheraTipo;
 import com.aparcar.api.entity.reserva.Reserva;
+import com.aparcar.api.entity.reserva.ReservaAccion;
 import com.aparcar.api.entity.reserva.ReservaEstado;
 import com.aparcar.api.entity.reserva.Vehiculo;
 import com.aparcar.api.entity.reserva.VehiculoTipo;
+import com.aparcar.api.exception.ValidationException;
 import com.aparcar.api.repository.AccesoIntentoRepository;
 import com.aparcar.api.repository.CocheraRepository;
 import com.aparcar.api.repository.ReservaRepository;
@@ -22,6 +25,9 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -34,12 +40,17 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.jdbc.Sql;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.request.RequestPostProcessor;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
@@ -78,6 +89,7 @@ class AccesoControllerTests {
     @Autowired CocheraRepository cocheras;
     @Autowired AccesoIntentoRepository intentos;
     @Autowired Clock clock;
+    @Autowired PlatformTransactionManager transactionManager;
     @MockitoSpyBean IAccesoService accesoService;
 
     private Visitante usuario;
@@ -410,6 +422,153 @@ class AccesoControllerTests {
                 .andReturn().getResponse().getContentAsString();
         int exceso = JsonPath.read(respuesta, "$.minutosExceso");
         assertTrue(exceso >= 40 && exceso <= 41, "exceso: " + exceso);
+    }
+
+    @Test
+    @WithMockUser(authorities = "ADMIN")
+    @DisplayName("[Caja negra] una cochera ocupada rechaza el siguiente codigo hasta registrar el egreso anterior")
+    void ingresoEsperaElEgresoAnterior() throws Exception {
+        Reserva anterior = reserva("ABCDE12345", ReservaEstado.EN_CURSO, ahora.minusHours(2), ahora.minusMinutes(5));
+        anterior.setIngresoAt(ahora.minusHours(2));
+        reservas.save(anterior);
+        reserva("FGHJK67890", ReservaEstado.CONFIRMADA, ahora.minusMinutes(5), ahora.plusHours(1));
+
+        mvc.perform(post("/api/v1/accesos/consulta").with(sesion()).contentType(MediaType.APPLICATION_JSON)
+                        .content(json("APARCAR:FGHJK67890")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valido").value(false))
+                .andExpect(jsonPath("$.motivo").value("COCHERA_OCUPADA"));
+        mvc.perform(post("/api/v1/accesos/registro").with(sesion()).contentType(MediaType.APPLICATION_JSON)
+                        .content(json("FGHJK67890", AccesoAccion.INGRESO)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details[0]").value("COCHERA_OCUPADA"));
+        assertEquals(ReservaEstado.CONFIRMADA, reservas.findByCodigo("FGHJK67890").orElseThrow().getEstado());
+
+        mvc.perform(post("/api/v1/accesos/registro").with(sesion()).contentType(MediaType.APPLICATION_JSON)
+                        .content(json("ABCDE12345", AccesoAccion.EGRESO)))
+                .andExpect(status().isOk());
+        mvc.perform(post("/api/v1/accesos/registro").with(sesion()).contentType(MediaType.APPLICATION_JSON)
+                        .content(json("FGHJK67890", AccesoAccion.INGRESO)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.reserva.estado").value("EN_CURSO"));
+    }
+
+    @Test
+    @WithMockUser(authorities = "ADMIN")
+    @DisplayName("[Caja negra] la tolerancia anticipada no permite ingresar un vehiculo que sigue adentro")
+    void vehiculoNoPuedeIngresarConDosReservas() throws Exception {
+        Reserva anterior = reserva("ABCDE12345", ReservaEstado.EN_CURSO, ahora.minusHours(1), ahora.plusMinutes(10));
+        anterior.setIngresoAt(ahora.minusHours(1));
+        reservas.save(anterior);
+
+        Cochera otra = new Cochera();
+        otra.setNumero("ACC-02");
+        otra.setSector("Planta Baja");
+        otra.setTipo(CocheraTipo.AUTO);
+        otra.setEstado(CocheraEstado.HABILITADA);
+        otra = cocheras.save(otra);
+        Reserva siguiente = reserva("FGHJK67890", ReservaEstado.CONFIRMADA, ahora.plusMinutes(10), ahora.plusHours(1));
+        siguiente.setCochera(otra);
+        reservas.save(siguiente);
+
+        mvc.perform(post("/api/v1/accesos/consulta").with(sesion()).contentType(MediaType.APPLICATION_JSON)
+                        .content(json("FGHJK-67890")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valido").value(false))
+                .andExpect(jsonPath("$.motivo").value("VEHICULO_EN_CURSO"));
+        mvc.perform(post("/api/v1/accesos/registro").with(sesion()).contentType(MediaType.APPLICATION_JSON)
+                        .content(json("FGHJK67890", AccesoAccion.INGRESO)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.details[0]").value("VEHICULO_EN_CURSO"));
+        assertEquals(ReservaEstado.CONFIRMADA, reservas.findByCodigo("FGHJK67890").orElseThrow().getEstado());
+    }
+
+    @ParameterizedTest
+    @EnumSource(AccesoAccion.class)
+    @DisplayName("[Concurrencia] dos operadores con el mismo codigo registran un solo movimiento")
+    void mismoCodigoConcurrente(AccesoAccion accion) throws Exception {
+        Reserva reserva = reserva("ABCDE12345",
+                accion == AccesoAccion.INGRESO ? ReservaEstado.CONFIRMADA : ReservaEstado.EN_CURSO,
+                ahora.minusMinutes(10), ahora.plusHours(1));
+        if (accion == AccesoAccion.EGRESO) {
+            reserva.setIngresoAt(ahora.minusMinutes(5));
+            reservas.save(reserva);
+        }
+
+        List<Object> resultados = registrarSimultaneamente("ABCDE12345", "ABCDE12345", accion);
+
+        assertEquals(1, resultados.stream().filter(AccesoRegistroResponseDto.class::isInstance).count());
+        assertEquals(1, resultados.stream().filter(ObjectOptimisticLockingFailureException.class::isInstance).count());
+        Reserva guardada = reservas.findAll().getFirst();
+        assertEquals(accion == AccesoAccion.INGRESO ? ReservaEstado.EN_CURSO : ReservaEstado.FINALIZADA,
+                guardada.getEstado());
+        assertEquals(1, guardada.getHistorial().stream()
+                .filter(m -> m.getAccion() == ReservaAccion.valueOf(accion.name())).count());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {true, false})
+    @DisplayName("[Concurrencia] dos codigos distintos no pueden ocupar la misma cochera o el mismo vehiculo")
+    void codigosDistintosConcurrentes(boolean mismaCochera) throws Exception {
+        reserva("ABCDE12345", ReservaEstado.CONFIRMADA, ahora.minusMinutes(20), ahora.plusMinutes(10));
+        Reserva siguiente = reserva("FGHJK67890", ReservaEstado.CONFIRMADA, ahora.plusMinutes(10), ahora.plusHours(1));
+        if (mismaCochera) {
+            Vehiculo otro = new Vehiculo();
+            otro.setVisitante(usuario);
+            otro.setPatente("AC456EF");
+            otro.setTipo(VehiculoTipo.AUTO);
+            siguiente.setVehiculo(vehiculos.save(otro));
+        } else {
+            Cochera otra = new Cochera();
+            otra.setNumero("ACC-02");
+            otra.setSector("Planta Baja");
+            otra.setTipo(CocheraTipo.AUTO);
+            otra.setEstado(CocheraEstado.HABILITADA);
+            siguiente.setCochera(cocheras.save(otra));
+        }
+        reservas.save(siguiente);
+
+        List<Object> resultados = registrarSimultaneamente("ABCDE12345", "FGHJK67890", AccesoAccion.INGRESO);
+
+        assertEquals(1, resultados.stream().filter(AccesoRegistroResponseDto.class::isInstance).count());
+        ValidationException rechazo = (ValidationException) resultados.stream()
+                .filter(ValidationException.class::isInstance).findFirst().orElseThrow();
+        assertEquals(List.of(mismaCochera ? "COCHERA_OCUPADA" : "VEHICULO_EN_CURSO"), rechazo.getErrors());
+        assertEquals(1, reservas.findAll().stream().filter(r -> r.getEstado() == ReservaEstado.EN_CURSO).count());
+        assertEquals(1, reservas.findAll().stream().flatMap(r -> r.getHistorial().stream())
+                .filter(m -> m.getAccion() == ReservaAccion.INGRESO).count());
+    }
+
+    private List<Object> registrarSimultaneamente(String primerCodigo, String segundoCodigo, AccesoAccion accion)
+            throws Exception {
+        CountDownLatch leidas = new CountDownLatch(2);
+        CountDownLatch registrar = new CountDownLatch(1);
+        try (var ejecutor = Executors.newVirtualThreadPerTaskExecutor()) {
+            var tareas = List.of(primerCodigo, segundoCodigo).stream().map(codigo -> ejecutor.submit(() -> {
+                try {
+                    return (Object) new TransactionTemplate(transactionManager).execute(status -> {
+                        // Ambas transacciones leen el mismo estado antes de competir.
+                        reservas.findByCodigo(codigo).orElseThrow();
+                        leidas.countDown();
+                        try {
+                            if (!registrar.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("Tiempo agotado");
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            throw new IllegalStateException(e);
+                        }
+                        return accesoService.registrar(codigo, accion, ADMIN);
+                    });
+                } catch (RuntimeException e) {
+                    return e;
+                }
+            })).toList();
+            try {
+                assertTrue(leidas.await(10, TimeUnit.SECONDS), "Las dos transacciones deben estar listas");
+            } finally {
+                registrar.countDown();
+            }
+            return List.of(tareas.get(0).get(20, TimeUnit.SECONDS), tareas.get(1).get(20, TimeUnit.SECONDS));
+        }
     }
 
     @Test

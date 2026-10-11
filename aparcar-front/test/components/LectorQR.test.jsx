@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const { jsQRMock } = vi.hoisted(() => ({ jsQRMock: vi.fn() }));
@@ -90,6 +90,73 @@ describe("LectorQR", () => {
     expect(jsQRMock).toHaveBeenCalledWith(expect.any(Uint8ClampedArray), 640, 480, expect.anything());
     expect(contexto.drawImage).toHaveBeenCalled();
     expect(tracks[0].stop).toHaveBeenCalled();
+  });
+
+  it("usa jsqr si el detector nativo existe pero falla al leer el video", async () => {
+    const user = userEvent.setup();
+    const onLectura = vi.fn();
+    conBarcodeDetector(null).mockRejectedValue(new Error("Video no soportado"));
+    vi.spyOn(HTMLVideoElement.prototype, "videoWidth", "get").mockReturnValue(640);
+    vi.spyOn(HTMLVideoElement.prototype, "videoHeight", "get").mockReturnValue(480);
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+      drawImage: vi.fn(),
+      getImageData: vi.fn(() => ({ data: new Uint8ClampedArray(4) })),
+    });
+    jsQRMock.mockReturnValue({ data: "APARCAR:ABCDE12345" });
+    render(<LectorQR onLectura={onLectura} />);
+
+    await user.click(screen.getByRole("button", { name: "Activar cámara" }));
+
+    await waitFor(() => expect(onLectura).toHaveBeenCalledWith("APARCAR:ABCDE12345"));
+    expect(tracks[0].stop).toHaveBeenCalled();
+  });
+
+  it("no activa la cámara mientras la validación está ocupada", async () => {
+    const user = userEvent.setup();
+    render(<LectorQR onLectura={vi.fn()} autoIniciar disabled />);
+
+    const activar = screen.getByRole("button", { name: "Activar cámara" });
+    expect(activar).toBeDisabled();
+    await user.click(activar);
+
+    expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it("al deshabilitar apaga la cámara e ignora una lectura que llega tarde", async () => {
+    const user = userEvent.setup();
+    const onLectura = vi.fn();
+    let resolver;
+    conBarcodeDetector(null).mockReturnValue(new Promise((resolve) => { resolver = resolve; }));
+    const { rerender } = render(<LectorQR onLectura={onLectura} />);
+    await user.click(screen.getByRole("button", { name: "Activar cámara" }));
+    await screen.findByText("Apuntá la cámara al código QR del visitante.");
+
+    rerender(<LectorQR onLectura={onLectura} disabled />);
+    await act(async () => { resolver([{ rawValue: "APARCAR:ABCDE12345" }]); });
+
+    expect(tracks[0].stop).toHaveBeenCalled();
+    expect(onLectura).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Activar cámara" })).toBeDisabled();
+
+    rerender(<LectorQR onLectura={onLectura} />);
+
+    expect(screen.getByRole("button", { name: "Activar cámara" })).toBeEnabled();
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it("libera el permiso de cámara concedido después de deshabilitar el lector", async () => {
+    const user = userEvent.setup();
+    let conceder;
+    getUserMedia.mockReturnValue(new Promise((resolve) => { conceder = resolve; }));
+    const { rerender } = render(<LectorQR onLectura={vi.fn()} />);
+    await user.click(screen.getByRole("button", { name: "Activar cámara" }));
+
+    rerender(<LectorQR onLectura={vi.fn()} disabled />);
+    await act(async () => { conceder({ getTracks: () => tracks }); });
+
+    expect(tracks[0].stop).toHaveBeenCalled();
+    expect(HTMLMediaElement.prototype.play).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Activar cámara" })).toBeDisabled();
   });
 
   it("si el operador no da permiso, lo explica y ofrece el código escrito", async () => {

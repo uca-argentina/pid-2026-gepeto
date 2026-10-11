@@ -14,8 +14,10 @@ import com.aparcar.api.entity.reserva.ReservaEstado;
 import com.aparcar.api.entity.reserva.ReservaMovimiento;
 import com.aparcar.api.exception.NotFoundException;
 import com.aparcar.api.exception.ValidationException;
+import com.aparcar.api.repository.CocheraRepository;
 import com.aparcar.api.repository.ReservaMovimientoRepository;
 import com.aparcar.api.repository.ReservaRepository;
+import com.aparcar.api.repository.VehiculoRepository;
 import com.aparcar.api.repository.VisitanteRepository;
 import com.aparcar.api.service.IAccesoService;
 import lombok.RequiredArgsConstructor;
@@ -44,6 +46,8 @@ public class AccesoService implements IAccesoService {
     private final ReservaRepository reservaRepository;
     private final ReservaMovimientoRepository reservaMovimientoRepository;
     private final VisitanteRepository visitanteRepository;
+    private final VehiculoRepository vehiculoRepository;
+    private final CocheraRepository cocheraRepository;
     private final ReglasAcceso reglasAcceso;
     private final RegistroIntentosAcceso registroIntentos;
 
@@ -83,6 +87,14 @@ public class AccesoService implements IAccesoService {
         Reserva reserva = buscar(entrada, operacion, operadorEmail);
         Visitante operador = visitanteRepository.findByEmail(operadorEmail)
                 .orElseThrow(() -> new NotFoundException("Cuenta del autor no encontrada."));
+        if (accion == AccesoAccion.INGRESO && reserva.getEstado() == ReservaEstado.CONFIRMADA) {
+            // Siempre en el mismo orden. El lock de la reserva no alcanza:
+            // dos codigos distintos pueden compartir vehiculo o cochera.
+            vehiculoRepository.findByIdForUpdate(reserva.getVehiculo().getId())
+                    .orElseThrow(() -> new NotFoundException("Vehiculo no encontrado."));
+            cocheraRepository.findByIdForUpdate(reserva.getCochera().getId())
+                    .orElseThrow(() -> new NotFoundException("Cochera no encontrada."));
+        }
         LocalDateTime ahora = reglasAcceso.ahora();
         // Nunca se confia en una consulta previa: todo se vuelve a evaluar aca.
         asentarSiVencio(reserva, ahora);
@@ -115,9 +127,10 @@ public class AccesoService implements IAccesoService {
                                 .formatted(fecha(reserva.getIngresoAt(), ahora)), operador);
             }
             case CONFIRMADA -> {
-                if (reglasAcceso.ingresoAnticipado(reserva, ahora)) {
-                    throw rechazar(reserva, AccesoOperacion.INGRESO, AccesoMotivo.ANTICIPADO,
-                            mensajeAnticipado(reserva, ahora), operador);
+                Evaluacion evaluacion = evaluarIngreso(reserva, ahora);
+                if (!evaluacion.valida()) {
+                    throw rechazar(reserva, AccesoOperacion.INGRESO, evaluacion.motivo(),
+                            evaluacion.mensaje(), operador);
                 }
                 reserva.setEstado(ReservaEstado.EN_CURSO);
                 reserva.setIngresoAt(ahora);
@@ -180,9 +193,7 @@ public class AccesoService implements IAccesoService {
     /** Lo que corresponde segun el estado, sin tocar nada. */
     private Evaluacion evaluar(Reserva reserva, LocalDateTime ahora) {
         return switch (reserva.getEstado()) {
-            case CONFIRMADA -> reglasAcceso.ingresoAnticipado(reserva, ahora)
-                    ? new Evaluacion(AccesoAccion.INGRESO, AccesoMotivo.ANTICIPADO, mensajeAnticipado(reserva, ahora))
-                    : new Evaluacion(AccesoAccion.INGRESO, null, "Puede ingresar.");
+            case CONFIRMADA -> evaluarIngreso(reserva, ahora);
             case EN_CURSO -> {
                 if (reglasAcceso.egresoPrematuro(reserva, ahora)) {
                     yield new Evaluacion(AccesoAccion.EGRESO, AccesoMotivo.PERMANENCIA_MINIMA,
@@ -198,6 +209,25 @@ public class AccesoService implements IAccesoService {
             case CANCELADA -> new Evaluacion(null, AccesoMotivo.CANCELADA,
                     "La reserva fue cancelada: el código ya no es válido.");
         };
+    }
+
+    private Evaluacion evaluarIngreso(Reserva reserva, LocalDateTime ahora) {
+        if (reglasAcceso.ingresoAnticipado(reserva, ahora)) {
+            return new Evaluacion(AccesoAccion.INGRESO, AccesoMotivo.ANTICIPADO, mensajeAnticipado(reserva, ahora));
+        }
+        // Se verifica la ocupacion real, tambien fuera de la franja reservada:
+        // la tolerancia anticipada y un egreso tardio pueden hacerla solapar.
+        if (reservaRepository.existsByCocheraIdAndEstadoAndIdNot(
+                reserva.getCochera().getId(), ReservaEstado.EN_CURSO, reserva.getId())) {
+            return new Evaluacion(AccesoAccion.INGRESO, AccesoMotivo.COCHERA_OCUPADA,
+                    "La cochera todavía está ocupada. Registrá el egreso anterior antes de permitir el ingreso.");
+        }
+        if (reservaRepository.existsByVehiculoIdAndEstadoAndIdNot(
+                reserva.getVehiculo().getId(), ReservaEstado.EN_CURSO, reserva.getId())) {
+            return new Evaluacion(AccesoAccion.INGRESO, AccesoMotivo.VEHICULO_EN_CURSO,
+                    "El vehículo ya tiene un ingreso con otra reserva. Registrá su egreso antes de volver a ingresar.");
+        }
+        return new Evaluacion(AccesoAccion.INGRESO, null, "Puede ingresar.");
     }
 
     /** Rechazo por un estado que ya no admite ninguna accion. */
