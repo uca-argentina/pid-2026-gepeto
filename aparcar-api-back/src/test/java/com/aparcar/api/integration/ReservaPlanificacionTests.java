@@ -480,8 +480,17 @@ class ReservaPlanificacionTests {
         LocalDateTime ahora = LocalDateTime.now(clock);
         LocalDateTime inicio = ahora.minusHours(2).withMinute(0).withSecond(0).withNano(0);
         LocalDateTime fin = ahora.plusHours(2).withMinute(0).withSecond(0).withNano(0);
-        jdbc.update("UPDATE reservas SET desde = ?, hasta = ? WHERE id IN (?, ?)",
-                inicio, fin, ocupante.getId(), espera);
+        // Usamos el mismo mapeo temporal que la aplicacion: mezclar LocalDateTime
+        // por JDBC directo con Hibernate desplaza la franja en H2 al arrancar en UTC.
+        Reserva pendiente = guardada(espera);
+        for (Reserva reserva : List.of(ocupante, pendiente)) {
+            reserva.setDesde(inicio);
+            reserva.setHasta(fin);
+        }
+        reservas.saveAll(List.of(ocupante, pendiente));
+
+        assertEquals(inicio, guardada(espera).getDesde());
+        assertEquals(fin, guardada(espera).getHasta());
 
         vencidas.marcarVencidas();
 
@@ -489,6 +498,9 @@ class ReservaPlanificacionTests {
         Reserva promovida = guardada(espera);
         assertEquals(ReservaEstado.CONFIRMADA, promovida.getEstado());
         assertNotNull(promovida.getCodigoEmitidoAt());
+        // Otro barrido debe respetar la tolerancia nueva aunque desde sea antiguo.
+        vencidas.marcarVencidas();
+        assertEquals(ReservaEstado.CONFIRMADA, guardada(espera).getEstado());
         mvc.perform(post("/api/v1/accesos/consulta").with(como(admin)).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"codigo\":\"" + promovida.getCodigo() + "\"}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.valido").value(true));

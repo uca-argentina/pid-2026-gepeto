@@ -23,6 +23,10 @@ Que prueba cada archivo de test del proyecto, caso por caso. Ver `ARCHIVOS.md` p
   altas MOTO con ambos formatos, promoción y rollback del alta inválida;
   series/listados del ADMIN autenticado, rechazo de vehículos ajenos y de
   cuentas inactivas o sin el rol actual, y disponibilidad personal accesible.
+  El caso del barrido prepara las franjas con el repositorio JPA y verifica su
+  lectura antes de vencer/promover: evita mezclar conversiones temporales de
+  JDBC directo y Hibernate en H2 cuando la JVM arranca en UTC. Un segundo
+  barrido y la consulta del QR comprueban la nueva tolerancia de ingreso.
 - `integration/ReservaPlanificacionMigracionTests.java` — **1 test**:
   migración 013 sobre reservas previas, cochera nullable, restricciones de
   asignación, fila de bloqueo e idempotencia sin perder registros.
@@ -379,6 +383,9 @@ otpCleanup deletes all expired OTPs
 _6 tests._
 
 Caja blanca del barrido que pasa a VENCIDA (no-show) las CONFIRMADAS a las que se les cerró la ventana de ingreso, con reloj fijo. Ya no marca FINALIZADA: eso ahora significa que el vehículo egresó. La validación del código hace la misma evaluación al momento, así que nada depende de que la tarea corra.
+
+También verifica que la promoción ocurra después de guardar los vencimientos,
+y que se ejecute incluso cuando no hay reservas confirmadas que vencer.
 
 ```
 pasa a VENCIDA (no FINALIZADA) una reserva cuya franja termino sin ingreso
@@ -1784,17 +1791,22 @@ es case-insensitive
 
 | | Archivos | Tests |
 |---|---|---|
-| Backend | 58 | 587 |
+| Backend | 58 | 644 |
 | Frontend (Vitest) | 45 | 570 |
 | Frontend UI (Playwright) | 5 | 42 |
-| **Total** | **108** | **1199** |
+| **Total** | **108** | **1256** |
 
-Corrección de alta MOTO y separación de recurrentes ADMIN: `mvn verify`
-completo (587 tests, 58 reportes Surefire renovados, sin fallos), Vitest completo
+Corrección del test de barrido en CI: `mvn -B -Duser.timezone=UTC clean install`
+completo (644 tests, sin fallos). Se reprodujo primero el fallo original al
+arrancar en UTC y se corrigió la preparación de fechas, conservando el orden
+de vencimiento/promoción y las comprobaciones de tolerancia y QR.
+El conteo usa el resumen de Maven: incluye los 57 casos de clases anidadas
+que no figuran en el atributo `tests` de sus dos XML contenedores.
+
+Última verificación del frontend, durante la corrección de alta MOTO y la
+separación de recurrentes ADMIN: Vitest completo
 (570 tests), Playwright completo en Chrome (42 tests), build de producción y
 lint sin errores. Se conserva la advertencia previa de React Hook Form.
-Los totales actuales se leyeron de los runners; corrigen el conteo anterior
-del backend, que no coincidía con los reportes.
 
 Prueba adicional contra PostgreSQL local con el backend reconstruido: alta de
 visitante MOTO en espera, promoción con precio/QR/aviso privado, vehículos del
