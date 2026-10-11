@@ -4,6 +4,8 @@ public final class ApplicationConstants {
     public static final String JWT_SECRET_KEY = "JWT_SECRET";
     public static final String JWT_SECRET_DEFAULT = "IPjxwMLwblNfL3FPj8w64mp3fVDyqrgG";
     public static final String JWT_HEADER = "Authorization";
+    // Solo para desarrollo y tests: en produccion el secreto va en ACCESO_CODIGO_SECRET.
+    public static final String ACCESO_CODIGO_SECRET_DEFAULT = "solo-desarrollo-cambiar-en-produccion";
     public static final String PROD_ENV = "prod";
     public static final String DEV_ENV = "dev";
     public static final String NOT_DEV_ENV = "!" + DEV_ENV;

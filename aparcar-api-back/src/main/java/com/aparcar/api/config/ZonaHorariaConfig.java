@@ -3,8 +3,11 @@ package com.aparcar.api.config;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
+import java.time.Clock;
+import java.time.ZoneId;
 import java.util.TimeZone;
 
 /**
@@ -33,5 +36,14 @@ public class ZonaHorariaConfig {
         TimeZone.setDefault(TimeZone.getTimeZone(zonaHoraria));
         log.info("Zona horaria de la aplicacion fijada en {} (hora actual: {})",
                 zonaHoraria, java.time.LocalDateTime.now());
+    }
+
+    /**
+     * Reloj del predio. Las reglas de acceso lo reciben inyectado para que los
+     * tests de bordes (justo antes, justo en, justo despues) usen un reloj fijo.
+     */
+    @Bean
+    public Clock clock() {
+        return Clock.system(ZoneId.of(zonaHoraria));
     }
 }

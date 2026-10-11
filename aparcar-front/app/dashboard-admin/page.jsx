@@ -12,6 +12,10 @@ export default async function DashboardAdminPage() {
     <div className="dashboard-shell">
       <div className="dashboard-container">
         <DashboardHeader>
+          <Link href="/dashboard-admin/accesos" className="dashboard-nav-link">
+            <DashboardIcon name="qr" />
+            <span>Control de acceso</span>
+          </Link>
           <Link
             href="/dashboard-admin/visitantes"
             className="dashboard-nav-link"

@@ -1,9 +1,16 @@
+// `estados` es lo que entra en cada filtro: "Activas" incluye las reservas con
+// el vehículo adentro (EN_CURSO), que siguen ocupando la cochera.
 export const FILTROS_RESERVAS = [
-  { clave: "CONFIRMADA", etiqueta: "Activas", vacio: "No hay reservas activas." },
-  { clave: "FINALIZADA", etiqueta: "Finalizadas", vacio: "No hay reservas finalizadas." },
-  { clave: "CANCELADA", etiqueta: "Canceladas", vacio: "No hay reservas canceladas ni deshabilitadas." },
+  { clave: "CONFIRMADA", etiqueta: "Activas", vacio: "No hay reservas activas.", estados: ["CONFIRMADA", "EN_CURSO"] },
+  { clave: "FINALIZADA", etiqueta: "Finalizadas", vacio: "No hay reservas finalizadas.", estados: ["FINALIZADA"] },
+  { clave: "VENCIDA", etiqueta: "Vencidas", vacio: "No hay reservas vencidas.", estados: ["VENCIDA"] },
+  { clave: "CANCELADA", etiqueta: "Canceladas", vacio: "No hay reservas canceladas ni deshabilitadas.", estados: ["CANCELADA"] },
   { clave: "TODAS", etiqueta: "Todas", vacio: "Todavía no hay reservas cargadas." },
 ];
+
+const FILTRO_DE_ESTADO = Object.fromEntries(
+  FILTROS_RESERVAS.flatMap(({ clave, estados = [] }) => estados.map((estado) => [estado, clave]))
+);
 
 export const ORDENES_RESERVAS = [
   { clave: "INICIO_ASC", etiqueta: "Inicio: orden cronológico", campo: "desde", direccion: 1 },
@@ -28,15 +35,14 @@ const compararFechas = (a, b, direccion) => {
 
 /** Solo presentación: el estado y los vencimientos siguen siendo responsabilidad del backend. */
 export const seleccionarReservas = (reservas, filtro, orden) => {
-  const cantidades = { TODAS: reservas.length, CONFIRMADA: 0, FINALIZADA: 0, CANCELADA: 0 };
+  const cantidades = { TODAS: reservas.length, CONFIRMADA: 0, FINALIZADA: 0, VENCIDA: 0, CANCELADA: 0 };
   for (const reserva of reservas) {
-    if (Object.hasOwn(cantidades, reserva.estado) && reserva.estado !== "TODAS") {
-      cantidades[reserva.estado] += 1;
-    }
+    const clave = FILTRO_DE_ESTADO[reserva.estado];
+    if (clave) cantidades[clave] += 1;
   }
   const criterio = ORDENES_RESERVAS.find((opcion) => opcion.clave === orden) ?? ORDENES_RESERVAS[0];
   const visibles = reservas
-    .filter((reserva) => filtro === "TODAS" || reserva.estado === filtro)
+    .filter((reserva) => filtro === "TODAS" || FILTRO_DE_ESTADO[reserva.estado] === filtro)
     .sort((a, b) =>
       compararFechas(a[criterio.campo], b[criterio.campo], criterio.direccion)
       || compararFechas(a.fechaCreacion, b.fechaCreacion, -1)

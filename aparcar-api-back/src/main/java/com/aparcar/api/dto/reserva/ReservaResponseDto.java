@@ -26,6 +26,11 @@ public record ReservaResponseDto(
         BigDecimal precioTotal,
         CocheraTipo tipoTarifa,
         ReservaMotivoCancelacion motivoCancelacion,
+        /**
+         * Codigo de acceso y ventana de ingreso. Solo lo recibe quien puede ver
+         * la reserva (su dueño o un ADMIN), y el codigo solo mientras sirve.
+         */
+        ReservaAccesoDto acceso,
         /** Solo se serializa para administradores. */
         @JsonInclude(JsonInclude.Include.NON_NULL) List<ReservaMovimientoResponseDto> historial
 ) {

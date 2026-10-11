@@ -10,16 +10,33 @@
  * pantalla lo muestra sin que haya que tocar este archivo.
  */
 
-import { MODALIDAD_ETIQUETA, formatearRango, hora } from "@/utils/franjaHoraria";
+import { MODALIDAD_ETIQUETA, aInputLocal, formatearRango, hora, minutosEntre } from "@/utils/franjaHoraria";
 
 /**
  * Los estados que ocupan la cochera.
  *
- * FINALIZADA entra porque el admin puede moverse a días pasados, y ahí las
- * reservas ya vencieron: si solo se mirara CONFIRMADA, ayer aparecería vacío.
- * CANCELADA no ocupa nunca, que es justamente lo que significa cancelar.
+ * EN_CURSO es un vehículo que ya entró: ocupa hasta que sale. FINALIZADA entra
+ * porque el admin puede moverse a días pasados, y ahí las reservas ya
+ * terminaron: si solo se mirara CONFIRMADA, ayer aparecería vacío. CANCELADA y
+ * VENCIDA (nunca llegó) no ocupan.
  */
-export const ESTADOS_QUE_OCUPAN = ["CONFIRMADA", "FINALIZADA"];
+export const ESTADOS_QUE_OCUPAN = ["CONFIRMADA", "EN_CURSO", "FINALIZADA"];
+
+/**
+ * Hasta cuándo ocupa una reserva. Un vehículo adentro que se pasó de su horario
+ * sigue ocupando hasta ahora: la cochera la libera el egreso, no el reloj.
+ */
+export const hastaEfectivo = (reserva, ahora = new Date()) => {
+  if (reserva?.estado !== "EN_CURSO") return reserva?.hasta;
+  const ahoraLocal = aInputLocal(ahora);
+  return reserva.hasta < ahoraLocal ? ahoraLocal : reserva.hasta;
+};
+
+/** Minutos que un vehículo adentro lleva pasado de su horario, o 0. */
+export const minutosExcedidos = (reserva, ahora = new Date()) => {
+  if (reserva?.estado !== "EN_CURSO" || !reserva.hasta) return 0;
+  return Math.max(0, minutosEntre(reserva.hasta, aInputLocal(ahora)));
+};
 
 const dosDigitos = (n) => String(n).padStart(2, "0");
 
@@ -79,11 +96,11 @@ export const diaRelativo = (dia) => {
  * hace que una reserva que termina a las 00:00 no cuente en el día siguiente,
  * y que una jornada completa a caballo de la medianoche sí aparezca en los dos.
  */
-export const ocupaElDia = (reserva, dia) => {
+export const ocupaElDia = (reserva, dia, ahora = new Date()) => {
   if (!reserva?.desde || !reserva?.hasta) return false;
   const inicio = `${dia}T00:00`;
   const fin = `${sumarDias(dia, 1)}T00:00`;
-  return reserva.desde < fin && reserva.hasta > inicio;
+  return reserva.desde < fin && hastaEfectivo(reserva, ahora) > inicio;
 };
 
 /**
@@ -106,14 +123,17 @@ export const horarioEnElDia = (reserva, dia) => {
 };
 
 /** Una reserva, como se muestra dentro de la cochera que ocupa. */
-const aOcupacion = (reserva, dia) => ({
+const aOcupacion = (reserva, dia, ahora) => ({
   id: reserva.id,
   patente: reserva.vehiculo?.patente ?? "—",
   email: reserva.visitante?.email ?? "—",
   modalidad: MODALIDAD_ETIQUETA[reserva.modalidad] ?? reserva.modalidad ?? "—",
   horario: horarioEnElDia(reserva, dia),
-  // Solo una reserva vigente se puede cancelar; una que ya terminó, no.
+  // Solo una reserva vigente se puede cancelar; una que ya terminó, o con el
+  // vehículo adentro, no.
   cancelable: reserva.estado === "CONFIRMADA",
+  adentro: reserva.estado === "EN_CURSO",
+  minutosExcedidos: minutosExcedidos(reserva, ahora),
 });
 
 /**
@@ -140,9 +160,9 @@ const porNumero = (a, b) =>
  * El contador, por eso, cuenta cocheras y no reservas: dos turnos en la misma
  * cochera siguen siendo una sola cochera ocupada.
  */
-export const agruparOcupacion = (cocheras, reservas, dia, clave) => {
+export const agruparOcupacion = (cocheras, reservas, dia, clave, ahora = new Date()) => {
   const delDia = (reservas ?? []).filter(
-    (r) => ESTADOS_QUE_OCUPAN.includes(r.estado) && ocupaElDia(r, dia)
+    (r) => ESTADOS_QUE_OCUPAN.includes(r.estado) && ocupaElDia(r, dia, ahora)
   );
 
   const grupos = new Map();
@@ -182,7 +202,7 @@ export const agruparOcupacion = (cocheras, reservas, dia, clave) => {
         reservas: [],
       });
     }
-    enGrupo.get(c.id).reservas.push(aOcupacion(r, dia));
+    enGrupo.get(c.id).reservas.push(aOcupacion(r, dia, ahora));
   }
 
   return [...grupos.values()]
@@ -195,6 +215,9 @@ export const agruparOcupacion = (cocheras, reservas, dia, clave) => {
             x.horario.texto.localeCompare(y.horario.texto)
           ),
           ocupada: c.reservas.length > 0,
+          // Lo que importa en la puerta: si hay un auto adentro ahora mismo.
+          vehiculoAdentro: c.reservas.some((r) => r.adentro),
+          excedida: c.reservas.some((r) => r.minutosExcedidos > 0),
         }))
         .sort(porNumero);
 

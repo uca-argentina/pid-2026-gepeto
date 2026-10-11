@@ -1,0 +1,96 @@
+databaseChangeLog:
+  # Control de acceso por codigo/QR.
+  #
+  # Solo estructura: el codigo de las reservas que ya existen no se puede
+  # calcular en SQL (es un HMAC con un secreto del servidor), asi que lo asigna
+  # CodigosAccesoBackfill al arrancar la aplicacion. Por eso la columna queda
+  # nullable: las reservas canceladas o terminadas nunca lo necesitan.
+  #
+  # Los estados nuevos (EN_CURSO, VENCIDA) y las acciones nuevas (INGRESO,
+  # EGRESO) entran en las columnas varchar(20) que ya existen.
+  - changeSet:
+      id: 011-acceso-reservas
+      author: aparcar
+      changes:
+        - addColumn:
+            tableName: reservas
+            columns:
+              - column:
+                  name: codigo
+                  type: varchar(10)
+              - column:
+                  name: codigo_emitido_at
+                  type: timestamp with time zone
+              - column:
+                  name: ingreso_at
+                  type: timestamp
+              - column:
+                  name: egreso_at
+                  type: timestamp
+              - column:
+                  name: minutos_exceso
+                  type: integer
+        # Unico e indexado a la vez: la validacion busca por codigo, y la
+        # restriccion es la ultima red ante una colision. Postgres y H2 admiten
+        # varios NULL en un indice unico.
+        - createIndex:
+            tableName: reservas
+            indexName: uk_reservas_codigo
+            unique: true
+            columns:
+              - column:
+                  name: codigo
+        # El listado de movimientos del dia filtra por accion y fecha.
+        - createIndex:
+            tableName: reserva_movimientos
+            indexName: idx_reserva_movimientos_accion_fecha
+            columns:
+              - column:
+                  name: accion
+              - column:
+                  name: fecha
+        - createTable:
+            tableName: acceso_intentos
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: fecha
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: operacion
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: codigo
+                  type: varchar(40)
+                  constraints:
+                    nullable: false
+              # Copia, sin FK: un codigo inexistente no tiene reserva, y el
+              # registro tiene que sobrevivir a la baja de lo que referencia.
+              - column:
+                  name: reserva_id
+                  type: uuid
+              - column:
+                  name: resultado
+                  type: varchar(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actor_email
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: acceso_intentos
+            indexName: idx_acceso_intentos_fecha
+            columns:
+              - column:
+                  name: fecha

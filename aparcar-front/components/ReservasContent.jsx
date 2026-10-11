@@ -9,9 +9,11 @@ import { toast } from "sonner";
 import api from "@/app/api";
 import AtajosJornada from "@/components/AtajosJornada";
 import CotizacionReserva from "@/components/CotizacionReserva";
+import ModalCodigoAcceso from "@/components/ModalCodigoAcceso";
 import PatenteVisual from "@/components/PatenteVisual";
 import ReservasListado from "@/components/ReservasListado";
 import useCotizacion from "@/hooks/useCotizacion";
+import { tieneCodigoVigente } from "@/utils/codigoAcceso";
 import {
   PASO_MINUTOS,
   redondearAlBloqueLocal,
@@ -64,6 +66,9 @@ export default function ReservasContent({
   const [reservas, setReservas] = useState([]);
   const [loadingReservas, setLoadingReservas] = useState(true);
   const [errorReservas, setErrorReservas] = useState(false);
+  // La reserva cuyo código de acceso (QR) se está mostrando.
+  const [reservaCodigo, setReservaCodigo] = useState(null);
+  const [codigoRecienCreado, setCodigoRecienCreado] = useState(false);
 
   const {
     register,
@@ -189,7 +194,7 @@ export default function ReservasContent({
     if (!cotizacion.lista || !cocheraElegida || !rangoValido) return;
 
     try {
-      await api.post("/api/v1/reservas", {
+      const res = await api.post("/api/v1/reservas", {
         // Solo el admin puede reservar en nombre de otro; para un visitante el
         // backend ignora este campo y usa su propia cuenta.
         visitanteId: esAdmin ? visitanteEncontrado.id : undefined,
@@ -203,6 +208,12 @@ export default function ReservasContent({
         precioEsperado: cotizacion.datos.total,
       });
       toast.success("Reserva creada correctamente");
+      // El visitante se lleva el QR en el momento: es lo que va a mostrar en
+      // la entrada.
+      if (!esAdmin && tieneCodigoVigente(res?.data)) {
+        setCodigoRecienCreado(true);
+        setReservaCodigo(res.data);
+      }
       reset({ patente: "", cocheraId: "", ...franjaPorDefecto() });
       setCocheras([]);
       cargarReservas();
@@ -434,7 +445,19 @@ export default function ReservasContent({
         error={errorReservas}
         onReintentar={cargarReservas}
         onCancelar={cancelarReserva}
+        onVerCodigo={esAdmin ? undefined : (reserva) => {
+          setCodigoRecienCreado(false);
+          setReservaCodigo(reserva);
+        }}
       />
+
+      {reservaCodigo && (
+        <ModalCodigoAcceso
+          reserva={reservaCodigo}
+          titulo={codigoRecienCreado ? "Reserva confirmada: tu código de acceso" : "Tu código de acceso"}
+          onClose={() => setReservaCodigo(null)}
+        />
+      )}
     </div>
   );
 }

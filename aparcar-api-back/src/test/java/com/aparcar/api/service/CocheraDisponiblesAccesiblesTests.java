@@ -1,5 +1,6 @@
 package com.aparcar.api.service;
 
+import com.aparcar.api.config.AccesoDePrueba;
 import com.aparcar.api.config.UnitTests;
 import com.aparcar.api.dto.reserva.CocheraResponseDto;
 import com.aparcar.api.entity.auth.Visitante;
@@ -15,7 +16,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -46,6 +49,9 @@ public class CocheraDisponiblesAccesiblesTests {
 
     @Mock
     private VisitanteRepository visitanteRepository;
+
+    @Spy
+    private Clock clock = Clock.system(AccesoDePrueba.ZONA);
 
     @InjectMocks
     private CocheraService cocheraService;

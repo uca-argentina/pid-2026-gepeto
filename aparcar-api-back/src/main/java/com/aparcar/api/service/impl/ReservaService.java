@@ -1,6 +1,7 @@
 package com.aparcar.api.service.impl;
 
 import com.aparcar.api.dto.reserva.CocheraResponseDto;
+import com.aparcar.api.dto.reserva.ReservaAccesoDto;
 import com.aparcar.api.dto.reserva.ReservaMovimientoResponseDto;
 import com.aparcar.api.dto.reserva.ReservaRequestDto;
 import com.aparcar.api.dto.reserva.ReservaResponseDto;
@@ -41,6 +42,8 @@ public class ReservaService implements IReservaService {
     private final VehiculoRepository vehiculoRepository;
     private final CocheraRepository cocheraRepository;
     private final ITarifaService tarifaService;
+    private final CodigoAcceso codigoAcceso;
+    private final ReglasAcceso reglasAcceso;
 
     @Override
     @Transactional
@@ -60,8 +63,9 @@ public class ReservaService implements IReservaService {
         validarRango(dto.getDesde(), dto.getHasta());
         validarCompatibilidad(cochera, vehiculo);
         validarAccesibilidad(cochera, visitante);
-        validarDisponibilidad(cochera, dto.getDesde(), dto.getHasta());
-        validarVehiculoLibre(vehiculo, dto.getDesde(), dto.getHasta());
+        LocalDateTime ahora = reglasAcceso.ahora();
+        validarDisponibilidad(cochera, dto.getDesde(), dto.getHasta(), ahora);
+        validarVehiculoLibre(vehiculo, dto.getDesde(), dto.getHasta(), ahora);
 
         // La categoría sale de la cochera validada, nunca de un precio o tipo enviado por el cliente.
         var cotizacion = tarifaService.cotizar(cochera.getTipo(), dto.getDesde(), dto.getHasta());
@@ -81,7 +85,11 @@ public class ReservaService implements IReservaService {
 
         Visitante actor = requesterIsAdmin ? buscarActor(requesterEmail) : visitante;
         reserva.registrarAccion(ReservaAccion.ALTA, actor, requesterIsAdmin);
-        return toResponseDto(reservaRepository.save(reserva), requesterIsAdmin);
+        Reserva guardada = reservaRepository.save(reserva);
+        // El codigo se deriva del id, que recien existe despues de guardar.
+        // Misma transaccion: si algo falla, no queda una reserva sin codigo.
+        codigoAcceso.asignar(guardada, reglasAcceso.instante());
+        return toResponseDto(guardada, requesterIsAdmin);
     }
 
     @Override
@@ -117,6 +125,19 @@ public class ReservaService implements IReservaService {
 
         if (reserva.getEstado() == ReservaEstado.CANCELADA) {
             throw new ValidationException("La reserva ya estaba cancelada.");
+        }
+
+        // Con el vehiculo adentro no hay nada que cancelar: lo que corresponde
+        // es registrar el egreso, que es lo que libera la cochera.
+        if (reserva.getEstado() == ReservaEstado.EN_CURSO) {
+            throw new ValidationException(
+                    "La reserva está en curso: el vehículo ya ingresó. Registrá el egreso en lugar de cancelarla.");
+        }
+
+        if (reserva.getEstado() == ReservaEstado.VENCIDA
+                || (reserva.getEstado() == ReservaEstado.CONFIRMADA
+                && reglasAcceso.ingresoVencido(reserva, reglasAcceso.ahora()))) {
+            throw new ValidationException("La reserva venció sin que se registrara el ingreso, no se puede cancelar.");
         }
 
         if (reserva.getEstado() == ReservaEstado.FINALIZADA || !reserva.getHasta().isAfter(LocalDateTime.now())) {
@@ -220,11 +241,15 @@ public class ReservaService implements IReservaService {
 
     /**
      * Nadie puede pisarle la cochera a otro. Se compara contra las reservas
-     * CONFIRMADAS: las canceladas y las ya finalizadas no ocupan.
+     * CONFIRMADAS y contra los vehiculos que estan adentro (EN_CURSO), que
+     * ocupan hasta egresar aunque se hayan pasado de hora. Las canceladas,
+     * vencidas y finalizadas no ocupan.
      */
-    private void validarDisponibilidad(Cochera cochera, LocalDateTime desde, LocalDateTime hasta) {
+    private void validarDisponibilidad(Cochera cochera, LocalDateTime desde, LocalDateTime hasta,
+                                       LocalDateTime ahora) {
         boolean ocupada = reservaRepository.existeSolapadaEnCochera(
-                cochera.getId(), ReservaEstado.CONFIRMADA, desde, hasta);
+                cochera.getId(), ReservaEstado.CONFIRMADA, desde, hasta)
+                || reservaRepository.existeEnCursoEnCochera(cochera.getId(), desde, hasta, ahora);
         if (ocupada) {
             throw new ValidationException(
                     "La cochera %s ya esta reservada en ese horario.".formatted(cochera.getNumero()));
@@ -232,9 +257,11 @@ public class ReservaService implements IReservaService {
     }
 
     /** Un mismo vehiculo no puede estar ocupando dos cocheras a la vez. */
-    private void validarVehiculoLibre(Vehiculo vehiculo, LocalDateTime desde, LocalDateTime hasta) {
+    private void validarVehiculoLibre(Vehiculo vehiculo, LocalDateTime desde, LocalDateTime hasta,
+                                      LocalDateTime ahora) {
         boolean comprometido = reservaRepository.existeSolapadaEnVehiculo(
-                vehiculo.getId(), ReservaEstado.CONFIRMADA, desde, hasta);
+                vehiculo.getId(), ReservaEstado.CONFIRMADA, desde, hasta)
+                || reservaRepository.existeEnCursoConVehiculo(vehiculo.getId(), desde, hasta, ahora);
         if (comprometido) {
             throw new ValidationException(
                     "El vehiculo %s ya tiene otra reserva en ese horario.".formatted(vehiculo.getPatente()));
@@ -287,9 +314,26 @@ public class ReservaService implements IReservaService {
                 reserva.getPrecioTotal(),
                 reserva.getTipoTarifa(),
                 reserva.getMotivoCancelacion(),
+                toAccesoDto(reserva),
                 requesterIsAdmin ? reserva.getHistorial().stream().map(movimiento ->
                         new ReservaMovimientoResponseDto(movimiento.getId(), movimiento.getAccion(),
                                 movimiento.getFecha(), movimiento.getActorId(), movimiento.getActorNombre(),
                                 movimiento.getActorEmail(), movimiento.getActorRol())).toList() : null);
+    }
+
+    /**
+     * El codigo viaja solo mientras sirve (CONFIRMADA o EN_CURSO): una reserva
+     * cancelada, vencida o terminada no tiene por que seguir mostrandolo.
+     */
+    private ReservaAccesoDto toAccesoDto(Reserva reserva) {
+        boolean vigente = reserva.getEstado() == ReservaEstado.CONFIRMADA
+                || reserva.getEstado() == ReservaEstado.EN_CURSO;
+        return new ReservaAccesoDto(
+                vigente ? reserva.getCodigo() : null,
+                reglasAcceso.inicioIngreso(reserva),
+                reglasAcceso.finIngreso(reserva),
+                reserva.getIngresoAt(),
+                reserva.getEgresoAt(),
+                reserva.getMinutosExceso());
     }
 }
