@@ -296,16 +296,18 @@ export default function OcupacionCocheras({ refreshKey = 0 }) {
                         key={c.id}
                         className={`ocupacion-cochera ${deshabilitada ? "is-deshabilitada" : ""} ${
                           c.ocupada ? "is-ocupada" : ""
-                        }`}
+                        } ${c.vehiculoAdentro ? "is-adentro" : ""}`}
                       >
                         <div className="ocupacion-cochera-cabecera">
                           <span className="ocupacion-cochera-numero">{c.numero}</span>
                           <span className="ocupacion-cochera-estado">
                             {deshabilitada
                               ? "Fuera de servicio"
-                              : c.ocupada
-                                ? `${c.reservas.length} ${c.reservas.length === 1 ? "reserva" : "reservas"}`
-                                : "Libre"}
+                              : c.vehiculoAdentro
+                                ? c.excedida ? "Vehículo adentro · se pasó de hora" : "Vehículo adentro"
+                                : c.ocupada
+                                  ? `${c.reservas.length} ${c.reservas.length === 1 ? "reserva" : "reservas"}`
+                                  : "Libre"}
                           </span>
 
                           <button
@@ -324,6 +326,13 @@ export default function OcupacionCocheras({ refreshKey = 0 }) {
                               <li key={r.id} className="ocupacion-item">
                                 <div className="ocupacion-item-cabecera">
                                   <span className="ocupacion-item-patente">{r.patente}</span>
+                                  {r.adentro && (
+                                    <span className={`ocupacion-item-adentro ${r.minutosExcedidos > 0 ? "is-excedido" : ""}`}>
+                                      {r.minutosExcedidos > 0
+                                        ? `Vehículo adentro · se pasó ${r.minutosExcedidos} min`
+                                        : "Vehículo adentro"}
+                                    </span>
+                                  )}
                                   <span className="ocupacion-item-modalidad">{r.modalidad}</span>
                                 </div>
                                 <div className="ocupacion-item-datos">
