@@ -22,6 +22,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -30,6 +31,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -37,6 +39,7 @@ public class CocheraService implements ICocheraService {
     private final CocheraRepository cocheraRepository;
     private final ReservaRepository reservaRepository;
     private final VisitanteRepository visitanteRepository;
+    private final Clock clock;
 
     @Override
     public CocheraResponseDto crear(CocheraRequestDto dto) {
@@ -272,14 +275,18 @@ public class CocheraService implements ICocheraService {
     }
 
     /**
-     * Las cocheras con alguna reserva CONFIRMADA que pise el rango.
+     * Las cocheras con alguna reserva CONFIRMADA que pise el rango, o con un
+     * vehiculo adentro (EN_CURSO) en ese rango.
      *
-     * <p>Una reserva cuya franja ya termino no entra: su rango no intersecta el
-     * pedido, asi que la cochera figura libre sola, sin depender de ninguna
-     * tarea de limpieza.
+     * <p>Una reserva CONFIRMADA cuya franja ya termino no entra: su rango no
+     * intersecta el pedido, asi que la cochera figura libre sola, sin depender
+     * de ninguna tarea de limpieza. Una EN_CURSO, en cambio, ocupa hasta que se
+     * registra el egreso, aunque se haya pasado de su horario.
      */
     private Set<UUID> ocupadasEnRango(LocalDateTime desde, LocalDateTime hasta) {
-        return reservaRepository.findSolapadas(ReservaEstado.CONFIRMADA, desde, hasta).stream()
+        return Stream.concat(
+                        reservaRepository.findSolapadas(ReservaEstado.CONFIRMADA, desde, hasta).stream(),
+                        reservaRepository.findEnCursoSolapadas(desde, hasta, LocalDateTime.now(clock)).stream())
                 .map(reserva -> reserva.getCochera().getId())
                 .collect(Collectors.toSet());
     }

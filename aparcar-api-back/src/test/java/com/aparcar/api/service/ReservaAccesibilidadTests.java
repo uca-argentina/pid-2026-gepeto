@@ -1,5 +1,6 @@
 package com.aparcar.api.service;
 
+import com.aparcar.api.config.AccesoDePrueba;
 import com.aparcar.api.config.UnitTests;
 import com.aparcar.api.dto.reserva.ReservaRequestDto;
 import com.aparcar.api.entity.auth.Visitante;
@@ -14,12 +15,15 @@ import com.aparcar.api.repository.CocheraRepository;
 import com.aparcar.api.repository.ReservaRepository;
 import com.aparcar.api.repository.VehiculoRepository;
 import com.aparcar.api.repository.VisitanteRepository;
+import com.aparcar.api.service.impl.CodigoAcceso;
+import com.aparcar.api.service.impl.ReglasAcceso;
 import com.aparcar.api.service.impl.ReservaService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -60,6 +64,12 @@ public class ReservaAccesibilidadTests {
 
     @Mock
     private ITarifaService tarifaService;
+
+    @Mock
+    private CodigoAcceso codigoAcceso;
+
+    @Spy
+    private ReglasAcceso reglasAcceso = AccesoDePrueba.reglasConRelojReal();
 
     @InjectMocks
     private ReservaService reservaService;

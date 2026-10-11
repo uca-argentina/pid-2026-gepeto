@@ -1,5 +1,6 @@
 package com.aparcar.api.service;
 
+import com.aparcar.api.config.AccesoDePrueba;
 import com.aparcar.api.config.UnitTests;
 import com.aparcar.api.dto.reserva.CocheraRequestDto;
 import com.aparcar.api.entity.reserva.Cochera;
@@ -17,7 +18,9 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -27,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @UnitTests
@@ -40,6 +44,9 @@ public class CocheraServiceTests {
 
     @Mock
     private com.aparcar.api.repository.VisitanteRepository visitanteRepository;
+
+    @Spy
+    private Clock clock = Clock.system(AccesoDePrueba.ZONA);
 
     @InjectMocks
     private CocheraService cocheraService;
@@ -202,6 +209,31 @@ public class CocheraServiceTests {
 
         when(cocheraRepository.findByEstado(CocheraEstado.HABILITADA)).thenReturn(List.of(libre, ocupada));
         when(reservaRepository.findSolapadas(ReservaEstado.CONFIRMADA, desde, hasta)).thenReturn(List.of(reserva));
+
+        var disponibles = cocheraService.listarDisponibles(desde, hasta, null);
+
+        assertEquals(1, disponibles.size());
+        assertEquals("A-01", disponibles.get(0).numero());
+    }
+
+    // Un vehiculo adentro ocupa la cochera hasta que egresa, aunque su
+    // reserva ya haya terminado: la consulta de EN_CURSO recibe "ahora".
+    @Test
+    @DisplayName("listarDisponibles excluye cocheras con un vehiculo adentro (EN_CURSO), aunque se haya pasado de hora")
+    void listarDisponiblesExcluyeCocherasConVehiculoAdentro() {
+        Cochera libre = cocheraAuto("A-01");
+        Cochera conVehiculo = cocheraAuto("A-02");
+        LocalDateTime desde = LocalDateTime.now();
+        LocalDateTime hasta = desde.plusHours(2);
+
+        Reserva excedida = new Reserva();
+        excedida.setCochera(conVehiculo);
+        excedida.setEstado(ReservaEstado.EN_CURSO);
+        excedida.setHasta(desde.minusMinutes(30));
+
+        when(cocheraRepository.findByEstado(CocheraEstado.HABILITADA)).thenReturn(List.of(libre, conVehiculo));
+        when(reservaRepository.findEnCursoSolapadas(eq(desde), eq(hasta), any(LocalDateTime.class)))
+                .thenReturn(List.of(excedida));
 
         var disponibles = cocheraService.listarDisponibles(desde, hasta, null);
 
