@@ -87,6 +87,37 @@ public class Reserva {
     @Column(name = "fecha_creacion", nullable = false, updatable = false)
     private Instant fechaCreacion;
 
+    /**
+     * Codigo corto de acceso (10 caracteres base32 Crockford, sin guion). Es la
+     * llave que lleva el QR: no contiene datos de la reserva, el backend los
+     * devuelve al validarlo. Null en reservas que nunca lo necesitaron.
+     */
+    @Column(length = 10, unique = true)
+    private String codigo;
+
+    /**
+     * Cuando se emitio el codigo. Para una reserva nueva coincide con el alta;
+     * para una anterior a la feature, con la migracion. La tolerancia de
+     * ingreso tardio se cuenta desde aca si es posterior a {@code desde}.
+     */
+    @Column(name = "codigo_emitido_at")
+    private Instant codigoEmitidoAt;
+
+    /** Momento real en que el vehiculo entro (hora del predio). */
+    @Column(name = "ingreso_at")
+    private LocalDateTime ingresoAt;
+
+    /** Momento real en que el vehiculo salio (hora del predio). */
+    @Column(name = "egreso_at")
+    private LocalDateTime egresoAt;
+
+    /**
+     * Minutos que el vehiculo se quedo despues de {@code hasta}, solo cuando el
+     * egreso cae fuera del periodo de gracia. Null si salio a tiempo.
+     */
+    @Column(name = "minutos_exceso")
+    private Integer minutosExceso;
+
     /** Evita que dos bajas simultaneas sobrescriban al autor y al motivo. */
     @Version
     @Column(nullable = false)
@@ -104,6 +135,10 @@ public class Reserva {
 
     public void registrarAccion(ReservaAccion accion, Visitante actor, boolean esAdmin) {
         historial.add(new ReservaMovimiento(this, accion, actor, esAdmin));
+    }
+
+    public void registrarAccion(ReservaAccion accion, Visitante actor, boolean esAdmin, Instant fecha) {
+        historial.add(new ReservaMovimiento(this, accion, actor, esAdmin, fecha));
     }
 
     /** Null para reservas anteriores a la trazabilidad: no se infiere un autor. */

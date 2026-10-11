@@ -48,9 +48,15 @@ public class ReservaMovimiento {
     private AppAuthority actorRol;
 
     public ReservaMovimiento(Reserva reserva, ReservaAccion accion, Visitante actor, boolean esAdmin) {
+        this(reserva, accion, actor, esAdmin, Instant.now());
+    }
+
+    /** Con la fecha explicita: ingreso y egreso usan el mismo reloj que sus reglas. */
+    public ReservaMovimiento(Reserva reserva, ReservaAccion accion, Visitante actor, boolean esAdmin,
+                             Instant fecha) {
         this.reserva = reserva;
         this.accion = accion;
-        this.fecha = Instant.now();
+        this.fecha = fecha;
         this.actorId = actor.getId();
         this.actorNombre = actor.getNombre();
         this.actorEmail = actor.getEmail();
