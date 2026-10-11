@@ -4,6 +4,8 @@ const ACCION_ETIQUETA = {
   ALTA: "Alta de reserva",
   CANCELACION: "Cancelación de reserva",
   DESHABILITACION: "Deshabilitación por baja de cochera",
+  INGRESO: "Ingreso registrado",
+  EGRESO: "Egreso registrado",
 };
 
 /** El backend solo incluye este historial en respuestas para administradores. */

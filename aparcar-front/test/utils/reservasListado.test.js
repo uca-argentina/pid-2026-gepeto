@@ -18,7 +18,7 @@ describe("seleccionarReservas", () => {
   ])("filtra %s sin alterar los contadores del conjunto completo", (filtro, esperado) => {
     const seleccion = seleccionarReservas(reservas, filtro, "INICIO_ASC");
     expect(seleccion.visibles.map((r) => r.id)).toEqual(esperado);
-    expect(seleccion.cantidades).toEqual({ TODAS: 5, CONFIRMADA: 2, FINALIZADA: 1, CANCELADA: 2 });
+    expect(seleccion.cantidades).toEqual({ TODAS: 5, CONFIRMADA: 2, FINALIZADA: 1, VENCIDA: 0, CANCELADA: 2 });
   });
 
   it.each([

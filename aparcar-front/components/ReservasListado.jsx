@@ -5,7 +5,8 @@ import styles from "./ReservasListado.module.css";
 import EstadoReservaBadge from "@/components/EstadoReservaBadge";
 import HistorialReserva from "@/components/HistorialReserva";
 import PatenteVisual from "@/components/PatenteVisual";
-import { formatearRango, MODALIDAD_ETIQUETA } from "@/utils/franjaHoraria";
+import { formatearRango, hora, MODALIDAD_ETIQUETA } from "@/utils/franjaHoraria";
+import { tieneCodigoVigente } from "@/utils/codigoAcceso";
 import { formatearPrecio } from "@/utils/tarifas";
 import {
   FILTROS_RESERVAS, ORDENES_RESERVAS, formatearFechaRegistro, seleccionarReservas,
@@ -13,8 +14,22 @@ import {
 
 const POR_PAGINA = 10;
 
-/** Presentación compartida; solo el modo admin muestra ocupantes y auditoría. */
-export default function ReservasListado({ modo = "user", reservas, cargando, error, onReintentar, onCancelar }) {
+/** Ingreso y egreso registrados en la puerta, en una línea. */
+const textoAcceso = (acceso) => {
+  if (!acceso?.ingresoAt) return null;
+  const partes = [`Ingreso ${hora(new Date(acceso.ingresoAt))}`];
+  if (acceso.egresoAt) partes.push(`Egreso ${hora(new Date(acceso.egresoAt))}`);
+  if (acceso.minutosExceso) partes.push(`excedido ${acceso.minutosExceso} min`);
+  return partes.join(" · ");
+};
+
+/**
+ * Presentación compartida; solo el modo admin muestra ocupantes y auditoría.
+ * `onVerCodigo`, si viene, agrega "Ver QR" a las reservas con código vigente.
+ */
+export default function ReservasListado({
+  modo = "user", reservas, cargando, error, onReintentar, onCancelar, onVerCodigo,
+}) {
   const esAdmin = modo === "admin";
   const id = useId();
   const resultadosRef = useRef(null);
@@ -87,9 +102,10 @@ export default function ReservasListado({ modo = "user", reservas, cargando, err
               </select>
             </div>
             <p className={styles.ayuda}>
-              {filtro === "CONFIRMADA" ? "Activas: en curso y próximas reservas."
+              {filtro === "CONFIRMADA" ? "Activas: con el vehículo adentro y próximas reservas."
                 : filtro === "CANCELADA" ? "Incluye cancelaciones y deshabilitaciones."
-                : filtro === "FINALIZADA" ? "Reservas que ya terminaron."
+                : filtro === "FINALIZADA" ? "Reservas en las que el vehículo ya salió."
+                : filtro === "VENCIDA" ? "Reservas en las que no se registró el ingreso a tiempo."
                 : "Todas las reservas, cualquiera sea su estado."}
             </p>
           </div>
@@ -148,13 +164,22 @@ export default function ReservasListado({ modo = "user", reservas, cargando, err
                     <div>
                       <p className={styles.importe}>{reserva.precioTotal == null ? "Sin importe registrado" : `Total: ${formatearPrecio(reserva.precioTotal)} ARS`}</p>
                       <p className={styles.alta}>{esAdmin ? "Alta" : "Fecha de alta"}: {formatearFechaRegistro(reserva.fechaCreacion)}</p>
+                      {textoAcceso(reserva.acceso) && <p className={styles.alta}>{textoAcceso(reserva.acceso)}</p>}
                     </div>
-                    {reserva.estado === "CONFIRMADA" && (
-                      <button type="button" className={`${styles.boton} ${styles.cancelar}`}
-                        disabled={cancelando !== null} onClick={() => cancelar(reserva)}>
-                        {cancelando === reserva.id ? "Cancelando…" : "Cancelar"}
-                      </button>
-                    )}
+                    <div className={styles.acciones}>
+                      {!esAdmin && onVerCodigo && tieneCodigoVigente(reserva) && (
+                        <button type="button" className={`${styles.boton} ${styles.qr}`} onClick={() => onVerCodigo(reserva)}>
+                          Ver QR
+                        </button>
+                      )}
+                      {/* Con el vehículo adentro ya no se cancela: se registra la salida. */}
+                      {reserva.estado === "CONFIRMADA" && (
+                        <button type="button" className={`${styles.boton} ${styles.cancelar}`}
+                          disabled={cancelando !== null} onClick={() => cancelar(reserva)}>
+                          {cancelando === reserva.id ? "Cancelando…" : "Cancelar"}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   {esAdmin && <div className={styles.historial}><HistorialReserva historial={reserva.historial ?? []} /></div>}
                 </li>
