@@ -9,6 +9,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -58,8 +59,75 @@ public interface ReservaRepository extends JpaRepository<Reserva, UUID> {
                                 @Param("desde") LocalDateTime desde,
                                 @Param("hasta") LocalDateTime hasta);
 
-    /** Reservas ya vencidas que siguen marcadas como vigentes. */
-    List<Reserva> findByEstadoAndHastaLessThanEqual(ReservaEstado estado, LocalDateTime momento);
+    // ---- Vehiculos adentro (EN_CURSO) ----
+    //
+    // Una reserva EN_CURSO ocupa hasta que el vehiculo egresa, no hasta su
+    // "hasta": si se paso de hora sigue bloqueando la cochera. Su fin efectivo
+    // es el mayor entre "hasta" y ahora, asi que se pisa con [desde, hasta) si
+    //
+    //     r.desde < :hasta AND (r.hasta > :desde OR ahora > :desde)
+    //
+    // "ahora > desde" no depende de la fila: se calcula en Java y viaja como
+    // booleano (comparar dos parametros entre si deja a Hibernate sin tipo).
+
+    /** True si hay un vehiculo adentro de la cochera durante el rango. */
+    default boolean existeEnCursoEnCochera(UUID cocheraId, LocalDateTime desde, LocalDateTime hasta,
+                                           LocalDateTime ahora) {
+        return existeEnCursoEnCochera(cocheraId, desde, hasta, ahora.isAfter(desde));
+    }
+
+    @Query("SELECT COUNT(r) > 0 FROM Reserva r "
+            + "WHERE r.cochera.id = :cocheraId "
+            + "AND r.estado = com.aparcar.api.entity.reserva.ReservaEstado.EN_CURSO "
+            + "AND r.desde < :hasta AND (r.hasta > :desde OR :yaEmpezo = true)")
+    boolean existeEnCursoEnCochera(@Param("cocheraId") UUID cocheraId,
+                                   @Param("desde") LocalDateTime desde,
+                                   @Param("hasta") LocalDateTime hasta,
+                                   @Param("yaEmpezo") boolean yaEmpezo);
+
+    /** True si el vehiculo esta adentro de alguna cochera durante el rango. */
+    default boolean existeEnCursoConVehiculo(UUID vehiculoId, LocalDateTime desde, LocalDateTime hasta,
+                                             LocalDateTime ahora) {
+        return existeEnCursoConVehiculo(vehiculoId, desde, hasta, ahora.isAfter(desde));
+    }
+
+    @Query("SELECT COUNT(r) > 0 FROM Reserva r "
+            + "WHERE r.vehiculo.id = :vehiculoId "
+            + "AND r.estado = com.aparcar.api.entity.reserva.ReservaEstado.EN_CURSO "
+            + "AND r.desde < :hasta AND (r.hasta > :desde OR :yaEmpezo = true)")
+    boolean existeEnCursoConVehiculo(@Param("vehiculoId") UUID vehiculoId,
+                                     @Param("desde") LocalDateTime desde,
+                                     @Param("hasta") LocalDateTime hasta,
+                                     @Param("yaEmpezo") boolean yaEmpezo);
+
+    /** Las reservas EN_CURSO que ocupan el rango, sin importar la cochera. */
+    default List<Reserva> findEnCursoSolapadas(LocalDateTime desde, LocalDateTime hasta, LocalDateTime ahora) {
+        return findEnCursoSolapadas(desde, hasta, ahora.isAfter(desde));
+    }
+
+    @Query("SELECT r FROM Reserva r JOIN FETCH r.cochera "
+            + "WHERE r.estado = com.aparcar.api.entity.reserva.ReservaEstado.EN_CURSO "
+            + "AND r.desde < :hasta AND (r.hasta > :desde OR :yaEmpezo = true)")
+    List<Reserva> findEnCursoSolapadas(@Param("desde") LocalDateTime desde,
+                                       @Param("hasta") LocalDateTime hasta,
+                                       @Param("yaEmpezo") boolean yaEmpezo);
+
+    /**
+     * Candidatas a VENCIDA: las que siguen en ese estado y ya empezaron. Cual
+     * vencio de verdad lo decide ReglasAcceso (la tolerancia no es una columna).
+     */
+    List<Reserva> findByEstadoAndDesdeLessThan(ReservaEstado estado, LocalDateTime momento);
+
+    // ---- Codigo de acceso ----
+
+    boolean existsByCodigo(String codigo);
+
+    @Query("SELECT r FROM Reserva r JOIN FETCH r.visitante JOIN FETCH r.vehiculo JOIN FETCH r.cochera "
+            + "WHERE r.codigo = :codigo")
+    Optional<Reserva> findByCodigo(@Param("codigo") String codigo);
+
+    /** Reservas vigentes sin codigo: las anteriores a la feature, para el backfill. */
+    List<Reserva> findByEstadoAndCodigoIsNullAndHastaAfter(ReservaEstado estado, LocalDateTime momento);
 
     boolean existsByCocheraId(UUID cocheraId);
 
