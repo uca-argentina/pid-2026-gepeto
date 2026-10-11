@@ -24,3 +24,9 @@ spring:
     port: 1025
     username: mail1@tmp.com
     password: 1234 5678 9012 3456
+
+aparcar:
+  acceso:
+    # Los tests de integracion comparten el filtro entre clases: el limite real
+    # se prueba aparte, en AccesoRateLimitFilterTests.
+    rate-limit-por-minuto: 100000
