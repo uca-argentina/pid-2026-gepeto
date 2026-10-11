@@ -153,6 +153,41 @@ lector avisa y queda el código escrito. Opciones:
 El lector usa `BarcodeDetector` nativo cuando el navegador lo tiene (Chrome/Edge en
 Android y escritorio) y, si no, `jsqr`, que se descarga recién en ese momento.
 
+### Dashboard del administrador
+
+Desde el panel de administración, la nueva solapa **Dashboard** abre
+`/dashboard-admin/dashboard`. Conserva el panel de ocupación por cochera y agrega
+una vista de la operación del día, adaptable a celular, tablet y escritorio en
+los temas claro y oscuro:
+
+- **Ocupación actual:** porcentaje sobre cocheras habilitadas, lugares físicamente
+  libres, vehículos presentes y cocheras fuera de servicio. Los vehículos que
+  siguen dentro de una cochera deshabilitada se informan por separado.
+- **Reservas del día:** reservas que comienzan hoy, con desglose por estado.
+  Incluye canceladas y no presentados; no cuenta una reserva de varios días otra
+  vez cada día.
+- **No presentados:** reservas de hoy vencidas sin ingreso, usando la tolerancia
+  y la emisión del código existentes, incluso antes del siguiente barrido.
+- **Estadías excedidas:** reservas en curso que superan el fin más la gracia de
+  egreso. No se liberan lugares por el solo paso del tiempo.
+- **Actividad por hora:** ingresos y egresos reales de hoy, con gráfico y tabla
+  accesible. **Sectores más utilizados:** ordenados por ingresos del día.
+- **Próximas llegadas:** hasta cinco reservas pendientes que comienzan en las
+  próximas dos horas, con el total del intervalo, incluso al cruzar medianoche.
+
+Todos los horarios corresponden a la zona del estacionamiento. La ocupación
+incluye ingresos de días anteriores todavía sin egreso; los lugares libres
+representan disponibilidad física, no una promesa de disponibilidad para reservar.
+Las métricas se actualizan cada 60 segundos mientras la pestaña está visible,
+al volver a ella o al pulsar **Actualizar**. Si falla la consulta, se avisa y se
+conserva la última lectura, con su fecha y hora.
+
+`GET /api/v1/dashboard` exige **ADMIN** y devuelve un resumen sin datos personales
+ni códigos de acceso, con `Cache-Control: no-store`. La lectura usa una única
+foto transaccional y proyecciones acotadas, sin cargar todo el historial ni
+modificar reservas. Liquibase aplica `012-dashboard-indices.yaml` al reiniciar
+el backend: agrega índices de consulta, sin cambiar los datos existentes.
+
 ### Estructura
 
 Este repositorio contiene las dos mitades del proyecto:

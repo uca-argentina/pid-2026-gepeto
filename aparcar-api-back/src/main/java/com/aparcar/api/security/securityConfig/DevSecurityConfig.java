@@ -152,6 +152,7 @@ public class DevSecurityConfig {
                         // Validar codigos de acceso (ingreso y egreso) es
                         // tarea del operador: solo ADMIN.
                         .requestMatchers("/api/v1/accesos/**").hasAuthority("ADMIN")
+                        .requestMatchers("/api/v1/dashboard", "/api/v1/dashboard/**").hasAuthority("ADMIN")
 
                         // Solo ADMIN puede gestionar usuarios, dar de alta
                         // visitantes con reserva y

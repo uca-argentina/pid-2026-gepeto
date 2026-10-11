@@ -11,6 +11,34 @@ Que prueba cada archivo de test del proyecto, caso por caso. Ver `ARCHIVOS.md` p
 
 # Backend (`aparcar-api-back/src/test/java/com/aparcar/api/`)
 
+## Dashboard del administrador
+
+`service/DashboardServiceTests.java` — **7 tests**: predio vacío y 24 horas;
+ocupación de días anteriores y cocheras deshabilitadas; no presentados según
+tolerancia, emisión del código y fin exclusivo; gracia de egreso; movimientos
+reales del día; próximas llegadas cruzando medianoche con límite de cinco;
+ranking de sectores, incluidos los que no tuvieron actividad.
+
+`integration/DashboardControllerTests.java` — **4 tests**: rechaza anónimos y USER;
+ADMIN recibe el resumen sin caché; la consulta incluye las reservas pertinentes
+y excluye historial y futuro fuera del período.
+
+`integration/DashboardMigracionTests.java` — **1 test**: aplica los cuatro índices
+de consulta, puede volver a arrancar y conserva la reserva existente.
+
+Frontend asociado:
+
+- `test/dashboard-admin/dashboard/DashboardContent.test.jsx` — **10 tests**:
+  métricas del servidor, tabla accesible, carga sin ceros ficticios, reintento,
+  conservación de datos ante error, solicitudes sin solapamiento, estado vacío,
+  ocupación fuera de servicio, actualización solo visible y aborto al desmontar.
+- `test/dashboard-admin/dashboard/pagina.test.jsx` — **3 tests**: exige ADMIN,
+  no renderiza tras rechazo y agrega el enlace desde el panel existente.
+- `test/browser/dashboard.ui.mjs` — **8 tests**: temas claro y oscuro a
+  360/768/1440 px, tabla con teclado, ausencia de desbordes y errores de navegador,
+  reintento y lectura desactualizada, y acceso bloqueado para USER. La API se
+  intercepta: estas pruebas no modifican datos reales.
+
 ## `integration/ReservaTrazabilidadTests.java`
 
 _9 tests._
@@ -1711,10 +1739,24 @@ es case-insensitive
 
 | | Archivos | Tests |
 |---|---|---|
-| Backend | 53 | 601 |
-| Frontend (Vitest) | 41 | 528 |
-| Frontend UI (Playwright) | 2 | 27 |
-| **Total** | **96** | **1156** |
+| Backend | 56 | 613 |
+| Frontend (Vitest) | 43 | 541 |
+| Frontend UI (Playwright) | 3 | 35 |
+| **Total** | **102** | **1189** |
+
+Dashboard del administrador: `mvn verify` completo (613 tests), Vitest completo
+(541 tests), Playwright completo en Chrome (35 tests), build de producción y
+lint sin errores. Se conserva la advertencia previa de React Hook Form en el
+alta de visitantes. Las pruebas del dashboard cubren ambos temas a
+360/768/1440 px y las suites anteriores de reservas y control de acceso siguen
+aprobadas.
+
+Prueba adicional en vivo: login con la cuenta de administrador, navegación desde
+el panel, respuesta del dashboard y actualización contra PostgreSQL real con
+el backend actualizado en un puerto temporal. Los indicadores coinciden con la
+API; vuelta al panel y vistas de 1440/320 px sin desbordes ni errores de navegador.
+Solo se hizo login y consultas GET, sin crear ni modificar reservas o accesos.
+Se cerró la instancia temporal y se conservaron los servidores originales.
 
 Corrección de QR y acceso: dependencias locales sincronizadas, margen del QR de
 4 módulos, lector con fallback cuando falla el detector nativo y liberación de

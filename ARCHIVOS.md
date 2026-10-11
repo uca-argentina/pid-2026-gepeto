@@ -1,5 +1,38 @@
 # Mapa de archivos
 
+## Dashboard del administrador
+
+Backend (rutas relativas a `aparcar-api-back/src/main/java/com/aparcar/api/`):
+
+- `controller/DashboardController.java`: expone `GET /api/v1/dashboard` con
+  respuesta sin caché. `security/securityConfig/DevSecurityConfig.java` y
+  `ProdSecurityConfig.java` restringen la ruta a ADMIN.
+- `dto/dashboard/DashboardResponseDto.java`: resumen de ocupación, reservas de
+  hoy, movimientos por hora, sectores y próximas llegadas, sin datos personales.
+- `service/IDashboardService.java` y `service/impl/DashboardService.java`:
+  calculan la foto de la operación en una transacción de solo lectura y
+  aislamiento repetible. Reutilizan `Clock` y `ReglasAcceso` para las fechas,
+  los no presentados y las estadías excedidas.
+- `repository/DashboardRepository.java`: dos consultas proyectadas; inventario
+  de cocheras y reservas relevantes para el día, vehículos adentro y próximas
+  dos horas. Evita hidratar usuarios, vehículos e historiales.
+- `src/main/resources/db/changelog/012-dashboard-indices.yaml`: índices sobre
+  inicio, estado, ingreso y egreso de reservas. Se incorpora al changelog maestro
+  y no cambia registros existentes.
+
+Frontend (rutas relativas a `aparcar-front/`):
+
+- `app/dashboard-admin/page.jsx`: agrega la solapa Dashboard al panel existente.
+- `app/dashboard-admin/dashboard/page.jsx`: protege la nueva ruta con ADMIN y
+  reutiliza el encabezado y la navegación de vuelta al panel.
+- `app/dashboard-admin/dashboard/DashboardContent.jsx`: indicadores, gráfico
+  horario con tabla accesible, ranking de sectores, estados y próximas llegadas.
+  Actualiza cada minuto solo con la pestaña visible, cancela solicitudes al salir,
+  evita consultas superpuestas y conserva la última foto si falla la conexión.
+- `app/dashboard-admin/dashboard/DashboardContent.module.css`: estilos locales
+  con las variables de tema y las tarjetas existentes; distribución responsive.
+- `components/DashboardIcon.jsx`: suma los iconos de dashboard, reloj y actualizar.
+
 ## Control de acceso por código QR (ingreso y egreso)
 
 Backend (rutas relativas a `aparcar-api-back/src/main/java/com/aparcar/api/`):

@@ -1,0 +1,30 @@
+databaseChangeLog:
+  # El dashboard consulta por dia y ocupacion real, sin cargar el historial.
+  - changeSet:
+      id: 012-dashboard-indices
+      author: aparcar
+      changes:
+        - createIndex:
+            tableName: reservas
+            indexName: idx_reservas_desde
+            columns:
+              - column:
+                  name: desde
+        - createIndex:
+            tableName: reservas
+            indexName: idx_reservas_estado
+            columns:
+              - column:
+                  name: estado
+        - createIndex:
+            tableName: reservas
+            indexName: idx_reservas_ingreso_at
+            columns:
+              - column:
+                  name: ingreso_at
+        - createIndex:
+            tableName: reservas
+            indexName: idx_reservas_egreso_at
+            columns:
+              - column:
+                  name: egreso_at
