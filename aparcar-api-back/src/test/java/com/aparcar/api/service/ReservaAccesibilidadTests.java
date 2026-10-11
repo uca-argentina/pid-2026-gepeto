@@ -71,6 +71,9 @@ public class ReservaAccesibilidadTests {
     @Spy
     private ReglasAcceso reglasAcceso = AccesoDePrueba.reglasConRelojReal();
 
+    @Mock
+    private com.aparcar.api.service.impl.PlanificacionReservas planificacion;
+
     @InjectMocks
     private ReservaService reservaService;
 

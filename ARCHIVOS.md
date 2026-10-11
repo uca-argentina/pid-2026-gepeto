@@ -1,5 +1,46 @@
 # Mapa de archivos
 
+## Reservas recurrentes y lista de espera
+
+- `aparcar-api-back/src/main/java/com/aparcar/api/dto/reserva/ReservaRecurrenteRequestDto.java`: días ISO
+  de la semana y fecha de fin, junto al pedido de reserva habitual.
+- `ReservaService.java` y `ReservaController.java`: creación atómica de series
+  para los vehículos propios del ADMIN autenticado. `GET /api/v1/reservas/recurrentes`
+  devuelve únicamente sus reservas recurrentes; `POST` rechaza vehículos o
+  titulares ajenos. También resuelven alta/cancelación de esperas y notificaciones privadas del titular.
+  El DTO de respuesta admite cochera nula y agrega el identificador de serie y
+  las fechas de confirmación desde espera y lectura del aviso.
+- `VehiculoController.java` y `VehiculoService.java`: `GET/POST /api/v1/vehiculos/mios`
+  y `PUT/DELETE /api/v1/vehiculos/mios/{id}` gestionan los vehículos del titular
+  autenticado, incluso cuando es ADMIN, sin habilitar la edición de vehículos ajenos.
+- `service/impl/PlanificacionReservas.java`, `entity/reserva/PlanificacionReserva.java`
+  y su repositorio: bloqueo transaccional compartido y promoción por orden de
+  llegada, conservando categoría y precio. Lo reutilizan reservas, cocheras,
+  acceso y el barrido de vencimiento.
+- `src/main/resources/db/changelog/013-reservas-recurrentes-espera.yaml`:
+  cochera opcional para la espera, campos de serie/notificación, índices,
+  restricciones de asignación y fila de bloqueo.
+- `aparcar-front/hooks/useDisponibilidad.js`: consulta compartida que distingue
+  disponibilidad vacía, carga y error; permite reintentar sin ofrecer una espera
+  basada en una consulta fallida. En recurrentes envía `propia=true` para aplicar
+  la accesibilidad del administrador autenticado.
+- `aparcar-front/app/dashboard-admin/recurrentes/page.jsx` y `RecurrentesContent.jsx`:
+  pantalla **Mis reservas recurrentes**, protegida con `requireAuth(["ADMIN"])` y
+  enlazada desde el panel. Reúne gestión de vehículos propios y sus reservas semanales.
+- `components/MisVehiculos.jsx`: alta, edición y baja compartida entre el perfil
+  del visitante y la sección recurrente del administrador. `MiPerfilContent.jsx`
+  conserva el import anterior mediante una reexportación; el modo admin usa `/vehiculos/mios`.
+- `components/ReservasContent.jsx` y `RepeticionReserva.jsx`: el modo `recurrentes`
+  usa vehículos y reservas propios, muestra los días y la fecha de fin sin un
+  interruptor opcional, y permite consultar QR o cancelar cada reserva.
+  Los formularios habituales de reserva y alta de visitantes no ofrecen recurrencia.
+- `components/AvisoListaEspera.jsx` y `NotificacionesReservas.jsx`: aceptación
+  explícita de espera y avisos persistentes con lectura explícita. La espera se
+  integra en las reservas habituales y el alta rápida `VisitantesContent.jsx`,
+  pero no en las series recurrentes.
+- `ReservasListado.jsx`, `EstadoReservaBadge.jsx` y `utils/reservasListado.js`:
+  filtro de espera, estado sin cochera ni QR y cancelación desde el listado.
+
 ## Dashboard del administrador
 
 Backend (rutas relativas a `aparcar-api-back/src/main/java/com/aparcar/api/`):
@@ -183,8 +224,8 @@ Las rutas Java de esta sección son relativas a `aparcar-api-back/src/main/java/
   centrado sobre el panel operativo, con tipografía más pequeña y de peso medio.
   Sin icono, subtítulo ni enlace adicional. Usa **Mi estacionamiento** si aún no
   se configuró el nombre; los nombres largos se ajustan al ancho disponible.
-- `app/dashboard-user/MiPerfilContent.jsx`: muestra únicamente la gestión de
-  vehículos, sin resumen personal ni consulta a `/api/v1/visitantes/me`.
+- `app/dashboard-user/MiPerfilContent.jsx`: reexporta `components/MisVehiculos.jsx`,
+  que muestra únicamente la gestión de vehículos, sin resumen personal ni consulta a `/api/v1/visitantes/me`.
   Conserva el aviso al formulario de reservas cuando cambian los vehículos.
   Los datos personales se consultan y editan desde **Mi cuenta → Mis datos**.
   Al volver del perfil, el panel vuelve a consultar vehículos y disponibilidad.
@@ -532,7 +573,7 @@ Todo lo que el backend sabe hacer hoy. La columna "Quién puede" sale de `DevSec
 | `GET /api/v1/cocheras/{id}` | Una cochera por id | ADMIN |
 | `PUT /api/v1/cocheras/{id}` | Edita; al deshabilitarla, cancela sus reservas CONFIRMADAS | ADMIN |
 | `DELETE /api/v1/cocheras/{id}` | Borra; falla con 400 si tiene reservas | ADMIN |
-| `GET /api/v1/cocheras/disponibles` ✏️ | Cocheras libres **durante toda la franja** `desde`/`hasta`, filtradas por tipo de vehículo. Ojo: es "libre en todo el rango", no "libre en algún momento". A un visitante logueado sin discapacidad declarada no le devuelve las ACCESIBLE; anónimos y ADMIN las ven todas | **Público** |
+| `GET /api/v1/cocheras/disponibles` ✏️ | Cocheras libres **durante toda la franja** `desde`/`hasta`, filtradas por tipo de vehículo. A un visitante logueado sin discapacidad declarada no le devuelve las ACCESIBLE; anónimos y ADMIN las ven todas. Con `propia=true`, también aplica la accesibilidad de la cuenta ADMIN para sus propias reservas | **Público** |
 | `POST /api/v1/visitantes` | Alta de visitante (documento único) | Autenticado |
 | `GET /api/v1/visitantes` | Lista de visitantes | Autenticado |
 | `GET /api/v1/visitantes/{id}` | Un visitante por id | Autenticado |
@@ -544,7 +585,13 @@ Todo lo que el backend sabe hacer hoy. La columna "Quién puede" sale de `DevSec
 | `GET /api/v1/vehiculos/{id}` | Un vehículo por id | Autenticado |
 | `PUT /api/v1/vehiculos/{id}` | Edita patente y tipo | Dueño o ADMIN |
 | `DELETE /api/v1/vehiculos/{id}` | Borra; falla con 400 si tiene reservas | Dueño o ADMIN |
+| `GET /api/v1/vehiculos/mios` | Lista únicamente los vehículos de la cuenta autenticada, también para ADMIN | Autenticado |
+| `POST /api/v1/vehiculos/mios` | Agrega un vehículo propio; el titular se toma de la sesión | Autenticado |
+| `PUT /api/v1/vehiculos/mios/{id}` | Edita un vehículo propio; rechaza vehículos ajenos incluso para ADMIN | Dueño |
+| `DELETE /api/v1/vehiculos/mios/{id}` | Borra un vehículo propio sin reservas asociadas; rechaza vehículos ajenos incluso para ADMIN | Dueño |
 | `POST /api/v1/reservas` ✏️ | Crea la reserva sobre la franja `desde`/`hasta`, aplicando las reglas de negocio y el control de superposición. Una cochera ACCESIBLE exige que el dueño de la reserva tenga declarada la discapacidad | Autenticado |
+| `GET /api/v1/reservas/recurrentes` | Lista únicamente las reservas recurrentes del administrador autenticado | ADMIN |
+| `POST /api/v1/reservas/recurrentes` | Crea una serie semanal para un vehículo propio; se confirma completa o se rechaza ante cualquier conflicto | ADMIN |
 | `GET /api/v1/reservas` | Lista todas las reservas | Autenticado |
 | `GET /api/v1/reservas/{id}` | Una reserva por id | Autenticado |
 | `POST /api/v1/reservas/{id}/cancelar` ✏️ | Cancela; rechaza (400) una reserva EN_CURSO o vencida | Dueño o ADMIN |
@@ -941,6 +988,13 @@ Módulo de gestión de usuarios internos.
 
 No implementa lógica propia de autenticación ni acceso directo a PostgreSQL.
 
+### `app/dashboard-admin/recurrentes/`
+
+| Archivo | Qué hace |
+|---|---|
+| `page.jsx` | Ruta `/dashboard-admin/recurrentes`, protegida con `requireAuth(["ADMIN"])` y acceso desde **Mis reservas recurrentes** en el panel |
+| `RecurrentesContent.jsx` | Combina `MisVehiculos` en modo admin y `ReservasContent` en modo `recurrentes`. Al cambiar un vehículo actualiza el selector sin recargar la página. Sólo muestra los vehículos y las series de la cuenta autenticada |
+
 ---
 
 ## `app/dashboard-user/`
@@ -950,7 +1004,7 @@ Sección destinada a usuarios internos con rol `USER`.
 | Archivo | Qué hace |
 |---|---|
 | `page.jsx` | Entrada del dashboard USER, protegida con `requireAuth(["USER"])`. Combina vehículos y reservas; el encabezado incluye el menú **Mi cuenta** |
-| `MiPerfilContent.jsx` | Lista, agrega, edita y elimina vehículos propios, conservando validaciones, confirmación de baja y avisos al formulario de reservas. No muestra información personal ni consulta `/api/v1/visitantes/me` |
+| `MiPerfilContent.jsx` | Reexporta `components/MisVehiculos.jsx`, compartido con la sección recurrente ADMIN. El perfil del visitante conserva sus endpoints, validaciones, confirmación de baja y avisos al formulario de reservas |
 | `PanelVisitante.jsx` | Agrupa vehículos y reservas y mantiene el contador que refresca las patentes cuando cambia un vehículo |
 | `ReservasContent.jsx` | **Se mudó a `components/`**, porque ahora lo usan los dos dashboards. Ver esa sección |
 
@@ -970,7 +1024,9 @@ Sección destinada a usuarios internos con rol `USER`.
 |---|---|
 | `ProtectedRoute.jsx` | Wrapper client-side para proteger rutas según autenticación/rol. Refactorizado: se eliminó el estado `isReady` y la decisión de renderizar se deriva directo de `isHydrated + isAuthenticated + hasRequiredRole`, lo que evita mostrar contenido un instante antes de redirigir |
 | `LogoutButton.jsx` | Botón "Cerrar sesión": llama a `logout()` del store (que borra la cookie JWT y limpia el estado) y navega a `/login` con `router.replace`, para que el botón Atrás no vuelva al dashboard |
-| `ReservasContent.jsx` ✏️ | **Movido desde `app/dashboard-user/`.** Alta de reserva por patente: se escribe/elige la patente (autocompletado nativo) y se resuelven solos el visitante y el tipo de vehículo. Vuelve a pedir la lista de vehículos al hacer foco en el campo, por si se cargó uno recién más arriba en la misma página. Sirve igual para los dos roles porque busca sobre el catálogo completo, sin filtrar por la cuenta que mira. La prop opcional `onReservaCreada` la usa el panel admin para refrescar la cuadrícula. Sus `id` de formulario van prefijados con `reserva-` para no chocar con los del alta de visitante, que se renderiza en la misma página. En modo admin oculta las cocheras ACCESIBLE cuando el dueño del vehículo tiene `tieneDiscapacidad === false`, y lo explica con su nombre (si el dato no viene, no oculta nada). El rechazo del backend se muestra tal cual |
+| `ReservasContent.jsx` ✏️ | Formulario y listado compartidos. En modo `admin` reserva para visitantes y muestra el catálogo general; en `user`, sólo vehículos y reservas propios. Ambos ofrecen espera con aceptación explícita si no hay lugares. El modo `recurrentes` se usa en la sección exclusiva ADMIN, consulta `/vehiculos/mios` y `/reservas/recurrentes`, y muestra repetición semanal sin ofrecer espera. Reutiliza franja, cotización, disponibilidad, cancelación y QR. `onOcupacionCambiada` permite refrescar la ocupación |
+| `MisVehiculos.jsx` | Gestión compartida de vehículos propios, extraída de `MiPerfilContent.jsx`. El modo admin usa `/vehiculos/mios` para listar, agregar, editar y eliminar; conserva validaciones de patente según tipo, estilos, confirmación de baja y callback al cambiar la lista |
+| `RepeticionReserva.jsx` | Días de la semana, fecha final y cantidad de reservas de una serie. Sólo se muestra en la sección recurrente del administrador |
 | `CodigoAccesoQR.jsx` 🆕 | Dibuja el QR del código (`APARCAR:` + código) con `qrcode`, cargado a demanda. Negro sobre blanco con margen, sin seguir el tema |
 | `ModalCodigoAcceso.jsx` 🆕 | Diálogo modal accesible con el QR, el código grande, *Copiar*, los datos de la reserva y la ventana de ingreso. Va por portal porque el listado usa container queries |
 | `LectorQR.jsx` 🆕 | Lector con la cámara: la pide recién al activarla, prefiere la trasera, usa `BarcodeDetector` o `jsqr`, la libera al leer, al detener y al desmontar, y explica cuando no hay permiso, cámara o contexto seguro |
@@ -1053,7 +1109,7 @@ Convención: `test/` refleja la estructura de `app/`, `store/` y `utils/` (misma
 | `dashboard-admin/accesos/pagina.test.jsx` 🆕 | La ruta exige ADMIN y el panel enlaza a Control de acceso |
 | `dashboard-user/MiPerfilContent.test.jsx` | Carga y gestión de vehículos propios, validaciones, errores, edición y eliminación con confirmación. Verifica que no se consulte el perfil ni se muestren datos personales o un acceso duplicado a Mis datos |
 
-El detalle de qué casos prueba cada archivo (front y back) está en `TESTS.md`, en la raíz del repo: **94 archivos y 1112 tests** en total (593 del backend en 53 archivos, 519 de Vitest en 41; aparte, la regresión de Playwright). Los dos suites corren solas en cada pull request, vía `.github/workflows/ci.yml`.
+El detalle de qué casos prueba cada archivo (front y back) está en `TESTS.md`, en la raíz del repo: **106 archivos y 1227 tests** en total (631 del backend en 58 archivos, 556 de Vitest en 44 y 40 de Playwright en 4). Las suites de backend y Vitest corren en cada pull request, vía `.github/workflows/ci.yml`.
 
 ---
 

@@ -32,6 +32,9 @@ public record ReservaResponseDto(
          */
         ReservaAccesoDto acceso,
         /** Solo se serializa para administradores. */
-        @JsonInclude(JsonInclude.Include.NON_NULL) List<ReservaMovimientoResponseDto> historial
+        @JsonInclude(JsonInclude.Include.NON_NULL) List<ReservaMovimientoResponseDto> historial,
+        UUID recurrenciaId,
+        Instant confirmadaDesdeEsperaAt,
+        Instant notificacionLeidaAt
 ) {
 }

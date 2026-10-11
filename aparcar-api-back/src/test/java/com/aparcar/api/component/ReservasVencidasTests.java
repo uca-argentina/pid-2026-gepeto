@@ -21,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -40,12 +41,15 @@ class ReservasVencidasTests {
     @Mock
     private ReservaRepository reservaRepository;
 
+    @Mock
+    private com.aparcar.api.service.impl.PlanificacionReservas planificacion;
+
     private ReservasVencidas reservasVencidas;
 
     @BeforeEach
     void setUp() {
         ReglasAcceso reglas = AccesoDePrueba.reglas(AccesoDePrueba.relojEn(AHORA));
-        reservasVencidas = new ReservasVencidas(reservaRepository, reglas);
+        reservasVencidas = new ReservasVencidas(reservaRepository, reglas, planificacion);
     }
 
     private static Reserva confirmada(LocalDateTime desde, LocalDateTime hasta) {
@@ -126,6 +130,7 @@ class ReservasVencidasTests {
         reservasVencidas.marcarVencidas();
 
         verify(reservaRepository, never()).saveAll(any());
+        verify(planificacion).promover();
     }
 
     @Test
@@ -145,5 +150,10 @@ class ReservasVencidasTests {
         assertEquals(3, guardadas.size());
         assertTrue(guardadas.stream().allMatch(r -> r.getEstado() == ReservaEstado.VENCIDA));
         assertEquals(ReservaEstado.CONFIRMADA, vigente.getEstado());
+
+        var orden = inOrder(planificacion, reservaRepository);
+        orden.verify(planificacion).bloquear();
+        orden.verify(reservaRepository).saveAll(any());
+        orden.verify(planificacion).promover();
     }
 }

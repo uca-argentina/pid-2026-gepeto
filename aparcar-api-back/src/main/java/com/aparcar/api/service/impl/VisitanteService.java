@@ -81,6 +81,8 @@ public class VisitanteService implements IVisitanteService {
         reservaDto.setVisitanteId(visitante.getId());
         reservaDto.setVehiculoId(vehiculo.id());
         reservaDto.setCocheraId(dto.getCocheraId());
+        reservaDto.setListaEspera(dto.isListaEspera());
+        reservaDto.setTipoCochera(dto.getTipoCochera());
         // Por defecto el alta cubre desde ahora y por una hora: el admin esta
         // registrando a alguien que acaba de llegar. Si manda la franja, manda.
         //

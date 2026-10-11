@@ -44,6 +44,52 @@ async function completarFormulario(user, overrides = {}) {
   if (valores.patente) await user.type(screen.getByPlaceholderText("ABC123 / AB123CD"), valores.patente);
 }
 
+describe("VisitantesContent: alta en espera y errores del servidor", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it.each(["123ABC", "a 123-bcd"])("envía una moto %s a lista de espera con patente normalizada", async (patente) => {
+    mockCocheras();
+    postMock.mockResolvedValue({ data: { reserva: { estado: "LISTA_ESPERA" } } });
+    const user = userEvent.setup();
+    render(<VisitantesContent />);
+    await completarFormulario(user, { patente });
+    await user.selectOptions(screen.getByLabelText("Tipo de vehículo"), "MOTO");
+    expect(screen.getByLabelText("Patente")).toHaveAttribute("placeholder", "123ABC / A123BCD");
+    await user.click(await screen.findByLabelText("Acepto ingresar a la lista de espera"));
+    await user.click(screen.getByRole("button", { name: "Dar de alta e ingresar a lista de espera" }));
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith("/api/v1/visitantes/alta", expect.objectContaining({
+      patente: patente === "123ABC" ? "123ABC" : "A123BCD", tipoVehiculo: "MOTO",
+      cocheraId: null, listaEspera: true, tipoCochera: "MOTO",
+    })));
+    expect(toastSuccessMock).toHaveBeenCalledWith(expect.stringContaining("reserva en lista de espera"));
+  });
+
+  it("muestra el detalle de validación junto al campo y conserva los datos", async () => {
+    mockCocheras();
+    postMock.mockRejectedValue({ response: { data: { message: "Validation failed", details: ["patente: Revisá la patente de la moto."] } } });
+    const user = userEvent.setup();
+    render(<VisitantesContent />);
+    await completarFormulario(user);
+    await user.click(await screen.findByLabelText("Acepto ingresar a la lista de espera"));
+    await user.click(screen.getByRole("button", { name: "Dar de alta e ingresar a lista de espera" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Revisá la patente de la moto.");
+    expect(toastErrorMock).toHaveBeenCalledWith("Revisá la patente de la moto.");
+    expect(screen.getByLabelText("Patente")).toHaveValue("ABC123");
+    expect(screen.queryByText("Validation failed")).not.toBeInTheDocument();
+  });
+
+  it("traduce una validación sin detalles a una indicación útil", async () => {
+    mockCocheras();
+    postMock.mockRejectedValue({ response: { data: { message: "Validation failed" } } });
+    const user = userEvent.setup();
+    render(<VisitantesContent />);
+    await completarFormulario(user);
+    await user.click(await screen.findByLabelText("Acepto ingresar a la lista de espera"));
+    await user.click(screen.getByRole("button", { name: "Dar de alta e ingresar a lista de espera" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Revisá los datos del visitante y del vehículo antes de continuar.");
+  });
+});
+
 describe("VisitantesContent (alta de visitante con reserva)", () => {
   beforeEach(() => {
     vi.clearAllMocks();

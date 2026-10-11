@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import userEvent from "@testing-library/user-event";
 import AccountMenu from "@/components/AccountMenu";
 import { useAuthStore } from "@/store/authStore";
@@ -14,9 +15,50 @@ describe("Mi cuenta", () => {
     render(<AccountMenu visitor={visitor} />);
     const trigger = screen.getByRole("button", { name: "Mi cuenta" });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).not.toHaveAttribute("aria-controls");
     await user.click(trigger);
     expect(screen.getByRole("link", { name: /mis datos/i })).toHaveAttribute("href", href);
     expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(document.getElementById(trigger.getAttribute("aria-controls"))).toContainElement(screen.getByRole("link", { name: /mis datos/i }));
+  });
+
+  it("hidrata el menú cerrado sin referencias a un panel inexistente", async () => {
+    const errores = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const container = document.createElement("div");
+      container.innerHTML = renderToString(<AccountMenu />);
+      document.body.appendChild(container);
+      const trigger = container.querySelector("button");
+      expect(trigger).toHaveAttribute("aria-expanded", "false");
+      expect(trigger).not.toHaveAttribute("aria-controls");
+      render(<AccountMenu />, { container, hydrate: true });
+      const user = userEvent.setup();
+      await user.click(trigger);
+      const id = trigger.getAttribute("aria-controls");
+      expect(id).toBeTruthy();
+      expect(document.getElementById(id)).toContainElement(screen.getByRole("link", { name: /mis datos/i }));
+      await user.keyboard("{Escape}");
+      expect(trigger).not.toHaveAttribute("aria-controls");
+      expect(document.getElementById(id)).not.toBeInTheDocument();
+      expect(errores).not.toHaveBeenCalled();
+    } finally {
+      errores.mockRestore();
+    }
+  });
+
+  it("mantiene ids propios para distintas instancias del menú", async () => {
+    const user = userEvent.setup();
+    render(<><AccountMenu /><AccountMenu visitor /></>);
+    const [admin, visitante] = screen.getAllByRole("button", { name: "Mi cuenta" });
+    await user.click(admin);
+    const idAdmin = admin.getAttribute("aria-controls");
+    await user.click(visitante);
+    const idVisitante = visitante.getAttribute("aria-controls");
+    expect(idAdmin).toBeTruthy();
+    expect(idVisitante).toBeTruthy();
+    expect(idVisitante).not.toBe(idAdmin);
+    expect(document.getElementById(idVisitante)).toContainElement(screen.getByRole("link", { name: /mis datos/i }));
+    expect(admin).not.toHaveAttribute("aria-controls");
   });
 
   it("abre con teclado y cierra con Escape devolviendo el foco", async () => {

@@ -1,6 +1,7 @@
 package com.aparcar.api.controller;
 
 import com.aparcar.api.dto.reserva.ReservaRequestDto;
+import com.aparcar.api.dto.reserva.ReservaRecurrenteRequestDto;
 import com.aparcar.api.dto.reserva.ReservaResponseDto;
 import com.aparcar.api.service.IReservaService;
 import jakarta.validation.Valid;
@@ -23,6 +24,29 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class ReservaController {
     private final IReservaService reservaService;
+
+    @GetMapping("/recurrentes")
+    public ResponseEntity<List<ReservaResponseDto>> listarRecurrentes(Authentication authentication) {
+        return ResponseEntity.ok(reservaService.listarRecurrentes(
+                authentication.getName(), esAdmin(authentication)));
+    }
+
+    @PostMapping("/recurrentes")
+    public ResponseEntity<List<ReservaResponseDto>> crearRecurrentes(
+            @Valid @RequestBody ReservaRecurrenteRequestDto dto, Authentication authentication) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(reservaService.crearRecurrentes(
+                dto, authentication.getName(), esAdmin(authentication)));
+    }
+
+    @GetMapping("/notificaciones")
+    public ResponseEntity<List<ReservaResponseDto>> notificaciones(Authentication authentication) {
+        return ResponseEntity.ok(reservaService.notificaciones(authentication.getName()));
+    }
+
+    @PostMapping("/{id}/notificacion/leida")
+    public ResponseEntity<ReservaResponseDto> leerNotificacion(@PathVariable UUID id, Authentication authentication) {
+        return ResponseEntity.ok(reservaService.leerNotificacion(id, authentication.getName()));
+    }
 
     private static boolean esAdmin(Authentication authentication) {
         return authentication.getAuthorities().stream()

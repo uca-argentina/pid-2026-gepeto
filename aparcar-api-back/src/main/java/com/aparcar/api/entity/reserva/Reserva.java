@@ -67,9 +67,18 @@ public class Reserva {
     @JoinColumn(name = "vehiculo_id", nullable = false)
     private Vehiculo vehiculo;
 
-    @ManyToOne(optional = false)
-    @JoinColumn(name = "cochera_id", nullable = false)
+    @ManyToOne
+    @JoinColumn(name = "cochera_id")
     private Cochera cochera;
+
+    @Column(name = "recurrencia_id", updatable = false)
+    private UUID recurrenciaId;
+
+    @Column(name = "confirmada_desde_espera_at")
+    private Instant confirmadaDesdeEsperaAt;
+
+    @Column(name = "notificacion_leida_at")
+    private Instant notificacionLeidaAt;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

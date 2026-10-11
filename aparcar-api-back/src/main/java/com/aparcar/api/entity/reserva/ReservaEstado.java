@@ -5,6 +5,8 @@ package com.aparcar.api.entity.reserva;
  * CANCELADA y VENCIDA son finales y dejan el codigo de acceso sin valor.
  */
 public enum ReservaEstado {
+    /** Espera un lugar de la categoria cotizada; todavia no tiene cochera ni codigo. */
+    LISTA_ESPERA,
     /** Todavia no ingreso el vehiculo: ocupa la cochera durante su franja. */
     CONFIRMADA,
     /**

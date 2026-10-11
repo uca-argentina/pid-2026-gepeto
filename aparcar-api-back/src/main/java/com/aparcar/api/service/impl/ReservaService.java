@@ -4,11 +4,14 @@ import com.aparcar.api.dto.reserva.CocheraResponseDto;
 import com.aparcar.api.dto.reserva.ReservaAccesoDto;
 import com.aparcar.api.dto.reserva.ReservaMovimientoResponseDto;
 import com.aparcar.api.dto.reserva.ReservaRequestDto;
+import com.aparcar.api.dto.reserva.ReservaRecurrenteRequestDto;
 import com.aparcar.api.dto.reserva.ReservaResponseDto;
 import com.aparcar.api.dto.reserva.VehiculoResponseDto;
 import com.aparcar.api.dto.reserva.VisitanteResponseDto;
 import com.aparcar.api.entity.auth.Visitante;
+import com.aparcar.api.entity.auth.AppAuthority;
 import com.aparcar.api.entity.reserva.Cochera;
+import com.aparcar.api.entity.reserva.CocheraEstado;
 import com.aparcar.api.entity.reserva.CocheraTipo;
 import com.aparcar.api.entity.reserva.Reserva;
 import com.aparcar.api.entity.reserva.ReservaAccion;
@@ -27,7 +30,10 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -44,10 +50,18 @@ public class ReservaService implements IReservaService {
     private final ITarifaService tarifaService;
     private final CodigoAcceso codigoAcceso;
     private final ReglasAcceso reglasAcceso;
+    private final PlanificacionReservas planificacion;
 
     @Override
     @Transactional
     public ReservaResponseDto crear(ReservaRequestDto dto, String requesterEmail, boolean requesterIsAdmin) {
+        planificacion.bloquear();
+        planificacion.promover();
+        return toResponseDto(crearReserva(dto, requesterEmail, requesterIsAdmin, null), requesterIsAdmin);
+    }
+
+    private Reserva crearReserva(ReservaRequestDto dto, String requesterEmail, boolean requesterIsAdmin,
+                                  UUID recurrenciaId) {
         Visitante visitante = resolverVisitante(dto, requesterEmail, requesterIsAdmin);
 
         Vehiculo vehiculo = vehiculoRepository.findById(dto.getVehiculoId())
@@ -57,18 +71,38 @@ public class ReservaService implements IReservaService {
             throw new ValidationException("El vehiculo indicado no pertenece al visitante indicado.");
         }
 
-        Cochera cochera = cocheraRepository.findById(dto.getCocheraId())
-                .orElseThrow(() -> new NotFoundException("Cochera no encontrada."));
-
         validarRango(dto.getDesde(), dto.getHasta());
-        validarCompatibilidad(cochera, vehiculo);
-        validarAccesibilidad(cochera, visitante);
         LocalDateTime ahora = reglasAcceso.ahora();
-        validarDisponibilidad(cochera, dto.getDesde(), dto.getHasta(), ahora);
         validarVehiculoLibre(vehiculo, dto.getDesde(), dto.getHasta(), ahora);
 
-        // La categoría sale de la cochera validada, nunca de un precio o tipo enviado por el cliente.
-        var cotizacion = tarifaService.cotizar(cochera.getTipo(), dto.getDesde(), dto.getHasta());
+        Cochera cochera;
+        CocheraTipo tipo;
+        if (dto.isListaEspera()) {
+            if (dto.getCocheraId() != null || dto.getTipoCochera() == null) {
+                throw new ValidationException("Para la lista de espera indica la categoria, sin una cochera asignada.");
+            }
+            tipo = dto.getTipoCochera();
+            if (!PlanificacionReservas.compatible(tipo, visitante, vehiculo)) {
+                throw new ValidationException("La categoria elegida no es compatible con el vehiculo o la discapacidad del visitante.");
+            }
+            cochera = planificacion.disponible(tipo, visitante, vehiculo, dto.getDesde(), dto.getHasta());
+        } else {
+            if (dto.getCocheraId() == null) {
+                throw new ValidationException("La cochera es obligatoria. Acepta expresamente la lista de espera si no hay lugares.");
+            }
+            cochera = cocheraRepository.findById(dto.getCocheraId())
+                    .orElseThrow(() -> new NotFoundException("Cochera no encontrada."));
+            if (cochera.getEstado() != CocheraEstado.HABILITADA) {
+                throw new ValidationException("La cochera esta deshabilitada.");
+            }
+            validarCompatibilidad(cochera, vehiculo);
+            validarAccesibilidad(cochera, visitante);
+            validarDisponibilidad(cochera, dto.getDesde(), dto.getHasta(), ahora);
+            tipo = cochera.getTipo();
+        }
+
+        // La categoria esta validada; el servidor calcula el importe incluso cuando se entra en espera.
+        var cotizacion = tarifaService.cotizar(tipo, dto.getDesde(), dto.getHasta());
         if (dto.getPrecioEsperado() != null && dto.getPrecioEsperado().compareTo(cotizacion.total()) != 0) {
             throw new ValidationException("El precio cambió. Revisá la nueva cotización antes de confirmar.");
         }
@@ -79,7 +113,8 @@ public class ReservaService implements IReservaService {
         reserva.setVisitante(visitante);
         reserva.setVehiculo(vehiculo);
         reserva.setCochera(cochera);
-        reserva.setEstado(ReservaEstado.CONFIRMADA);
+        reserva.setEstado(cochera == null ? ReservaEstado.LISTA_ESPERA : ReservaEstado.CONFIRMADA);
+        reserva.setRecurrenciaId(recurrenciaId);
         reserva.setPrecioTotal(cotizacion.total());
         reserva.setTipoTarifa(cotizacion.tipo());
 
@@ -88,8 +123,99 @@ public class ReservaService implements IReservaService {
         Reserva guardada = reservaRepository.save(reserva);
         // El codigo se deriva del id, que recien existe despues de guardar.
         // Misma transaccion: si algo falla, no queda una reserva sin codigo.
-        codigoAcceso.asignar(guardada, reglasAcceso.instante());
-        return toResponseDto(guardada, requesterIsAdmin);
+        if (cochera != null) codigoAcceso.asignar(guardada, reglasAcceso.instante());
+        return guardada;
+    }
+
+    @Override
+    @Transactional
+    public List<ReservaResponseDto> crearRecurrentes(ReservaRecurrenteRequestDto dto, String email, boolean esAdmin) {
+        Visitante titular = resolverAdministrador(email, esAdmin);
+        if (dto.getVisitanteId() != null && !dto.getVisitanteId().equals(titular.getId())) {
+            throw new AccessDeniedException("Las reservas recurrentes son exclusivamente para tus propios vehiculos.");
+        }
+        Vehiculo vehiculo = vehiculoRepository.findById(dto.getVehiculoId())
+                .orElseThrow(() -> new NotFoundException("Vehiculo no encontrado."));
+        if (!vehiculo.getVisitante().getId().equals(titular.getId())) {
+            throw new AccessDeniedException("Las reservas recurrentes son exclusivamente para tus propios vehiculos.");
+        }
+        validarRango(dto.getDesde(), dto.getHasta());
+        LocalDate inicio = dto.getDesde().toLocalDate();
+        if (dto.isListaEspera() || dto.getCocheraId() == null) {
+            throw new ValidationException("La recurrencia requiere una cochera y no admite lista de espera.");
+        }
+        if (dto.getRepetirHasta() == null || dto.getRepetirHasta().isBefore(inicio)
+                || dto.getRepetirHasta().isAfter(inicio.plusYears(1))
+                || inicio.isAfter(reglasAcceso.ahora().toLocalDate().plusYears(1))) {
+            throw new ValidationException("La repeticion debe terminar entre la primera fecha y un año despues.");
+        }
+        if (dto.getDiasSemana() == null || dto.getDiasSemana().isEmpty()
+                || dto.getDiasSemana().stream().anyMatch(d -> d == null || d < 1 || d > 7)
+                || !dto.getDiasSemana().contains(inicio.getDayOfWeek().getValue())) {
+            throw new ValidationException("Selecciona dias de lunes (1) a domingo (7), incluyendo el de la primera reserva.");
+        }
+        List<LocalDate> fechas = inicio.datesUntil(dto.getRepetirHasta().plusDays(1))
+                .filter(dia -> dto.getDiasSemana().contains(dia.getDayOfWeek().getValue())).toList();
+        if (fechas.size() > 90) throw new ValidationException("La serie admite hasta 90 reservas.");
+
+        planificacion.bloquear();
+        planificacion.promover();
+        UUID recurrenciaId = UUID.randomUUID();
+        Duration duracion = Duration.between(dto.getDesde(), dto.getHasta());
+        List<ReservaResponseDto> reservas = new ArrayList<>();
+        for (LocalDate fecha : fechas) {
+            ReservaRequestDto ocurrencia = new ReservaRequestDto();
+            ocurrencia.setVisitanteId(titular.getId());
+            ocurrencia.setVehiculoId(dto.getVehiculoId());
+            ocurrencia.setCocheraId(dto.getCocheraId());
+            ocurrencia.setDesde(fecha.atTime(dto.getDesde().toLocalTime()));
+            ocurrencia.setHasta(ocurrencia.getDesde().plus(duracion));
+            ocurrencia.setPrecioEsperado(dto.getPrecioEsperado());
+            reservas.add(toResponseDto(crearReserva(ocurrencia, email, true, recurrenciaId), true));
+        }
+        return reservas;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ReservaResponseDto> listarRecurrentes(String email, boolean esAdmin) {
+        Visitante titular = resolverAdministrador(email, esAdmin);
+        return reservaRepository.findRecurrentesByVisitanteEmail(titular.getEmail()).stream()
+                .map(reserva -> toResponseDto(reserva, true)).toList();
+    }
+
+    private Visitante resolverAdministrador(String email, boolean esAdmin) {
+        if (!esAdmin) throw new AccessDeniedException("Solo la administracion puede gestionar reservas recurrentes.");
+        Visitante titular = visitanteRepository.findByEmail(email)
+                .orElseThrow(() -> new NotFoundException("Cuenta del administrador no encontrada."));
+        if (!Boolean.TRUE.equals(titular.getIsActive()) || titular.getAuthorities() == null
+                || !titular.getAuthorities().contains(AppAuthority.ADMIN)) {
+            throw new AccessDeniedException("Solo la administracion puede gestionar reservas recurrentes.");
+        }
+        return titular;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<ReservaResponseDto> notificaciones(String email) {
+        return reservaRepository
+                .findByVisitanteEmailAndConfirmadaDesdeEsperaAtIsNotNullAndNotificacionLeidaAtIsNullOrderByConfirmadaDesdeEsperaAtDesc(email)
+                .stream().map(reserva -> toResponseDto(reserva, false)).toList();
+    }
+
+    @Override
+    @Transactional
+    public ReservaResponseDto leerNotificacion(UUID id, String email) {
+        planificacion.bloquear();
+        Reserva reserva = buscarPorId(id);
+        if (!reserva.getVisitante().getEmail().equals(email)) {
+            throw new AccessDeniedException("Solo el titular puede leer esta notificacion.");
+        }
+        if (reserva.getConfirmadaDesdeEsperaAt() == null) {
+            throw new ValidationException("La reserva no tiene una notificacion de confirmacion desde lista de espera.");
+        }
+        if (reserva.getNotificacionLeidaAt() == null) reserva.setNotificacionLeidaAt(reglasAcceso.instante());
+        return toResponseDto(reserva, false);
     }
 
     @Override
@@ -117,6 +243,7 @@ public class ReservaService implements IReservaService {
     @Override
     @Transactional
     public ReservaResponseDto cancelar(UUID id, String requesterEmail, boolean requesterIsAdmin) {
+        planificacion.bloquear();
         Reserva reserva = buscarPorId(id);
 
         if (!requesterIsAdmin && !reserva.getVisitante().getEmail().equals(requesterEmail)) {
@@ -140,7 +267,7 @@ public class ReservaService implements IReservaService {
             throw new ValidationException("La reserva venció sin que se registrara el ingreso, no se puede cancelar.");
         }
 
-        if (reserva.getEstado() == ReservaEstado.FINALIZADA || !reserva.getHasta().isAfter(LocalDateTime.now())) {
+        if (reserva.getEstado() == ReservaEstado.FINALIZADA || !reserva.getHasta().isAfter(reglasAcceso.ahora())) {
             throw new ValidationException("La reserva ya termino, no se puede cancelar.");
         }
 
@@ -148,7 +275,9 @@ public class ReservaService implements IReservaService {
         reserva.setEstado(ReservaEstado.CANCELADA);
         reserva.registrarAccion(ReservaAccion.CANCELACION, actor, requesterIsAdmin);
 
-        return toResponseDto(reservaRepository.save(reserva), requesterIsAdmin);
+        reservaRepository.save(reserva);
+        planificacion.promover();
+        return toResponseDto(reserva, requesterIsAdmin);
     }
 
     /**
@@ -215,6 +344,7 @@ public class ReservaService implements IReservaService {
      * "ahora", no falle por los segundos que tarda el usuario en enviarlo.
      */
     private void validarRango(LocalDateTime desde, LocalDateTime hasta) {
+        if (desde == null || hasta == null) throw new ValidationException("Indica inicio y fin de la reserva.");
         // La reserva se toma en bloques de 15 minutos. Se valida en el backend
         // y no solo en el tablero del frontend: si la regla vive unicamente en
         // la UI, cualquier cliente que pegue a la API la saltea.
@@ -224,7 +354,7 @@ public class ReservaService implements IReservaService {
         if (!hasta.isAfter(desde)) {
             throw new ValidationException("El fin de la reserva tiene que ser posterior al inicio.");
         }
-        if (!hasta.isAfter(LocalDateTime.now())) {
+        if (!hasta.isAfter(reglasAcceso.ahora())) {
             throw new ValidationException("La reserva no puede terminar en el pasado.");
         }
     }
@@ -261,6 +391,7 @@ public class ReservaService implements IReservaService {
                                       LocalDateTime ahora) {
         boolean comprometido = reservaRepository.existeSolapadaEnVehiculo(
                 vehiculo.getId(), ReservaEstado.CONFIRMADA, desde, hasta)
+                || reservaRepository.existeSolapadaEnVehiculo(vehiculo.getId(), ReservaEstado.LISTA_ESPERA, desde, hasta)
                 || reservaRepository.existeEnCursoConVehiculo(vehiculo.getId(), desde, hasta, ahora);
         if (comprometido) {
             throw new ValidationException(
@@ -293,7 +424,7 @@ public class ReservaService implements IReservaService {
                 reserva.getVehiculo().getTipo(),
                 reserva.getVisitante().getId());
 
-        CocheraResponseDto cocheraDto = new CocheraResponseDto(
+        CocheraResponseDto cocheraDto = reserva.getCochera() == null ? null : new CocheraResponseDto(
                 reserva.getCochera().getId(),
                 reserva.getCochera().getNumero(),
                 reserva.getCochera().getSector(),
@@ -318,7 +449,8 @@ public class ReservaService implements IReservaService {
                 requesterIsAdmin ? reserva.getHistorial().stream().map(movimiento ->
                         new ReservaMovimientoResponseDto(movimiento.getId(), movimiento.getAccion(),
                                 movimiento.getFecha(), movimiento.getActorId(), movimiento.getActorNombre(),
-                                movimiento.getActorEmail(), movimiento.getActorRol())).toList() : null);
+                                movimiento.getActorEmail(), movimiento.getActorRol())).toList() : null,
+                reserva.getRecurrenciaId(), reserva.getConfirmadaDesdeEsperaAt(), reserva.getNotificacionLeidaAt());
     }
 
     /**

@@ -15,6 +15,10 @@ import java.util.UUID;
 @Repository
 public interface ReservaRepository extends JpaRepository<Reserva, UUID> {
 
+    List<Reserva> findByEstadoOrderByFechaCreacionAscIdAsc(ReservaEstado estado);
+
+    List<Reserva> findByVisitanteEmailAndConfirmadaDesdeEsperaAtIsNotNullAndNotificacionLeidaAtIsNullOrderByConfirmadaDesdeEsperaAtDesc(String email);
+
     // ---- Solapamiento de franjas ----
     //
     // Toda la regla de "no se pisan" vive en esta condicion:
@@ -150,12 +154,17 @@ public interface ReservaRepository extends JpaRepository<Reserva, UUID> {
     // sin importar el fetch por defecto de Hibernate para @ManyToOne.
 
     @Override
-    @Query("SELECT DISTINCT r FROM Reserva r JOIN FETCH r.visitante JOIN FETCH r.vehiculo JOIN FETCH r.cochera "
+    @Query("SELECT DISTINCT r FROM Reserva r JOIN FETCH r.visitante JOIN FETCH r.vehiculo LEFT JOIN FETCH r.cochera "
             + "LEFT JOIN FETCH r.historial")
     List<Reserva> findAll();
 
-    @Query("SELECT DISTINCT r FROM Reserva r JOIN FETCH r.visitante JOIN FETCH r.vehiculo JOIN FETCH r.cochera "
+    @Query("SELECT DISTINCT r FROM Reserva r JOIN FETCH r.visitante JOIN FETCH r.vehiculo LEFT JOIN FETCH r.cochera "
             + "LEFT JOIN FETCH r.historial "
             + "WHERE r.visitante.email = :email")
     List<Reserva> findByVisitanteEmail(@Param("email") String email);
+
+    @Query("SELECT DISTINCT r FROM Reserva r JOIN FETCH r.visitante JOIN FETCH r.vehiculo LEFT JOIN FETCH r.cochera "
+            + "LEFT JOIN FETCH r.historial "
+            + "WHERE r.visitante.email = :email AND r.recurrenciaId IS NOT NULL ORDER BY r.desde")
+    List<Reserva> findRecurrentesByVisitanteEmail(@Param("email") String email);
 }

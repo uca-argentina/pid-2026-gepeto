@@ -48,6 +48,9 @@ public class CocheraAltaPorPlantaTests {
     @Mock
     private VisitanteRepository visitanteRepository;
 
+    @Mock
+    private com.aparcar.api.service.impl.PlanificacionReservas planificacion;
+
     @InjectMocks
     private CocheraService cocheraService;
 

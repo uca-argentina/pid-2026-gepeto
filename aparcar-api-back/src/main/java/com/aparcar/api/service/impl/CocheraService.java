@@ -40,9 +40,12 @@ public class CocheraService implements ICocheraService {
     private final ReservaRepository reservaRepository;
     private final VisitanteRepository visitanteRepository;
     private final Clock clock;
+    private final PlanificacionReservas planificacion;
 
     @Override
+    @Transactional
     public CocheraResponseDto crear(CocheraRequestDto dto) {
+        planificacion.bloquear();
         if (cocheraRepository.existsByNumero(dto.getNumero())) {
             throw new ValidationException("Ya existe una cochera con ese numero.");
         }
@@ -53,12 +56,15 @@ public class CocheraService implements ICocheraService {
         cochera.setTipo(dto.getTipo());
         cochera.setEstado(dto.getEstado());
 
-        return toResponseDto(cocheraRepository.save(cochera));
+        Cochera guardada = cocheraRepository.save(cochera);
+        planificacion.promover();
+        return toResponseDto(guardada);
     }
 
     @Override
     @Transactional
     public List<CocheraResponseDto> crearEnLote(List<CocheraRequestDto> dtos) {
+        planificacion.bloquear();
         if (dtos == null || dtos.isEmpty()) {
             throw new ValidationException("La lista de cocheras no puede estar vacia.");
         }
@@ -88,12 +94,15 @@ public class CocheraService implements ICocheraService {
             return cochera;
         }).toList();
 
-        return cocheraRepository.saveAll(cocheras).stream().map(this::toResponseDto).toList();
+        List<CocheraResponseDto> resultado = cocheraRepository.saveAll(cocheras).stream().map(this::toResponseDto).toList();
+        planificacion.promover();
+        return resultado;
     }
 
     @Override
     @Transactional
     public List<CocheraResponseDto> crearPorPlanta(CocheraAltaPorPlantaDto dto) {
+        planificacion.bloquear();
         String sector = dto.getSector() == null ? "" : dto.getSector().trim();
         if (sector.isEmpty()) {
             throw new ValidationException("El sector es obligatorio.");
@@ -139,7 +148,9 @@ public class CocheraService implements ICocheraService {
         // claro, en vez de explotar en el commit como un 500. Toda la
         // transaccion vuelve atras: no queda ninguna cochera a medias.
         try {
-            return cocheraRepository.saveAllAndFlush(nuevas).stream().map(this::toResponseDto).toList();
+            List<CocheraResponseDto> resultado = cocheraRepository.saveAllAndFlush(nuevas).stream().map(this::toResponseDto).toList();
+            planificacion.promover();
+            return resultado;
         } catch (DataIntegrityViolationException e) {
             throw new ValidationException(
                     "Otra alta de cocheras se guardo al mismo tiempo y algun numero coincidio. "
@@ -176,6 +187,7 @@ public class CocheraService implements ICocheraService {
     @Override
     @Transactional
     public CocheraResponseDto editar(UUID id, CocheraRequestDto dto, String requesterEmail) {
+        planificacion.bloquear();
         Cochera cochera = buscarOLanzar(id);
 
         boolean cambiaNumero = !cochera.getNumero().equals(dto.getNumero());
@@ -194,11 +206,15 @@ public class CocheraService implements ICocheraService {
             cancelarReservasConfirmadas(guardada.getId(), requesterEmail);
         }
 
+        planificacion.promover();
+
         return toResponseDto(guardada);
     }
 
     @Override
+    @Transactional
     public void eliminar(UUID id) {
+        planificacion.bloquear();
         Cochera cochera = buscarOLanzar(id);
 
         if (reservaRepository.existsByCocheraId(id)) {

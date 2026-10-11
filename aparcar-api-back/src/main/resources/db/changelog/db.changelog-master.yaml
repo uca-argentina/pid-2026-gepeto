@@ -23,3 +23,5 @@ databaseChangeLog:
       file: db/changelog/011-acceso-reservas.yaml
   - include:
       file: db/changelog/012-dashboard-indices.yaml
+  - include:
+      file: db/changelog/013-reservas-recurrentes-espera.yaml

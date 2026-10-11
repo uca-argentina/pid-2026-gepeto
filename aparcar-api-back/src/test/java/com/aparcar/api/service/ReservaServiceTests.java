@@ -73,6 +73,9 @@ public class ReservaServiceTests {
     @Spy
     private ReglasAcceso reglasAcceso = AccesoDePrueba.reglasConRelojReal();
 
+    @Mock
+    private com.aparcar.api.service.impl.PlanificacionReservas planificacion;
+
     @InjectMocks
     private ReservaService reservaService;
 
@@ -374,8 +377,6 @@ public class ReservaServiceTests {
     @Test
     @DisplayName("crear rechaza si el vehiculo ya tiene otra reserva en esa franja")
     void crearRechazaVehiculoComprometidoEnOtraCochera() {
-        when(reservaRepository.existeSolapadaEnCochera(cochera.getId(), ReservaEstado.CONFIRMADA, desde, hasta))
-                .thenReturn(false);
         when(reservaRepository.existeSolapadaEnVehiculo(vehiculo.getId(), ReservaEstado.CONFIRMADA, desde, hasta))
                 .thenReturn(true);
 

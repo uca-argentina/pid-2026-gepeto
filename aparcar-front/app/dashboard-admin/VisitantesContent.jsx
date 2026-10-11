@@ -1,15 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
 import api from "@/app/api";
-import { formatoPatenteValido, MENSAJE_FORMATO_INVALIDO } from "@/utils/patenteValidation";
+import { formatoPatenteValido, MENSAJE_FORMATO_INVALIDO, normalizarPatente } from "@/utils/patenteValidation";
 import AtajosJornada from "@/components/AtajosJornada";
 import CotizacionReserva from "@/components/CotizacionReserva";
+import AvisoListaEspera from "@/components/AvisoListaEspera";
 import useCotizacion from "@/hooks/useCotizacion";
+import useDisponibilidad from "@/hooks/useDisponibilidad";
 import {
   PASO_MINUTOS,
   franjaPorDefecto,
@@ -25,15 +27,19 @@ const visitanteSchema = z
     // Opcional: el admin lo marca si ya sabe que la persona tiene una
     // discapacidad. Habilita reservar cocheras ACCESIBLE.
     tieneDiscapacidad: z.boolean().optional(),
-    patente: z.string().min(1, "La patente es obligatoria"),
+    patente: z.string().transform(normalizarPatente).pipe(z.string().min(1, "La patente es obligatoria")),
     tipoVehiculo: z.enum(["AUTO", "MOTO", "CARGA"], {
       message: "Selecciona un tipo de vehículo",
     }),
-    cocheraId: z.string().min(1, "Selecciona una cochera"),
+    cocheraId: z.string().optional(),
+    listaEspera: z.boolean().optional(),
     desde: z.string().min(1, "Elegí desde cuándo"),
     hasta: z.string().min(1, "Elegí hasta cuándo"),
   })
   .superRefine((data, ctx) => {
+    if (!data.listaEspera && !data.cocheraId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["cocheraId"], message: "Selecciona una cochera" });
+    }
     if (data.desde && data.hasta && data.hasta <= data.desde) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -62,18 +68,17 @@ const labelClasses = "ui-label";
 // `onAltaCreada` es opcional: el panel lo usa para refrescar la ocupación y el
 // listado de reservas, que viven en componentes hermanos.
 export default function VisitantesContent({ onAltaCreada }) {
-  const [cocheras, setCocheras] = useState([]);
-
   const {
     register,
     handleSubmit,
     watch,
     reset,
     setValue,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(visitanteSchema),
-    defaultValues: { tipoVehiculo: "AUTO", cocheraId: "", tieneDiscapacidad: false, ...franjaPorDefecto() },
+    defaultValues: { tipoVehiculo: "AUTO", cocheraId: "", tieneDiscapacidad: false, listaEspera: false, ...franjaPorDefecto() },
   });
 
   const tipoVehiculo = watch("tipoVehiculo");
@@ -81,7 +86,10 @@ export default function VisitantesContent({ onAltaCreada }) {
   const hasta = watch("hasta");
   const tieneDiscapacidad = watch("tieneDiscapacidad");
   const cocheraId = watch("cocheraId");
+  const listaEspera = watch("listaEspera");
   const rangoValido = Boolean(desde && hasta && hasta > desde);
+  const disponibilidad = useDisponibilidad(tipoVehiculo, desde, hasta);
+  const cocheras = disponibilidad.cocheras;
 
   // El backend le muestra todas las cocheras al admin (porque suele reservar
   // para otra persona) y recién rechaza al confirmar si se elige una ACCESIBLE
@@ -94,6 +102,8 @@ export default function VisitantesContent({ onAltaCreada }) {
   );
   const hayAccesiblesOcultas = cocherasOfrecidas.length < cocheras.length;
   const cocheraElegida = cocherasOfrecidas.find((c) => c.id === cocheraId);
+  const puedeEsperar = disponibilidad.lista && cocherasOfrecidas.length === 0;
+  const enEspera = puedeEsperar && listaEspera;
   const cotizacion = useCotizacion(cocheraElegida?.tipo ?? tipoVehiculo, desde, hasta);
 
   // Si el admin eligió una ACCESIBLE y después desmarca el checkbox, esa
@@ -105,35 +115,15 @@ export default function VisitantesContent({ onAltaCreada }) {
     }
   }, [cocheraId, cocherasOfrecidas, setValue]);
 
-  // La disponibilidad depende de la franja y del tipo de vehículo.
   useEffect(() => {
-    let vigente = true;
     setValue("cocheraId", "");
-    setCocheras([]);
-    if (!tipoVehiculo || !rangoValido) return;
-
-    api
-      // Se pregunta por el bloque y no por el horario a medio escribir.
-      .get("/api/v1/cocheras/disponibles", {
-        params: {
-          desde: redondearAlBloqueLocal(desde),
-          hasta: redondearAlBloqueLocal(hasta),
-          tipoVehiculo,
-        },
-      })
-      .then((res) => {
-        if (vigente) setCocheras(res.data);
-      })
-      .catch(() => {
-        if (vigente) toast.error("No se pudieron cargar las cocheras disponibles.");
-      });
-    return () => { vigente = false; };
-  }, [tipoVehiculo, desde, hasta, rangoValido, setValue]);
+    setValue("listaEspera", false);
+  }, [disponibilidad.solicitud, tieneDiscapacidad, setValue]);
 
   const onSubmit = async (data) => {
-    if (!cotizacion.lista || !cocheraElegida || !rangoValido) return;
+    if (!cotizacion.lista || (!cocheraElegida && !enEspera) || !rangoValido) return;
     try {
-      await api.post("/api/v1/visitantes/alta", {
+      const res = await api.post("/api/v1/visitantes/alta", {
         nombre: data.nombre,
         documento: data.documento,
         email: data.email,
@@ -141,7 +131,8 @@ export default function VisitantesContent({ onAltaCreada }) {
         tieneDiscapacidad: Boolean(data.tieneDiscapacidad),
         patente: data.patente,
         tipoVehiculo: data.tipoVehiculo,
-        cocheraId: data.cocheraId,
+        cocheraId: enEspera ? null : data.cocheraId,
+        ...(enEspera ? { listaEspera: true, tipoCochera: data.tipoVehiculo } : {}),
         // Cinturón: el blur ya lo acomoda, pero el valor también puede venir
         // de un atajo o de un reset.
         desde: redondearAlBloqueLocal(data.desde),
@@ -150,15 +141,33 @@ export default function VisitantesContent({ onAltaCreada }) {
       });
 
       toast.success(
-        `Visitante dado de alta y cochera reservada. Su contraseña inicial es su documento (${data.documento}).`
+        `Visitante dado de alta y ${res.data?.reserva?.estado === "LISTA_ESPERA" ? "reserva en lista de espera" : "cochera reservada"}. Su contraseña inicial es su documento (${data.documento}).`
       );
-      reset({ tipoVehiculo: "AUTO", cocheraId: "", tieneDiscapacidad: false, ...franjaPorDefecto() });
+      reset({ tipoVehiculo: "AUTO", cocheraId: "", tieneDiscapacidad: false, listaEspera: false, ...franjaPorDefecto() });
+      disponibilidad.recargar();
       onAltaCreada?.();
     } catch (err) {
       cotizacion.recargar();
-      toast.error(
-        err.response?.data?.message || "Ocurrió un error al dar de alta al visitante."
-      );
+      disponibilidad.recargar();
+      const respuesta = err.response?.data;
+      let mensaje = respuesta?.message || "Ocurrió un error al dar de alta al visitante.";
+      if (mensaje === "Validation failed") {
+        const detalles = Array.isArray(respuesta.details) ? respuesta.details.filter((detalle) => typeof detalle === "string") : [];
+        const campos = ["nombre", "documento", "email", "telefono", "patente", "tipoVehiculo", "cocheraId", "desde", "hasta"];
+        const mensajes = detalles.map((detalle) => {
+          const separador = detalle.indexOf(": ");
+          const campo = detalle.slice(0, separador);
+          if (separador > 0 && campos.includes(campo)) {
+            const message = detalle.slice(separador + 2);
+            setError(campo, { type: "server", message });
+            return message;
+          }
+          return detalle;
+        });
+        mensaje = mensajes.join(" ") || "Revisá los datos del visitante y del vehículo antes de continuar.";
+      }
+      setError("root", { message: mensaje });
+      toast.error(mensaje);
     }
   };
 
@@ -227,7 +236,7 @@ export default function VisitantesContent({ onAltaCreada }) {
                     id="patente"
                     {...register("patente")}
                     className={`${inputClasses} uppercase`}
-                    placeholder="ABC123 / AB123CD"
+                    placeholder={tipoVehiculo === "MOTO" ? "123ABC / A123BCD" : "ABC123 / AB123CD"}
                   />
                   {errors.patente && <p className="mt-1 text-sm text-red-500">{errors.patente.message}</p>}
                 </div>
@@ -289,7 +298,7 @@ export default function VisitantesContent({ onAltaCreada }) {
                 </div>
                 <div className="sm:col-span-2">
                   <label className={labelClasses} htmlFor="alta-cocheraId">Cochera</label>
-                  <select id="alta-cocheraId" {...register("cocheraId")} className={inputClasses} disabled={!rangoValido || !tipoVehiculo}>
+                  <select id="alta-cocheraId" {...register("cocheraId")} className={inputClasses} disabled={!rangoValido || !tipoVehiculo || !disponibilidad.lista || cocherasOfrecidas.length === 0}>
                     <option value="">Seleccioná una cochera</option>
                     {cocherasOfrecidas.map((c) => (
                       <option key={c.id} value={c.id}>
@@ -298,11 +307,17 @@ export default function VisitantesContent({ onAltaCreada }) {
                     ))}
                   </select>
                   {errors.cocheraId && <p className="mt-1 text-sm text-red-500">{errors.cocheraId.message}</p>}
-                  {rangoValido && cocherasOfrecidas.length === 0 && (
+                  {disponibilidad.cargando && <p className="mt-1 text-sm text-ink/50">Consultando disponibilidad…</p>}
+                  {disponibilidad.error && <div className="mt-1 text-sm text-red-500" role="alert">
+                    <p>{disponibilidad.error}</p>
+                    <button type="button" className="font-semibold underline" onClick={disponibilidad.recargar}>Reintentar disponibilidad</button>
+                  </div>}
+                  {disponibilidad.lista && cocherasOfrecidas.length === 0 && (
                     <p className="mt-1 text-sm text-ink/50">
                       No hay cocheras libres durante toda esa franja para ese tipo de vehículo.
                     </p>
                   )}
+                  {puedeEsperar && <AvisoListaEspera id="alta-lista-espera" registro={register("listaEspera")} tipoCochera={tipoVehiculo} />}
                   {hayAccesiblesOcultas && (
                     <p className="mt-1 text-xs text-ink/50">
                       Las cocheras accesibles aparecen al marcar &quot;Persona con discapacidad&quot;.
@@ -314,13 +329,15 @@ export default function VisitantesContent({ onAltaCreada }) {
 
             <CotizacionReserva cotizacion={cotizacion} />
 
+            {errors.root && <p role="alert" className="text-sm text-red-500">{errors.root.message}</p>}
+
             <div>
               <button
                 type="submit"
                 disabled={isSubmitting || !cotizacion.lista}
                 className="ui-primary group relative flex w-full justify-center px-3 py-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSubmitting ? "Guardando..." : "Dar de alta y reservar"}
+                {isSubmitting ? "Guardando..." : enEspera ? "Dar de alta e ingresar a lista de espera" : "Dar de alta y reservar"}
               </button>
             </div>
         </form>

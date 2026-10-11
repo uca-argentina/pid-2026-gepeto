@@ -188,6 +188,40 @@ foto transaccional y proyecciones acotadas, sin cargar todo el historial ni
 modificar reservas. Liquibase aplica `012-dashboard-indices.yaml` al reiniciar
 el backend: agrega índices de consulta, sin cambiar los datos existentes.
 
+### Reservas recurrentes y lista de espera
+
+El administrador tiene una sección **Mis reservas recurrentes**
+(`/dashboard-admin/recurrentes`) para agregar, editar y eliminar sus propios
+vehículos y reservarlos semanalmente. La recurrencia es exclusiva de su cuenta:
+no aparece en **Nueva reserva** ni en el alta de visitantes, y no permite elegir
+vehículos de otros usuarios.
+
+Se eligen los días y una fecha de fin inclusiva, conservando el vehículo, la
+cochera y la duración de cada reserva. La serie admite hasta 90 reservas dentro
+de un año: se valida completa y, si alguna fecha tiene un conflicto, no se crea
+ninguna. Cada reserva conserva su propio precio, QR y cancelación individual.
+Las series recurrentes no ingresan a lista de espera.
+
+Si no hay cocheras disponibles, tanto el visitante como el administrador pueden
+aceptar entrar en **Lista de espera**. También está disponible en el alta rápida
+de visitantes. Esa solicitud conserva la franja y el precio cotizado, pero no
+ocupa una cochera ni tiene QR. Se puede cancelar desde el listado habitual.
+
+Al liberarse un lugar, se revisan las solicitudes por orden de llegada y se
+confirma la primera que puede utilizarlo durante toda su franja, respetando el
+tipo de vehículo, la accesibilidad y la categoría cotizada. Las solicitudes
+cuyo horario terminó vencen sin reservar lugar. La revisión también se ejecuta
+periódicamente para recuperar disponibilidad sin depender de una pantalla abierta.
+
+La confirmación genera el QR y una **notificación dentro de la aplicación** para
+el dueño de la reserva. El aviso permanece hasta marcarlo como leído, incluso si
+la confirmación ocurrió mientras estaba desconectado.
+
+El backend actualizado aplica automáticamente la migración Liquibase
+`013-reservas-recurrentes-espera.yaml`. Las asignaciones y promociones se
+serializan con un bloqueo transaccional en la base para proteger la última
+cochera disponible ante solicitudes simultáneas.
+
 ### Estructura
 
 Este repositorio contiene las dos mitades del proyecto:
