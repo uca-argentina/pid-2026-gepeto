@@ -21,3 +21,5 @@ databaseChangeLog:
       file: db/changelog/010-trazabilidad-reservas.yaml
   - include:
       file: db/changelog/011-acceso-reservas.yaml
+  - include:
+      file: db/changelog/012-dashboard-indices.yaml
