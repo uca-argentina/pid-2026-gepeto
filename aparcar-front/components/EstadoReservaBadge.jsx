@@ -4,12 +4,14 @@ const NEUTRO = "bg-ink/5 text-ink/50 ring-1 ring-inset ring-ink/10";
 // claro no alcanzan contraste sobre la superficie oscura.
 const ESTILOS = {
   CONFIRMADA: "bg-accent/10 text-link ring-1 ring-inset ring-accent/30",
+  LISTA_ESPERA: "bg-amber-500/10 text-amber-800 ring-1 ring-inset ring-amber-600/30 dark:text-amber-300 dark:ring-amber-400/40",
   EN_CURSO: "bg-emerald-500/10 text-emerald-800 ring-1 ring-inset ring-emerald-600/30 dark:text-emerald-300 dark:ring-emerald-400/40",
   VENCIDA: "bg-amber-500/10 text-amber-800 ring-1 ring-inset ring-amber-600/30 dark:text-amber-300 dark:ring-amber-400/40",
 };
 
 const ETIQUETAS = {
   EN_CURSO: "EN CURSO",
+  LISTA_ESPERA: "EN LISTA DE ESPERA",
 };
 
 export default function EstadoReservaBadge({ estado, motivoCancelacion, esAdmin = false }) {

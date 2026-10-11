@@ -1,6 +1,7 @@
 package com.aparcar.api.dto.reserva;
 
 import jakarta.validation.constraints.NotNull;
+import com.aparcar.api.entity.reserva.CocheraTipo;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -19,8 +20,12 @@ public class ReservaRequestDto {
     @NotNull(message = "El vehiculo es obligatorio")
     private UUID vehiculoId;
 
-    @NotNull(message = "La cochera es obligatoria")
     private UUID cocheraId;
+
+    /** Consentimiento expreso para esperar si no queda lugar en esta categoria. */
+    private boolean listaEspera;
+
+    private CocheraTipo tipoCochera;
 
     /**
      * Inicio de la franja. No lleva @FutureOrPresent a proposito: el formulario

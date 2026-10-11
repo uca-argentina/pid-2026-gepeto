@@ -1,6 +1,7 @@
 package com.aparcar.api.service;
 
 import com.aparcar.api.dto.reserva.ReservaRequestDto;
+import com.aparcar.api.dto.reserva.ReservaRecurrenteRequestDto;
 import com.aparcar.api.dto.reserva.ReservaResponseDto;
 import com.aparcar.api.exception.NotFoundException;
 import com.aparcar.api.exception.ValidationException;
@@ -9,6 +10,13 @@ import java.util.List;
 import java.util.UUID;
 
 public interface IReservaService {
+    List<ReservaResponseDto> crearRecurrentes(ReservaRecurrenteRequestDto dto, String email, boolean esAdmin);
+
+    List<ReservaResponseDto> listarRecurrentes(String email, boolean esAdmin);
+
+    List<ReservaResponseDto> notificaciones(String email);
+
+    ReservaResponseDto leerNotificacion(UUID id, String email);
     /**
      * Crea una reserva CONFIRMADA validando:
      * <ul>

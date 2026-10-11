@@ -103,9 +103,10 @@ export default function ReservasListado({
             </div>
             <p className={styles.ayuda}>
               {filtro === "CONFIRMADA" ? "Activas: con el vehículo adentro y próximas reservas."
+                : filtro === "LISTA_ESPERA" ? "Pendientes de una cochera compatible. Se confirman automáticamente si se libera mientras la franja siga vigente."
                 : filtro === "CANCELADA" ? "Incluye cancelaciones y deshabilitaciones."
                 : filtro === "FINALIZADA" ? "Reservas en las que el vehículo ya salió."
-                : filtro === "VENCIDA" ? "Reservas en las que no se registró el ingreso a tiempo."
+                : filtro === "VENCIDA" ? "Reservas en las que no se registró el ingreso a tiempo o cuya espera finalizó sin un lugar disponible."
                 : "Todas las reservas, cualquiera sea su estado."}
             </p>
           </div>
@@ -153,10 +154,12 @@ export default function ReservasListado({
                       <dt>Horario de la reserva</dt>
                       <dd>{formatearRango(reserva.desde, reserva.hasta, { incluirAnio: true }) || "Sin horario registrado"}</dd>
                       {reserva.modalidad && <dd className="franja-modalidad-badge">{MODALIDAD_ETIQUETA[reserva.modalidad] ?? reserva.modalidad}</dd>}
+                      {reserva.recurrenciaId && <dd className="franja-modalidad-badge">Recurrente</dd>}
                     </div>
                     <div>
                       <dt>Cochera</dt>
-                      <dd>{reserva.cochera?.numero ?? "—"} <span className={styles.sector}>· {reserva.cochera?.sector ?? "Sin sector"}</span></dd>
+                      <dd>{reserva.cochera ? <>{reserva.cochera.numero} <span className={styles.sector}>· {reserva.cochera.sector ?? "Sin sector"}</span></>
+                        : reserva.estado === "LISTA_ESPERA" ? "Pendiente de asignación" : "Sin cochera asignada"}</dd>
                     </div>
                   </dl>
 
@@ -173,7 +176,7 @@ export default function ReservasListado({
                         </button>
                       )}
                       {/* Con el vehículo adentro ya no se cancela: se registra la salida. */}
-                      {reserva.estado === "CONFIRMADA" && (
+                      {["CONFIRMADA", "LISTA_ESPERA"].includes(reserva.estado) && (
                         <button type="button" className={`${styles.boton} ${styles.cancelar}`}
                           disabled={cancelando !== null} onClick={() => cancelar(reserva)}>
                           {cancelando === reserva.id ? "Cancelando…" : "Cancelar"}

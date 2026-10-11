@@ -40,12 +40,15 @@ class ReservasVencidasTests {
     @Mock
     private ReservaRepository reservaRepository;
 
+    @Mock
+    private com.aparcar.api.service.impl.PlanificacionReservas planificacion;
+
     private ReservasVencidas reservasVencidas;
 
     @BeforeEach
     void setUp() {
         ReglasAcceso reglas = AccesoDePrueba.reglas(AccesoDePrueba.relojEn(AHORA));
-        reservasVencidas = new ReservasVencidas(reservaRepository, reglas);
+        reservasVencidas = new ReservasVencidas(reservaRepository, reglas, planificacion);
     }
 
     private static Reserva confirmada(LocalDateTime desde, LocalDateTime hasta) {

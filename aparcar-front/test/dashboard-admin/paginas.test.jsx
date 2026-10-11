@@ -36,6 +36,7 @@ vi.mock("sonner", () => ({
 }));
 
 const { default: ReservasPage } = await import("@/app/dashboard-admin/reservas/page");
+const { default: RecurrentesPage } = await import("@/app/dashboard-admin/recurrentes/page");
 const { default: VisitantesPage } = await import("@/app/dashboard-admin/visitantes/page");
 const { default: TarifasPage } = await import("@/app/dashboard-admin/tarifas/page");
 const { default: DashboardPage } = await import("@/app/dashboard-admin/page");
@@ -100,6 +101,31 @@ describe("/dashboard-admin/reservas", () => {
     const { container } = await renderPagina(ReservasPage);
 
     await waitFor(() => expect(container.querySelector(".reservas-columnas")).not.toBeNull());
+  });
+});
+
+describe("/dashboard-admin/recurrentes", () => {
+  it("exige ADMIN y muestra vehículos propios junto a la reserva recurrente", async () => {
+    await renderPagina(RecurrentesPage);
+    expect(requireAuthMock).toHaveBeenCalledWith(["ADMIN"]);
+    expect(screen.getByRole("heading", { name: "Mis reservas recurrentes" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Mis vehículos" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Nueva reserva recurrente" })).toBeInTheDocument();
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos/mios"));
+    expect(getMock).not.toHaveBeenCalledWith("/api/v1/visitantes");
+    expect(screen.getByRole("link", { name: /volver al panel/i })).toHaveAttribute("href", "/dashboard-admin");
+  });
+
+  it("no renderiza contenido cuando falla la autorización", async () => {
+    requireAuthMock.mockRejectedValueOnce(new Error("Sin permiso"));
+    await expect(RecurrentesPage()).rejects.toThrow("Sin permiso");
+    expect(getMock).not.toHaveBeenCalled();
+  });
+
+  it("el panel ofrece un acceso separado de las reservas de visitantes", async () => {
+    await renderPagina(DashboardPage);
+    expect(screen.getByRole("link", { name: "Mis reservas recurrentes" })).toHaveAttribute("href", "/dashboard-admin/recurrentes");
+    expect(screen.getByRole("link", { name: "Ver reservas" })).toHaveAttribute("href", "/dashboard-admin/reservas");
   });
 });
 

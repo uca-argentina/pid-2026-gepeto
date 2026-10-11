@@ -1,10 +1,10 @@
 package com.aparcar.api.dto.reserva;
 
 import com.aparcar.api.entity.reserva.VehiculoTipo;
+import com.aparcar.api.entity.reserva.CocheraTipo;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -35,19 +35,18 @@ public class VisitanteAltaDto {
 
     private String telefono;
 
-    // Acepta formato argentino viejo (AAA000) y Mercosur (AA000AA)
+    // El formato depende de tipoVehiculo y se valida en VehiculoService.
     @NotBlank(message = "La patente es obligatoria")
-    @Pattern(
-            regexp = "^([A-Za-z]{3}[0-9]{3}|[A-Za-z]{2}[0-9]{3}[A-Za-z]{2})$",
-            message = "La patente debe tener formato AAA000 o AA000AA"
-    )
     private String patente;
 
     @NotNull(message = "El tipo de vehiculo es obligatorio")
     private VehiculoTipo tipoVehiculo;
 
-    @NotNull(message = "La cochera es obligatoria")
     private UUID cocheraId;
+
+    private boolean listaEspera;
+
+    private CocheraTipo tipoCochera;
 
     // Si se omite, se conserva el alta para hoy de los clientes existentes.
     /**

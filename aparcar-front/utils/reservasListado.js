@@ -2,6 +2,7 @@
 // el vehículo adentro (EN_CURSO), que siguen ocupando la cochera.
 export const FILTROS_RESERVAS = [
   { clave: "CONFIRMADA", etiqueta: "Activas", vacio: "No hay reservas activas.", estados: ["CONFIRMADA", "EN_CURSO"] },
+  { clave: "LISTA_ESPERA", etiqueta: "En espera", vacio: "No hay reservas en lista de espera.", estados: ["LISTA_ESPERA"] },
   { clave: "FINALIZADA", etiqueta: "Finalizadas", vacio: "No hay reservas finalizadas.", estados: ["FINALIZADA"] },
   { clave: "VENCIDA", etiqueta: "Vencidas", vacio: "No hay reservas vencidas.", estados: ["VENCIDA"] },
   { clave: "CANCELADA", etiqueta: "Canceladas", vacio: "No hay reservas canceladas ni deshabilitadas.", estados: ["CANCELADA"] },
@@ -35,7 +36,7 @@ const compararFechas = (a, b, direccion) => {
 
 /** Solo presentación: el estado y los vencimientos siguen siendo responsabilidad del backend. */
 export const seleccionarReservas = (reservas, filtro, orden) => {
-  const cantidades = { TODAS: reservas.length, CONFIRMADA: 0, FINALIZADA: 0, VENCIDA: 0, CANCELADA: 0 };
+  const cantidades = { TODAS: reservas.length, CONFIRMADA: 0, LISTA_ESPERA: 0, FINALIZADA: 0, VENCIDA: 0, CANCELADA: 0 };
   for (const reserva of reservas) {
     const clave = FILTRO_DE_ESTADO[reserva.estado];
     if (clave) cantidades[clave] += 1;

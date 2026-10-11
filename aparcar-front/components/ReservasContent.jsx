@@ -12,7 +12,11 @@ import CotizacionReserva from "@/components/CotizacionReserva";
 import ModalCodigoAcceso from "@/components/ModalCodigoAcceso";
 import PatenteVisual from "@/components/PatenteVisual";
 import ReservasListado from "@/components/ReservasListado";
+import AvisoListaEspera from "@/components/AvisoListaEspera";
+import NotificacionesReservas from "@/components/NotificacionesReservas";
+import RepeticionReserva, { contarRepeticiones, limiteRepeticion } from "@/components/RepeticionReserva";
 import useCotizacion from "@/hooks/useCotizacion";
+import useDisponibilidad from "@/hooks/useDisponibilidad";
 import { tieneCodigoVigente } from "@/utils/codigoAcceso";
 import {
   PASO_MINUTOS,
@@ -24,9 +28,13 @@ import {
 const reservaSchema = z
   .object({
     patente: z.string().min(1, "Ingresá una patente"),
-    cocheraId: z.string().min(1, "Selecciona una cochera"),
+    cocheraId: z.string().optional(),
+    listaEspera: z.boolean().optional(),
     desde: z.string().min(1, "Elegí desde cuándo"),
     hasta: z.string().min(1, "Elegí hasta cuándo"),
+  })
+  .refine((d) => d.listaEspera || Boolean(d.cocheraId), {
+    message: "Selecciona una cochera", path: ["cocheraId"],
   })
   .refine((d) => !d.desde || !d.hasta || d.hasta > d.desde, {
     message: "El fin tiene que ser posterior al inicio",
@@ -43,6 +51,8 @@ const labelClasses = "ui-label";
 //   de cualquier visitante ya registrado. Ve todas las reservas del sistema.
 // - modo "user": elige entre sus propias patentes y reserva a su nombre. Ve
 //   solo sus reservas.
+// - modo "recurrentes": el ADMIN reserva únicamente para sus vehículos y ve
+//   sus propias series desde una pantalla separada de las reservas de visitantes.
 //
 // La separación es real, no cosmética: el backend ignora el visitanteId que
 // mande un USER y usa su cuenta, y filtra el listado por dueño. Lo de acá es
@@ -59,10 +69,12 @@ export default function ReservasContent({
   layout = "apilado",
 }) {
   const esAdmin = modo === "admin";
+  const recurrente = modo === "recurrentes";
 
   const [visitantes, setVisitantes] = useState([]);
   const [vehiculos, setVehiculos] = useState([]);
-  const [cocheras, setCocheras] = useState([]);
+  const [diasSemana, setDiasSemana] = useState([]);
+  const [repetirHasta, setRepetirHasta] = useState("");
   const [reservas, setReservas] = useState([]);
   const [loadingReservas, setLoadingReservas] = useState(true);
   const [errorReservas, setErrorReservas] = useState(false);
@@ -80,13 +92,14 @@ export default function ReservasContent({
   } = useForm({
     resolver: zodResolver(reservaSchema),
     // La reserva arranca por defecto en este momento; el "hasta" se elige.
-    defaultValues: { ...franjaPorDefecto(), patente: "" },
+    defaultValues: { ...franjaPorDefecto(), patente: "", cocheraId: "", listaEspera: false },
   });
 
   const patente = watch("patente");
   const cocheraId = watch("cocheraId");
   const desde = watch("desde");
   const hasta = watch("hasta");
+  const listaEspera = watch("listaEspera");
   const rangoValido = Boolean(desde && hasta && hasta > desde);
 
   const vehiculoEncontrado = useMemo(() => {
@@ -102,6 +115,9 @@ export default function ReservasContent({
     return visitantes.find((v) => v.id === vehiculoEncontrado.visitanteId) || null;
   }, [esAdmin, vehiculoEncontrado, visitantes]);
 
+  const disponibilidad = useDisponibilidad(vehiculoEncontrado?.tipo, desde, hasta, recurrente);
+  const cocheras = disponibilidad.cocheras;
+
   // Para un visitante, /disponibles ya viene filtrado por el backend según su
   // perfil. El admin, en cambio, recibe todas las cocheras (reserva en nombre
   // de otros), así que las ACCESIBLE se ocultan acá cuando el dueño del
@@ -115,15 +131,21 @@ export default function ReservasContent({
   );
   const hayAccesiblesOcultas = cocherasOfrecidas.length < cocheras.length;
   const cocheraElegida = cocherasOfrecidas.find((c) => c.id === cocheraId);
+  const puedeEsperar = disponibilidad.lista && cocherasOfrecidas.length === 0 && !recurrente;
+  const enEspera = puedeEsperar && listaEspera;
+  const cantidadRepeticiones = contarRepeticiones(desde, repetirHasta, diasSemana);
+  const diaInicial = desde ? new Date(`${desde.slice(0, 10)}T12:00:00`).getDay() || 7 : null;
+  const repeticionValida = !recurrente || (cantidadRepeticiones > 0 && cantidadRepeticiones <= 90
+    && repetirHasta <= limiteRepeticion(desde) && diasSemana.includes(diaInicial));
   const cotizacion = useCotizacion(cocheraElegida?.tipo ?? vehiculoEncontrado?.tipo, desde, hasta);
 
   const cargarReservas = async () => {
     setLoadingReservas(true);
     setErrorReservas(false);
     try {
-      // El backend ya devuelve todas las reservas si sos ADMIN, y solo las
-      // propias si sos visitante. Acá no hay nada que filtrar.
-      const res = await api.get("/api/v1/reservas");
+      // El endpoint de recurrentes limita el listado a las series del admin
+      // autenticado; la pantalla operativa conserva el listado general.
+      const res = await api.get(recurrente ? "/api/v1/reservas/recurrentes" : "/api/v1/reservas");
       setReservas(res.data);
     } catch {
       setErrorReservas(true);
@@ -134,13 +156,13 @@ export default function ReservasContent({
   };
 
   // GET /api/v1/vehiculos devuelve el catálogo completo para el ADMIN y solo
-  // los propios para un visitante, así que la misma llamada sirve en los dos
-  // modos. Se re-llama al enfocar el campo de patente (además de al montar)
+  // los propios para un visitante. En recurrentes se pide /mios para que el
+  // admin sólo elija vehículos propios. Se recarga al enfocar la patente
   // porque el vehículo puede haberse cargado recién en otra pestaña o
   // pantalla (el visitante los gestiona desde "Mis datos").
   const cargarCatalogos = () => {
     api
-      .get("/api/v1/vehiculos")
+      .get(recurrente ? "/api/v1/vehiculos/mios" : "/api/v1/vehiculos")
       .then((res) => setVehiculos(res.data))
       .catch(() => toast.error("No se pudieron cargar los vehículos."));
 
@@ -156,29 +178,12 @@ export default function ReservasContent({
     cargarCatalogos();
     cargarReservas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey]);
+  }, [refreshKey, modo]);
 
   useEffect(() => {
-    let vigente = true;
     setValue("cocheraId", "");
-    setCocheras([]);
-    if (!rangoValido || !vehiculoEncontrado) return;
-
-    // Solo las cocheras libres durante TODA la franja pedida.
-    api
-      // Se pregunta por el bloque y no por el horario a medio escribir.
-      .get("/api/v1/cocheras/disponibles", {
-        params: {
-          desde: redondearAlBloqueLocal(desde),
-          hasta: redondearAlBloqueLocal(hasta),
-          tipoVehiculo: vehiculoEncontrado.tipo,
-        },
-      })
-      .then((res) => { if (vigente) setCocheras(res.data); })
-      .catch(() => { if (vigente) toast.error("No se pudieron cargar las cocheras disponibles."); });
-    return () => { vigente = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [desde, hasta, rangoValido, vehiculoEncontrado]);
+    setValue("listaEspera", false);
+  }, [disponibilidad.solicitud, vehiculoEncontrado?.id, ocultarAccesibles, setValue]);
 
   const onSubmit = async (data) => {
     if (!vehiculoEncontrado) {
@@ -191,15 +196,17 @@ export default function ReservasContent({
       return;
     }
 
-    if (!cotizacion.lista || !cocheraElegida || !rangoValido) return;
+    if (!cotizacion.lista || (!cocheraElegida && !enEspera) || !rangoValido || !repeticionValida) return;
 
     try {
-      const res = await api.post("/api/v1/reservas", {
-        // Solo el admin puede reservar en nombre de otro; para un visitante el
-        // backend ignora este campo y usa su propia cuenta.
+      const res = await api.post(recurrente ? "/api/v1/reservas/recurrentes" : "/api/v1/reservas", {
+        // Sólo el modo operativo reserva en nombre de otro. Visitantes y
+        // recurrentes usan la cuenta autenticada.
         visitanteId: esAdmin ? visitanteEncontrado.id : undefined,
         vehiculoId: vehiculoEncontrado.id,
-        cocheraId: data.cocheraId,
+        cocheraId: enEspera ? null : data.cocheraId,
+        ...(enEspera ? { listaEspera: true, tipoCochera: vehiculoEncontrado.tipo } : {}),
+        ...(recurrente ? { diasSemana, repetirHasta } : {}),
         // Cinturón: al pasar del campo al botón se dispara el blur que ya lo
         // acomoda, pero el valor también puede venir de un atajo o de un reset,
         // y el backend rechaza lo que no caiga en la grilla de 15 minutos.
@@ -207,26 +214,31 @@ export default function ReservasContent({
         hasta: redondearAlBloqueLocal(data.hasta),
         precioEsperado: cotizacion.datos.total,
       });
-      toast.success("Reserva creada correctamente");
+      toast.success(recurrente ? `${res.data.length} reservas recurrentes creadas correctamente`
+        : res.data?.estado === "LISTA_ESPERA" ? "Reserva agregada a la lista de espera"
+        : "Reserva creada correctamente");
       // El visitante se lleva el QR en el momento: es lo que va a mostrar en
       // la entrada.
-      if (!esAdmin && tieneCodigoVigente(res?.data)) {
+      if (!esAdmin && !recurrente && tieneCodigoVigente(res?.data)) {
         setCodigoRecienCreado(true);
         setReservaCodigo(res.data);
       }
-      reset({ patente: "", cocheraId: "", ...franjaPorDefecto() });
-      setCocheras([]);
+      reset({ patente: "", cocheraId: "", listaEspera: false, ...franjaPorDefecto() });
+      setDiasSemana([]);
+      setRepetirHasta("");
+      disponibilidad.recargar();
       cargarReservas();
       onOcupacionCambiada?.();
     } catch (err) {
       toast.error(err.response?.data?.message || "No se pudo crear la reserva.");
       cotizacion.recargar();
+      disponibilidad.recargar();
     }
   };
 
   const cancelarReserva = async (reserva) => {
     const confirmado = window.confirm(
-      `¿Seguro que querés cancelar la reserva de la cochera ${reserva.cochera?.numero} (${formatearRango(reserva.desde, reserva.hasta)})?`
+      `¿Seguro que querés cancelar la reserva ${reserva.estado === "LISTA_ESPERA" ? "en lista de espera" : `de la cochera ${reserva.cochera?.numero}`} (${formatearRango(reserva.desde, reserva.hasta)})?`
     );
     if (!confirmado) {
       return;
@@ -236,6 +248,7 @@ export default function ReservasContent({
       await api.post(`/api/v1/reservas/${reserva.id}/cancelar`);
       toast.success("Reserva cancelada correctamente");
       await cargarReservas();
+      disponibilidad.recargar();
       onOcupacionCambiada?.();
     } catch (err) {
       toast.error(err.response?.data?.message || "No se pudo cancelar la reserva.");
@@ -252,10 +265,18 @@ export default function ReservasContent({
   return (
     <div className={enColumnas ? "reservas-columnas" : "mx-auto max-w-3xl space-y-10"}>
       <div className="space-y-10">
+      <NotificacionesReservas onActualizadas={cargarReservas} onVerCodigo={esAdmin ? undefined : (reserva) => {
+        setCodigoRecienCreado(false);
+        setReservaCodigo(reserva);
+      }} />
       <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-ink mb-2">Nueva reserva</h1>
+        {recurrente
+          ? <h2 className="text-xl font-bold text-ink mb-2">Nueva reserva recurrente</h2>
+          : <h1 className="text-3xl font-extrabold tracking-tight text-ink mb-2">Nueva reserva</h1>}
         <p className="text-sm text-ink/60">
-          {esAdmin
+          {recurrente
+            ? "Elegí uno de tus vehículos, la primera franja y los días de la semana en que vas a reservar."
+            : esAdmin
             ? "Ingresá la patente, elegí desde y hasta cuándo, y una cochera libre en esa franja."
             : "Elegí uno de tus vehículos, desde y hasta cuándo, y una cochera libre en esa franja."}
         </p>
@@ -265,8 +286,8 @@ export default function ReservasContent({
         {sinVehiculos ? (
           <p className="text-sm text-ink/60">
             Cargá al menos un vehículo en{" "}
-            <Link href="/dashboard-user/perfil#mis-vehiculos" className="font-semibold text-link underline-offset-2 hover:underline">
-              &quot;Mis datos&quot;
+            <Link href={recurrente ? "#mis-vehiculos" : "/dashboard-user/perfil#mis-vehiculos"} className="font-semibold text-link underline-offset-2 hover:underline">
+              {recurrente ? "Mis vehículos" : '"Mis datos"'}
             </Link>{" "}
             para poder reservar.
           </p>
@@ -392,7 +413,7 @@ export default function ReservasContent({
                 id="reserva-cocheraId"
                 {...register("cocheraId")}
                 className={inputClasses}
-                disabled={!vehiculoEncontrado || !rangoValido}
+                disabled={!vehiculoEncontrado || !rangoValido || !disponibilidad.lista || cocherasOfrecidas.length === 0}
               >
                 <option value="">
                   {vehiculoEncontrado && rangoValido
@@ -408,11 +429,17 @@ export default function ReservasContent({
                 ))}
               </select>
               {errors.cocheraId && <p className="mt-1 text-sm text-red-500">{errors.cocheraId.message}</p>}
-              {vehiculoEncontrado && rangoValido && cocherasOfrecidas.length === 0 && (
+              {disponibilidad.cargando && <p className="mt-1 text-sm text-ink/50">Consultando disponibilidad…</p>}
+              {disponibilidad.error && <div className="mt-1 text-sm text-red-500" role="alert">
+                <p>{disponibilidad.error}</p>
+                <button type="button" className="font-semibold underline" onClick={disponibilidad.recargar}>Reintentar disponibilidad</button>
+              </div>}
+              {disponibilidad.lista && cocherasOfrecidas.length === 0 && (
                 <p className="mt-1 text-sm text-ink/50">
                   No hay cocheras libres durante toda esa franja.
                 </p>
               )}
+              {puedeEsperar && <AvisoListaEspera id="reserva-lista-espera" registro={register("listaEspera")} tipoCochera={vehiculoEncontrado?.tipo} />}
               {hayAccesiblesOcultas && (
                 <p className="mt-1 text-sm text-ink/50">
                   No se muestran las cocheras accesibles: {visitanteEncontrado.nombre} no tiene
@@ -422,15 +449,19 @@ export default function ReservasContent({
             </div>
           </div>
 
+          {recurrente && <RepeticionReserva desde={desde}
+            diasSemana={diasSemana} onDias={setDiasSemana} repetirHasta={repetirHasta} onHasta={setRepetirHasta}
+            cantidad={cantidadRepeticiones} />}
+
           <CotizacionReserva cotizacion={cotizacion} />
 
           <div>
             <button
               type="submit"
-              disabled={isSubmitting || !cocheraElegida || !cotizacion.lista || !rangoValido}
+              disabled={isSubmitting || (!cocheraElegida && !enEspera) || !cotizacion.lista || !rangoValido || !repeticionValida}
               className="ui-primary group relative flex w-full justify-center px-3 py-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? "Reservando..." : "Confirmar reserva"}
+              {isSubmitting ? "Reservando..." : enEspera ? "Ingresar a lista de espera" : recurrente ? "Confirmar reservas recurrentes" : "Confirmar reserva"}
             </button>
           </div>
         </form>
@@ -439,7 +470,7 @@ export default function ReservasContent({
       </div>
 
       <ReservasListado
-        modo={modo}
+        modo={esAdmin ? "admin" : "user"}
         reservas={reservas}
         cargando={loadingReservas}
         error={errorReservas}

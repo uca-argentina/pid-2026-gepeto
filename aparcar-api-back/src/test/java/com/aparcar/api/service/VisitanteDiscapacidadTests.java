@@ -95,7 +95,7 @@ public class VisitanteDiscapacidadTests {
                         CocheraEstado.HABILITADA, null),
                 ReservaEstado.CONFIRMADA,
                 ModalidadReserva.FRANJA,
-                Instant.now(), new java.math.BigDecimal("1000.00"), CocheraTipo.AUTO, null, null, List.of());
+                Instant.now(), new java.math.BigDecimal("1000.00"), CocheraTipo.AUTO, null, null, List.of(), null, null, null);
     }
 
     private static VisitanteAltaDto alta(Boolean tieneDiscapacidad) {

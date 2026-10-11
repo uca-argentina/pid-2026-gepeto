@@ -50,6 +50,7 @@ public class AccesoService implements IAccesoService {
     private final CocheraRepository cocheraRepository;
     private final ReglasAcceso reglasAcceso;
     private final RegistroIntentosAcceso registroIntentos;
+    private final PlanificacionReservas planificacion;
 
     /** Lo que corresponde hacer con una reserva ahora, o por que no se puede. */
     private record Evaluacion(AccesoAccion accion, AccesoMotivo motivo, String mensaje) {
@@ -63,6 +64,7 @@ public class AccesoService implements IAccesoService {
     @Override
     @Transactional(noRollbackFor = {ValidationException.class, NotFoundException.class})
     public AccesoConsultaResponseDto consultar(String entrada, String operadorEmail) {
+        planificacion.bloquear();
         Reserva reserva = buscar(entrada, AccesoOperacion.CONSULTA, operadorEmail);
         LocalDateTime ahora = reglasAcceso.ahora();
         asentarSiVencio(reserva, ahora);
@@ -83,6 +85,7 @@ public class AccesoService implements IAccesoService {
     @Override
     @Transactional(noRollbackFor = {ValidationException.class, NotFoundException.class})
     public AccesoRegistroResponseDto registrar(String entrada, AccesoAccion accion, String operadorEmail) {
+        planificacion.bloquear();
         AccesoOperacion operacion = accion == AccesoAccion.INGRESO ? AccesoOperacion.INGRESO : AccesoOperacion.EGRESO;
         Reserva reserva = buscar(entrada, operacion, operadorEmail);
         Visitante operador = visitanteRepository.findByEmail(operadorEmail)
@@ -165,6 +168,7 @@ public class AccesoService implements IAccesoService {
                 reserva.setMinutosExceso(exceso);
                 reserva.registrarAccion(ReservaAccion.EGRESO, operador, true, reglasAcceso.instante());
                 guardar(reserva, AccesoOperacion.EGRESO, operador);
+                planificacion.promover();
                 registroIntentos.registrar(AccesoOperacion.EGRESO, reserva.getCodigo(), reserva.getId(), OK,
                         operador.getEmail());
                 String mensaje = exceso == null
@@ -208,6 +212,8 @@ public class AccesoService implements IAccesoService {
             case VENCIDA -> new Evaluacion(null, AccesoMotivo.VENCIDA, mensajeVencida(reserva, ahora));
             case CANCELADA -> new Evaluacion(null, AccesoMotivo.CANCELADA,
                     "La reserva fue cancelada: el código ya no es válido.");
+            case LISTA_ESPERA -> new Evaluacion(null, AccesoMotivo.SIN_INGRESO,
+                    "La reserva sigue en lista de espera y todavia no tiene acceso habilitado.");
         };
     }
 
@@ -265,6 +271,7 @@ public class AccesoService implements IAccesoService {
     private void asentarSiVencio(Reserva reserva, LocalDateTime ahora) {
         if (reglasAcceso.marcarSiVencio(reserva, ahora)) {
             reservaRepository.save(reserva);
+            planificacion.promover();
         }
     }
 

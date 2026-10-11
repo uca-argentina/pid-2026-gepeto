@@ -4,6 +4,7 @@ import com.aparcar.api.entity.reserva.Reserva;
 import com.aparcar.api.entity.reserva.ReservaEstado;
 import com.aparcar.api.repository.ReservaRepository;
 import com.aparcar.api.service.impl.ReglasAcceso;
+import com.aparcar.api.service.impl.PlanificacionReservas;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -32,10 +33,12 @@ import java.util.List;
 public class ReservasVencidas {
     private final ReservaRepository reservaRepository;
     private final ReglasAcceso reglasAcceso;
+    private final PlanificacionReservas planificacion;
 
     @Scheduled(fixedDelayString = "PT1M")
     @Transactional
     public void marcarVencidas() {
+        planificacion.bloquear();
         LocalDateTime ahora = reglasAcceso.ahora();
         List<Reserva> vencidas = reservaRepository.findByEstadoAndDesdeLessThan(ReservaEstado.CONFIRMADA, ahora)
                 .stream()
@@ -43,10 +46,12 @@ public class ReservasVencidas {
                 .toList();
 
         if (vencidas.isEmpty()) {
+            planificacion.promover();
             return;
         }
 
         reservaRepository.saveAll(vencidas);
+        planificacion.promover();
 
         log.info("Se marcaron {} reservas como VENCIDA.", vencidas.size());
     }

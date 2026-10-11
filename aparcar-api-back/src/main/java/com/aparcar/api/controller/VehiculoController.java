@@ -28,6 +28,31 @@ import java.util.UUID;
 public class VehiculoController {
     private final IVehiculoService vehiculoService;
 
+    /** Gestion personal, incluso para ADMIN: el titular siempre sale de la sesion. */
+    @GetMapping("/mios")
+    public ResponseEntity<List<VehiculoResponseDto>> listarPropios(Authentication authentication) {
+        return ResponseEntity.ok(vehiculoService.listarPropios(authentication.getName()));
+    }
+
+    @PostMapping("/mios")
+    public ResponseEntity<VehiculoResponseDto> crearPropio(
+            @Valid @RequestBody VehiculoRequestDto dto, Authentication authentication) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(vehiculoService.crear(dto, authentication.getName(), false));
+    }
+
+    @PutMapping("/mios/{id}")
+    public ResponseEntity<VehiculoResponseDto> editarPropio(
+            @PathVariable UUID id, @Valid @RequestBody VehiculoUpdateDto dto, Authentication authentication) {
+        return ResponseEntity.ok(vehiculoService.editar(id, dto, authentication.getName(), false));
+    }
+
+    @DeleteMapping("/mios/{id}")
+    public ResponseEntity<Void> eliminarPropio(@PathVariable UUID id, Authentication authentication) {
+        vehiculoService.eliminar(id, authentication.getName(), false);
+        return ResponseEntity.noContent().build();
+    }
+
     private static boolean esAdmin(Authentication authentication) {
         return authentication.getAuthorities().stream()
                 .anyMatch(a -> a.getAuthority().equals("ADMIN"));

@@ -53,6 +53,9 @@ public class CocheraDisponiblesAccesiblesTests {
     @Spy
     private Clock clock = Clock.system(AccesoDePrueba.ZONA);
 
+    @Mock
+    private com.aparcar.api.service.impl.PlanificacionReservas planificacion;
+
     @InjectMocks
     private CocheraService cocheraService;
 

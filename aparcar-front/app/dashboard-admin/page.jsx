@@ -41,6 +41,10 @@ export default async function DashboardAdminPage() {
             <DashboardIcon name="calendar" />
             <span>Ver reservas</span>
           </Link>
+          <Link href="/dashboard-admin/recurrentes" className="dashboard-nav-link">
+            <DashboardIcon name="calendar" />
+            <span>Mis reservas recurrentes</span>
+          </Link>
           <Link
             href="/dashboard-admin/usuarios"
             className="dashboard-nav-link"

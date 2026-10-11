@@ -11,6 +11,43 @@ Que prueba cada archivo de test del proyecto, caso por caso. Ver `ARCHIVOS.md` p
 
 # Backend (`aparcar-api-back/src/test/java/com/aparcar/api/`)
 
+## Reservas recurrentes y lista de espera
+
+- `integration/ReservaPlanificacionTests.java` — **28 tests**: espera sin
+  asignación ni QR, confirmación FIFO conservando el precio, rechazo de esperas
+  duplicadas, cancelación, notificaciones privadas y lectura persistida,
+  recurrencia exclusiva de ADMIN, serie nocturna y rollback completo ante un
+  conflicto. Incluye carreras sobre la última cochera y entre cancelación/alta,
+  promoción por egreso, vencimiento y habilitación, espera expirada,
+  accesibilidad, categoría de tarifa y límites de la serie. También comprueba
+  altas MOTO con ambos formatos, promoción y rollback del alta inválida;
+  series/listados del ADMIN autenticado, rechazo de vehículos ajenos y de
+  cuentas inactivas o sin el rol actual, y disponibilidad personal accesible.
+- `integration/ReservaPlanificacionMigracionTests.java` — **1 test**:
+  migración 013 sobre reservas previas, cochera nullable, restricciones de
+  asignación, fila de bloqueo e idempotencia sin perder registros.
+- Los unitarios existentes de reservas, acceso, cocheras y vencimiento
+  incorporan el coordinador transaccional; `planificacion-test.sql` inicializa
+  su fila cuando Hibernate crea el esquema H2 de pruebas.
+- `aparcar-front/test/components/ReservasRecurrentesEspera.test.jsx` —
+  **18 tests**: consentimiento en ambos roles y alta rápida, consultas fallidas
+  o desactualizadas, espera cancelable sin QR, recurrencia ADMIN y conservación
+  de la cochera elegida, avisos persistidos y lectura sin perder errores.
+  Recurrentes usa exclusivamente vehículos y series propios, conserva QR y
+  cancelación, y no aparece en las reservas normales de ninguno de los roles.
+- `aparcar-front/test/dashboard-admin/RecurrentesContent.test.jsx` — **2 tests**:
+  CRUD de vehículos propios actualiza el selector y conserva el vehículo si
+  el servidor impide eliminarlo por sus reservas activas.
+- `aparcar-front/test/browser/reservasRecurrentesEspera.ui.mjs` — **6 tests**:
+  flujo USER/ADMIN de espera y cancelación, alta MOTO en espera, vehículo propio
+  y serie semanal desde la sección exclusiva, acceso rechazado para USER,
+  notificación que sobrevive a recarga y error de disponibilidad.
+  Las respuestas están aisladas de la base real. La suite anterior del listado
+  también verifica el nuevo filtro en todos sus tamaños y temas.
+- `aparcar-front/test/browser/accountMenu.ui.mjs` — **1 test**: entrada directa
+  y recarga de Usuarios sin avisos de hidratación, menú operable y relación
+  accesible entre botón y desplegable.
+
 ## Dashboard del administrador
 
 `service/DashboardServiceTests.java` — **7 tests**: predio vacío y 24 horas;
@@ -640,9 +677,10 @@ PUT /api/v1/usuarios/{id} devuelve 401 para anonimos
 
 ## `integration/VehiculoControllerTests.java`
 
-_18 tests._
+_20 tests._
 
 Caja negra. Alta, formato de patente, y la edicion/borrado con control de propietario.
+Incluye CRUD `/mios` del ADMIN y rechazo de edición/borrado de vehículos ajenos.
 
 ```
 [Caja negra] endpoints de vehiculos devuelven 401 para anonimos
@@ -1414,7 +1452,10 @@ no trae el alta de visitante ni el formulario de reservas
 
 ## `dashboard-admin/VisitantesContent.test.jsx`
 
-_17 tests._
+_21 tests._
+
+Incluye los dos formatos de patente MOTO en espera, normalización de espacios y
+guiones, detalle de validación por campo y mensaje en español cuando falta detalle.
 
 El alta operativa del admin: crea cuenta, vehiculo y reserva en una sola llamada, con su franja. ✏️ Suma el checkbox opcional de **discapacidad**: desmarcado por defecto, viaja en el alta, y las cocheras ACCESIBLE no se ofrecen hasta marcarlo (si se desmarca con una elegida, se deselecciona).
 
@@ -1480,9 +1521,11 @@ ya no ofrece la carga fila por fila ni llama al endpoint /bulk
 
 ## `dashboard-admin/paginas.test.jsx`
 
-_10 tests._
+_13 tests._
 
 Las paginas `/dashboard-admin/reservas` y `/dashboard-admin/visitantes`: que exijan el rol ADMIN, que secciones arma cada una y la navegacion de regreso.
+La ruta de recurrentes exige ADMIN, no renderiza contenido al fallar la
+autorización y tiene acceso separado en el panel.
 
 ```
 /dashboard-admin/reservas > exige el rol ADMIN
@@ -1585,9 +1628,11 @@ muestra solo el título predeterminado si aún no se configuró el nombre
 
 ## `components/AccountMenu.test.jsx`
 
-_5 tests._
+_7 tests._
 
 Destino del perfil según rol (2 casos), apertura por teclado y Escape, cierre al hacer clic fuera o salir con Tab, y cierre de sesión con borrado de cookie y estado.
+Incluye hidratación de HTML del servidor y múltiples menús con identificadores
+independientes; `aria-controls` se publica únicamente mientras existe el desplegable.
 
 ## `login/page.test.jsx`
 
@@ -1739,10 +1784,40 @@ es case-insensitive
 
 | | Archivos | Tests |
 |---|---|---|
-| Backend | 56 | 613 |
-| Frontend (Vitest) | 43 | 541 |
-| Frontend UI (Playwright) | 3 | 35 |
-| **Total** | **102** | **1189** |
+| Backend | 58 | 587 |
+| Frontend (Vitest) | 45 | 570 |
+| Frontend UI (Playwright) | 5 | 42 |
+| **Total** | **108** | **1199** |
+
+Corrección de alta MOTO y separación de recurrentes ADMIN: `mvn verify`
+completo (587 tests, 58 reportes Surefire renovados, sin fallos), Vitest completo
+(570 tests), Playwright completo en Chrome (42 tests), build de producción y
+lint sin errores. Se conserva la advertencia previa de React Hook Form.
+Los totales actuales se leyeron de los runners; corrigen el conteo anterior
+del backend, que no coincidía con los reportes.
+
+Prueba adicional contra PostgreSQL local con el backend reconstruido: alta de
+visitante MOTO en espera, promoción con precio/QR/aviso privado, vehículos del
+administrador, serie propia de dos fechas y rechazo de terceros y USER.
+Se cancelaron y eliminaron exclusivamente los registros desechables de esta
+prueba (5 reservas, 4 vehículos, 1 cuenta); no quedaron datos de prueba.
+También se verificó en Chrome con login y API reales la nueva sección, su estado
+sin vehículos y la entrada/recarga de Usuarios con el menú de cuenta, sin
+errores de consola ni de hidratación.
+
+Reservas recurrentes y lista de espera: `mvn verify` completo (631 tests),
+Vitest completo (556 tests), Playwright completo en Chrome (40 tests), build
+de producción y lint sin errores. Se conserva la advertencia previa de React
+Hook Form en el alta de visitantes. La primera ejecución del backend expuso
+una carrera previa de `local.server.port` en dos tests de sesión: ambos pasaron
+aislados y la repetición completa terminó sin fallos; no se modificó la
+configuración asíncrona de la aplicación.
+
+Prueba adicional contra PostgreSQL local con migración 013 aplicada: reserva
+normal, espera desde USER/ADMIN y alta rápida, prioridad de llegada, precio y
+QR al confirmar, privacidad/lectura del aviso y una serie para un vehículo del
+administrador. Se cancelaron y eliminaron únicamente los registros desechables
+creados por la prueba (7 reservas, 5 vehículos, 2 cuentas).
 
 Dashboard del administrador: `mvn verify` completo (613 tests), Vitest completo
 (541 tests), Playwright completo en Chrome (35 tests), build de producción y

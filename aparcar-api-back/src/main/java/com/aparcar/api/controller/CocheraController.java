@@ -101,10 +101,11 @@ public class CocheraController {
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime desde,
             @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime hasta,
             @RequestParam(required = false) VehiculoTipo tipoVehiculo,
+            @RequestParam(defaultValue = "false") boolean propia,
             Authentication authentication) {
         String requesterEmail = authentication == null ? null : authentication.getName();
         return ResponseEntity.ok(cocheraService.listarDisponibles(
-                desde, hasta, tipoVehiculo, requesterEmail, esAdmin(authentication)));
+                desde, hasta, tipoVehiculo, requesterEmail, esAdmin(authentication) && !propia));
     }
 
     private static boolean esAdmin(Authentication authentication) {

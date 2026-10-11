@@ -35,7 +35,7 @@ export default function AccountMenu({ visitor = false }) {
       if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
     }}>
       <button type="button" className="account-trigger" ref={trigger}
-        aria-expanded={open} aria-controls={id} onClick={() => setOpen(!open)}>
+        aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => setOpen(!open)}>
         <span className="account-avatar" aria-hidden="true"><DashboardIcon name="profile" /></span>
         <span className="account-trigger-label">Mi cuenta</span>
         <DashboardIcon name="chevron" />

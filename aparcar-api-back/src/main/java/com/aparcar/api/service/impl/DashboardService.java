@@ -65,6 +65,8 @@ public class DashboardService implements IDashboardService {
         List<ReservaFila> proximas = new ArrayList<>();
 
         for (ReservaFila fila : reservas) {
+            // El tablero operativo cuenta lugares asignados; las solicitudes en espera no ocupan.
+            if (fila.getCocheraId() == null) continue;
             // Se reutilizan las mismas ventanas que el acceso y el barrido, sin cambiar entidades.
             Reserva reserva = paraReglas(fila);
             ReservaEstado estado = fila.getEstado();
