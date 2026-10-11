@@ -1,5 +1,78 @@
 # Mapa de archivos
 
+## Control de acceso por código QR (ingreso y egreso)
+
+Backend (rutas relativas a `aparcar-api-back/src/main/java/com/aparcar/api/`):
+
+- `entity/reserva/ReservaEstado` ✏️ suma `EN_CURSO` (vehículo adentro) y `VENCIDA`
+  (no-show); `ReservaAccion` ✏️ suma `INGRESO` y `EGRESO`, que quedan en el historial
+  con el operador. `Reserva` ✏️ guarda `codigo` (único), `codigoEmitidoAt`,
+  `ingresoAt`, `egresoAt` y `minutosExceso`. `ReservaMovimiento` ✏️ acepta la fecha
+  explícita para usar el mismo reloj que las reglas.
+- `entity/reserva/AccesoIntento` 🆕 y `AccesoOperacion` 🆕: cada intento de validar un
+  código (consulta, ingreso o egreso), con operador y resultado. Copia de ids, sin FK.
+- `service/impl/CodigoAcceso` 🆕: deriva el código (HMAC-SHA256 del id con
+  `ACCESO_CODIGO_SECRET`, 50 bits en base32 Crockford), lo asigna rederivando con un
+  contador si colisiona, normaliza lo escaneado o tipeado y lo formatea `XXXXX-XXXXX`.
+- `service/impl/ReglasAcceso` 🆕: ventanas de ingreso (anticipado, tolerancia, nunca
+  después de `hasta`), permanencia mínima, exceso del egreso e idempotencia, todo con
+  el `Clock` inyectado.
+- `service/IAccesoService` 🆕 / `service/impl/AccesoService` 🆕: consulta (sin efectos
+  sobre ingreso/egreso; asienta VENCIDA si ya correspondía), registro de ingreso y
+  egreso revalidando todo, y movimientos del día. `RegistroIntentosAcceso` 🆕 guarda
+  cada intento en su propia transacción, para que sobreviva al rechazo.
+- `controller/AccesoController` 🆕: `/api/v1/accesos/consulta`, `/registro` y
+  `/movimientos`, solo ADMIN.
+- `dto/acceso/` 🆕: contrato de los tres endpoints (`AccesoAccion`, `AccesoMotivo`,
+  requests y responses, `AccesoReservaDto`). `dto/reserva/ReservaAccesoDto` 🆕 viaja en
+  `ReservaResponseDto.acceso` ✏️ con el código (solo si sigue sirviendo) y la ventana.
+- `service/impl/ReservaService` ✏️: asigna el código en el alta (misma transacción),
+  rechaza cancelar una reserva EN_CURSO o vencida, y cuenta como ocupadas las
+  reservas EN_CURSO, que bloquean hasta el egreso aunque se pasen de hora.
+  `service/impl/CocheraService` ✏️ aplica la misma regla en `/disponibles` y en el
+  listado por franja.
+- `repository/ReservaRepository` ✏️: consultas de vehículos adentro, búsqueda por
+  código, candidatas al barrido y al backfill. `ReservaMovimientoRepository` 🆕 y
+  `AccesoIntentoRepository` 🆕.
+- `component/ReservasVencidas` ✏️: el barrido de cada minuto marca VENCIDA (no
+  FINALIZADA) las CONFIRMADAS a las que se les cerró la ventana sin ingreso.
+  `component/CodigosAccesoBackfill` 🆕: al arrancar, les da código a las CONFIRMADAS
+  vigentes anteriores a la feature.
+- `filters/AccesoRateLimitFilter` 🆕: 60 validaciones por minuto y por operador.
+- `config/AccesoProperties` 🆕 (`aparcar.acceso.*`) y `config/AccesoConfig` 🆕 (no
+  arranca en prod con el secreto de desarrollo). `ZonaHorariaConfig` ✏️ expone el
+  `Clock` del predio. `ApplicationConstants` ✏️ guarda el secreto de desarrollo.
+- `security/securityConfig/DevSecurityConfig` ✏️ y `ProdSecurityConfig` ✏️:
+  `/api/v1/accesos/**` exige ADMIN y suma su rate limit. En dev, `CORS_ORIGENES_EXTRA`
+  agrega orígenes para probar desde el celular.
+- `src/main/resources/db/changelog/011-acceso-reservas.yaml` 🆕: columnas, índice único
+  del código, índice de movimientos por acción y fecha, y tabla `acceso_intentos`.
+  `application.yml` ✏️ y `application-test.yml` ✏️: propiedades de acceso.
+
+Frontend (rutas relativas a `aparcar-front/`):
+
+- `utils/codigoAcceso.js` 🆕: normaliza y formatea el código, arma el contenido del QR
+  y el texto de la ventana de ingreso.
+- `components/CodigoAccesoQR.jsx` 🆕: dibuja el QR con `qrcode`, importado a demanda,
+  negro sobre blanco en los dos temas. `components/ModalCodigoAcceso.jsx` 🆕: diálogo
+  accesible (foco atrapado, Escape, devuelve el foco) con QR, código, *Copiar*, datos
+  y ventana de ingreso.
+- `components/ReservasContent.jsx` ✏️ abre el modal al reservar y desde *Ver QR*;
+  `components/ReservasListado.jsx` ✏️ y `.module.css` ✏️ suman *Ver QR*, el filtro
+  Vencidas, EN_CURSO dentro de Activas y la línea de ingreso/egreso;
+  `utils/reservasListado.js` ✏️ agrupa estados por filtro; `EstadoReservaBadge.jsx` ✏️
+  e `HistorialReserva.jsx` ✏️ conocen los estados y acciones nuevos.
+- `app/dashboard-admin/accesos/page.jsx` 🆕 y `ControlAccesoContent.jsx` 🆕: pantalla
+  de control de acceso (escanear o escribir, tarjeta con la acción, confirmación,
+  movimientos del día). `components/LectorQR.jsx` 🆕: cámara con `getUserMedia`,
+  `BarcodeDetector` nativo o `jsqr` como alternativa, y mensajes cuando no hay permiso,
+  cámara o contexto seguro. `app/dashboard-admin/page.jsx` ✏️ y `DashboardIcon.jsx` ✏️:
+  acceso desde la navegación.
+- `utils/ocupacion.js` ✏️ y `components/OcupacionCocheras.jsx` ✏️: EN_CURSO ocupa
+  (hasta ahora, si se pasó de hora) y se muestra como "Vehículo adentro".
+- `app/globals.css` ✏️: estilos del modal, del QR, del lector y del control de acceso.
+- `package.json` / `package-lock.json` ✏️: `qrcode` y `jsqr`.
+
 ## Listado de reservas del administrador y del usuario
 
 - `aparcar-front/components/ReservasListado.jsx`: listado compartido por **Ver
@@ -381,7 +454,9 @@ Configuración general de Spring.
 | `SchedulingConfig.java` | Configura tareas `@Scheduled` |
 | `WebClientConfig.java` | Configura el bean de `WebClient` |
 | `WebConfig.java` | Maneja headers `X-Forwarded-*` |
-| `ZonaHorariaConfig.java` | Fija la zona horaria de la aplicación (`app.zona-horaria`, por defecto `America/Argentina/Buenos_Aires`). Sin esto el contenedor arranca en UTC y las franjas, que son reloj de pared, quedan desfasadas respecto del navegador |
+| `AccesoProperties.java` 🆕 | Reglas del control de acceso (`aparcar.acceso.*`): anticipo, tolerancia, gracia, permanencia mínima, idempotencia, rate limit y secreto del código |
+| `AccesoConfig.java` 🆕 | Activa `AccesoProperties` y no deja arrancar en `prod` con el secreto de desarrollo (ni con uno vacío) |
+| `ZonaHorariaConfig.java` ✏️ | Expone además el `Clock` del predio que usan las reglas de acceso. Fija la zona horaria de la aplicación (`app.zona-horaria`, por defecto `America/Argentina/Buenos_Aires`). Sin esto el contenedor arranca en UTC y las franjas, que son reloj de pared, quedan desfasadas respecto del navegador |
 | `middleware/DevExceptionHandler.java` | Convierte excepciones a respuestas JSON detalladas en desarrollo. Agregado el handler de `AccessDeniedException`, que devuelve 403 con el mensaje del service (ej. "No podés modificar un vehículo que no es tuyo") |
 | `middleware/ProdExceptionHandler.java` ✏️ | Manejo de errores para producción, con el mismo handler de `AccessDeniedException`. Suma el de `HttpMessageNotReadableException` 🆕: un JSON mal formado o con un valor imposible de convertir (ej. un tipo de cochera inexistente) es un 400, no un 500 |
 
@@ -395,6 +470,7 @@ Endpoints REST de la aplicación.
 |---|---|
 | `AuthController.java` | `/register`, `/login`, `/forgot-password`, `/reset-password` |
 | `CocheraController.java` ✏️ | Gestión de cocheras y consulta de cocheras disponibles. Suma `POST /alta-por-planta` 🆕. `/disponibles` recibe el `Authentication` (null si es anónimo) para no ofrecerle cocheras ACCESIBLE a un visitante sin discapacidad declarada. Incluye además `GET /sectores` y el alta en lote vieja `POST /bulk` |
+| `AccesoController.java` 🆕 | Control de acceso: `POST /api/v1/accesos/consulta`, `POST /api/v1/accesos/registro` y `GET /api/v1/accesos/movimientos` (solo ADMIN) |
 | `ReservaController.java` | Alta y consulta de reservas |
 | `UserController.java` | Gestión ADMIN de usuarios: activar, listar inactivos, eliminar, listar todos y editar |
 | `VehiculoController.java` | Alta y consulta de vehículos, más `PUT /{id}` y `DELETE /{id}`. Ambos reciben el `Authentication` y le pasan al service el email del que pide y si es ADMIN, para que el service decida si tiene permiso |
@@ -438,6 +514,10 @@ Todo lo que el backend sabe hacer hoy. La columna "Quién puede" sale de `DevSec
 | `POST /api/v1/reservas` ✏️ | Crea la reserva sobre la franja `desde`/`hasta`, aplicando las reglas de negocio y el control de superposición. Una cochera ACCESIBLE exige que el dueño de la reserva tenga declarada la discapacidad | Autenticado |
 | `GET /api/v1/reservas` | Lista todas las reservas | Autenticado |
 | `GET /api/v1/reservas/{id}` | Una reserva por id | Autenticado |
+| `POST /api/v1/reservas/{id}/cancelar` ✏️ | Cancela; rechaza (400) una reserva EN_CURSO o vencida | Dueño o ADMIN |
+| `POST /api/v1/accesos/consulta` 🆕 | `{codigo}` (con o sin `APARCAR:`, guiones o espacios). Datos de la reserva, acción que corresponde o motivo. 400 formato inválido, 404 inexistente | ADMIN |
+| `POST /api/v1/accesos/registro` 🆕 | `{codigo, accion}`. Registra ingreso o egreso; idempotente dentro de 2 minutos. 400 regla violada, 404 inexistente, 409 concurrencia | ADMIN |
+| `GET /api/v1/accesos/movimientos` 🆕 | Ingresos y egresos del día | ADMIN |
 | `GET /docs` | Swagger UI: la API documentada e interactiva | Público |
 | `GET /actuator/health` | Chequeo de salud del servicio | Público |
 
@@ -553,6 +633,7 @@ Filtros HTTP ejecutados durante los requests.
 | `JWTGeneratorFilter.java` | Genera el JWT luego de un login exitoso |
 | `JWTValidationFilter.java` | Valida JWT y carga la autenticación; `/register` ahora también procesa JWT porque requiere ADMIN |
 | `RateLimitFilter.java` | Limita intentos sobre endpoints sensibles |
+| `AccesoRateLimitFilter.java` 🆕 | Limita la validación de códigos (`/api/v1/accesos/**`) a 60 por minuto y por operador. Es otra clase a propósito: `OncePerRequestFilter` identifica cada filtro por su nombre de clase |
 | `StripPortFromXffFilter.java` | Normaliza la IP proveniente de headers proxy |
 
 ---
@@ -566,7 +647,9 @@ Acceso a datos usando Spring Data JPA.
 | `VisitanteRepository.java` | Acceso a `Visitante`, que es a la vez cuenta y visitante. Usa `UUID` como id y busca por email o documento |
 | `CocheraRepository.java` ✏️ | Acceso a cocheras. `findDistinctSectores` alimenta `/sectores`; `findAllNumeros` 🆕 trae solo los números existentes para la numeración automática |
 | `OneTimePasswordRepository.java` | Acceso a códigos OTP |
-| `ReservaRepository.java` | Acceso a reservas y consultas relacionadas con disponibilidad. Agregado `existsByVehiculoId`, que usa `VehiculoService.eliminar` para no borrar un vehículo con reservas |
+| `ReservaRepository.java` ✏️ | Acceso a reservas y consultas relacionadas con disponibilidad. Agregado `existsByVehiculoId`, que usa `VehiculoService.eliminar` para no borrar un vehículo con reservas. Suma las consultas de vehículos adentro (EN_CURSO, que ocupan hasta el egreso), la búsqueda por código y las candidatas del barrido y del backfill |
+| `ReservaMovimientoRepository.java` 🆕 | Ingresos y egresos recientes, con la reserva, el vehículo y la cochera |
+| `AccesoIntentoRepository.java` 🆕 | Registro de intentos de validación de códigos |
 | `VehiculoRepository.java` | Acceso a vehículos |
 | `VisitanteRepository.java` | Acceso a visitantes |
 
@@ -673,6 +756,7 @@ Un administrador puede posteriormente modificar sus authorities, activarlos o el
 | `005-identidad-visitante-unica.yaml` | Índices de PostgreSQL para que el email sea único sin distinguir mayúsculas |
 | `006-reservas-por-franja-horaria.yaml` | Convierte la reserva por día en una franja `desde`/`hasta`. Las reservas existentes se conservan como el día completo que ocupaban, que es lo que significaban antes. Crea los índices `(cochera_id, estado, desde, hasta)` y su equivalente por vehículo, que son los que sostienen la consulta de solapamiento. El backfill va en dos versiones porque la aritmética de fechas no es portable: prod usa Postgres y los tests H2 |
 | `007-visitante-tiene-discapacidad.yaml` 🆕 | Agrega `visitantes.tiene_discapacidad` (boolean, no nulo, `false` por defecto): las cuentas que ya existían quedan como "sin declarar" |
+| `011-acceso-reservas.yaml` 🆕 | Agrega a `reservas` `codigo` (índice único), `codigo_emitido_at`, `ingreso_at`, `egreso_at` y `minutos_exceso`; un índice de `reserva_movimientos` por acción y fecha, y la tabla `acceso_intentos`. Solo estructura: el código lo asigna `CodigosAccesoBackfill` al arrancar |
 
 ### Por qué `003` no tenía foreign key física hacia `app_users` (histórico)
 
@@ -712,12 +796,22 @@ Mismas marcas que el resto del documento: 🆕/✏️ = agregado/modificado en e
 | `service/AuthServiceTests.java` | Tests unitarios de `AuthService` |
 | `service/CocheraAltaPorPlantaTests.java` 🆕 | **Caja blanca** de `crearPorPlanta` con mocks: orden por tipo, continuación desde los existentes, estado por defecto, validaciones, y el choque concurrente por número duplicado traducido a 400 |
 | `service/CocheraDisponiblesAccesiblesTests.java` 🆕 | **Caja blanca** de qué ACCESIBLE ofrece `/disponibles` según quién pregunta (anónimo, ADMIN, visitante con y sin declaración, cuenta inexistente) |
-| `service/CocheraServiceTests.java` | Tests de cocheras, incluye la cancelación automática de reservas al deshabilitar una cochera y el alta en lote vieja |
+| `service/CocheraServiceTests.java` ✏️ | Tests de cocheras, incluye que un vehículo adentro (EN_CURSO) ocupe la cochera, incluye la cancelación automática de reservas al deshabilitar una cochera y el alta en lote vieja |
 | `service/NumeracionCocherasTests.java` 🆕 | **Caja blanca** de la numeración: continuar desde el máximo, que los prefijos no se crucen (`AC-..` no cuenta para `A` ni para `C`), ignorar formatos viejos, ancho mínimo de 2 dígitos sin tope |
 | `service/ReservaAccesibilidadTests.java` 🆕 | **Caja blanca** de la regla de ACCESIBLE al reservar: cuenta la declaración del dueño, no la de quien carga la reserva |
-| `service/ReservaServiceTests.java` ✏️ | Tests unitarios de reservas (con mocks): mismas reglas que `ReservaControllerTests` pero aisladas del repositorio. Sumadas las validaciones de franja: rango invertido, duración cero, franja ya vencida, inicio en el pasado con fin futuro (que sí es válido) y vehículo comprometido en otra cochera |
+| `service/ReservaServiceTests.java` ✏️ | Tests unitarios de reservas (con mocks): mismas reglas que `ReservaControllerTests` pero aisladas del repositorio. Suma el código de acceso en el alta, vehículos adentro que bloquean, y la cancelación rechazada de reservas EN_CURSO o vencidas. Sumadas las validaciones de franja: rango invertido, duración cero, franja ya vencida, inicio en el pasado con fin futuro (que sí es válido) y vehículo comprometido en otra cochera |
 | `entity/ReservaSolapamientoTests.java` | **Caja blanca** del predicado de solapamiento, que es donde vive toda la regla. Ataca los bordes sin pasar por el servicio ni la base: franja contigua, contenida, idéntica, y las que se pisan por seis minutos. Un `<=` de más y dos reservas consecutivas dejarían de poder existir; uno de menos y se permitiría pisar |
-| `component/ReservasVencidasTests.java` | **Caja blanca** de la tarea que marca las vencidas como `FINALIZADA` |
+| `component/ReservasVencidasTests.java` ✏️ | **Caja blanca** del barrido: marca VENCIDA (no FINALIZADA) las CONFIRMADAS sin ingreso fuera de tolerancia, con reloj fijo |
+| `component/CodigosAccesoBackfillTests.java` 🆕 | **Caja blanca** del backfill de códigos: asigna, fecha la emisión (la tolerancia corre desde la migración) y es idempotente |
+| `config/AccesoConfigTests.java` 🆕 | El secreto de los códigos: producción no arranca con el de desarrollo ni con uno vacío |
+| `config/AccesoDePrueba.java` 🆕 | Ayuda de tests: reglas de acceso con los valores por defecto y un reloj fijo |
+| `filters/AccesoRateLimitFilterTests.java` 🆕 | **Caja blanca** del rate limit de accesos: 60 por minuto, 429 en la siguiente, cupo por operador o por IP, y que no choca con `RateLimitFilter` |
+| `integration/AccesoControllerTests.java` 🆕 | **Caja negra** de `/api/v1/accesos`: roles (401/403), flujo completo (alta → QR → ingreso → egreso, cochera ocupada y liberada), cada error con su código HTTP y que el USER vea solo su código |
+| `integration/ReservaAccesoMigracionTests.java` 🆕 | La migración 011 sobre una base con datos: no los toca y deja el código único |
+| `integration/ReservaEnCursoOcupacionTests.java` 🆕 | Consultas de ocupación contra la base: un vehículo adentro que se pasó de hora sigue ocupando; VENCIDA y FINALIZADA no |
+| `service/AccesoServiceTests.java` 🆕 | **Caja blanca** del control de acceso con reloj fijo: consulta, ingreso, egreso, bordes, idempotencia, uso único, conflicto y movimientos |
+| `service/CodigoAccesoTests.java` 🆕 | **Caja blanca** del código: determinismo, alfabeto, unicidad, colisión, normalización y formato |
+| `service/ReglasAccesoTests.java` 🆕 | **Caja blanca** de los bordes exactos de cada ventana |
 | `config/ZonaHorariaConfigTests.java` | **Caja blanca** de la zona horaria. Incluye el caso que rompía: arrancar la JVM en UTC y comprobar que la corrección la deja en hora local |
 | `service/UserServiceTests.java` | Tests de gestión de usuarios. Agregué los casos de `deleteUser`: desvincula el visitante propio antes de borrar la cuenta (evita romper la FK `fk_visitante_app_user`), y no hace nada si no hay ninguno vinculado |
 | `service/VehiculoServiceTests.java` | Tests de vehículos. Agregados los casos de `editar` y `eliminar`: control de propietario, patente duplicada al editar, y el bloqueo al borrar un vehículo con reservas |
@@ -750,7 +844,7 @@ No es un bug de producción — contra la app real (Docker) ya confirmamos a man
 | `jsconfig.json` | Define alias `@/` |
 | `kickstart.md` | Guía de instalación |
 | `next.config.mjs` | Configuración de Next.js |
-| `package.json` / `package-lock.json` | Dependencias. Agregados `npm test` (`vitest run`) y `npm run test:watch` (`vitest`) |
+| `package.json` / `package-lock.json` ✏️ | Dependencias. Agregados `npm test` (`vitest run`) y `npm run test:watch` (`vitest`). Suma `qrcode` (genera el QR del visitante) y `jsqr` (lector de QR cuando no hay `BarcodeDetector`), ambos cargados a demanda |
 | `postcss.config.mjs` | Configuración Tailwind CSS 4 |
 | `vitest.config.mjs` | Configuración de Vitest: entorno `jsdom`, alias `@/`, y el archivo de setup de `test/` |
 
@@ -779,8 +873,10 @@ Sección para usuarios con rol `ADMIN`.
 
 | Archivo | Qué hace |
 |---|---|
-| `page.jsx` | Entrada del dashboard ADMIN, protegida con `requireAuth(["ADMIN"])`. Server Component: solo valida el rol y arma la barra de navegación (`/cocheras`, `/usuarios`, `LogoutButton`). El contenido lo delega en `PanelOperativo` |
+| `page.jsx` ✏️ | Entrada del dashboard ADMIN, protegida con `requireAuth(["ADMIN"])`. Server Component: solo valida el rol y arma la barra de navegación (suma **Control de acceso**). El contenido lo delega en `PanelOperativo` |
 | `PanelOperativo.jsx` | Agrupa las tres secciones operativas del panel: la cuadrícula de ocupación, el alta de visitantes y **el formulario de reservas**. Existe como componente de cliente aparte porque `page.jsx` es Server Component y no puede tener estado: acá vive el contador que le avisa a la cuadrícula que se creó una reserva y tiene que recargarse |
+| `accesos/page.jsx` 🆕 | Ruta `/dashboard-admin/accesos`; valida server-side rol `ADMIN` |
+| `accesos/ControlAccesoContent.jsx` 🆕 | Control de acceso en la puerta: pestañas para escanear o escribir el código, tarjeta con los datos y la acción (ingreso/egreso), confirmación explícita protegida contra el doble clic, motivo destacado si no vale, y movimientos del día. Responsiva, con botones grandes |
 | `VisitantesContent.jsx` ✏️ | Alta de visitante + vehículo hecha por el admin (formulario completo). Suma el checkbox opcional "Persona con discapacidad": viaja en el alta y, mientras no está marcado, el desplegable no ofrece cocheras ACCESIBLE (con una nota que explica cómo verlas) |
 
 ### `app/dashboard-admin/cocheras/`
@@ -842,6 +938,10 @@ Sección destinada a usuarios internos con rol `USER`.
 | `ProtectedRoute.jsx` | Wrapper client-side para proteger rutas según autenticación/rol. Refactorizado: se eliminó el estado `isReady` y la decisión de renderizar se deriva directo de `isHydrated + isAuthenticated + hasRequiredRole`, lo que evita mostrar contenido un instante antes de redirigir |
 | `LogoutButton.jsx` | Botón "Cerrar sesión": llama a `logout()` del store (que borra la cookie JWT y limpia el estado) y navega a `/login` con `router.replace`, para que el botón Atrás no vuelva al dashboard |
 | `ReservasContent.jsx` ✏️ | **Movido desde `app/dashboard-user/`.** Alta de reserva por patente: se escribe/elige la patente (autocompletado nativo) y se resuelven solos el visitante y el tipo de vehículo. Vuelve a pedir la lista de vehículos al hacer foco en el campo, por si se cargó uno recién más arriba en la misma página. Sirve igual para los dos roles porque busca sobre el catálogo completo, sin filtrar por la cuenta que mira. La prop opcional `onReservaCreada` la usa el panel admin para refrescar la cuadrícula. Sus `id` de formulario van prefijados con `reserva-` para no chocar con los del alta de visitante, que se renderiza en la misma página. En modo admin oculta las cocheras ACCESIBLE cuando el dueño del vehículo tiene `tieneDiscapacidad === false`, y lo explica con su nombre (si el dato no viene, no oculta nada). El rechazo del backend se muestra tal cual |
+| `CodigoAccesoQR.jsx` 🆕 | Dibuja el QR del código (`APARCAR:` + código) con `qrcode`, cargado a demanda. Negro sobre blanco con margen, sin seguir el tema |
+| `ModalCodigoAcceso.jsx` 🆕 | Diálogo modal accesible con el QR, el código grande, *Copiar*, los datos de la reserva y la ventana de ingreso. Va por portal porque el listado usa container queries |
+| `LectorQR.jsx` 🆕 | Lector con la cámara: la pide recién al activarla, prefiere la trasera, usa `BarcodeDetector` o `jsqr`, la libera al leer, al detener y al desmontar, y explica cuando no hay permiso, cámara o contexto seguro |
+| `OcupacionCocheras.jsx` ✏️ | Panel de ocupación: muestra las reservas EN_CURSO como "Vehículo adentro" y avisa cuántos minutos se pasó de hora |
 | `AtajosJornada.jsx` | Los dos atajos de jornada (**media jornada** / **jornada completa**), compartidos por el formulario de reserva y el alta de visitante. Solo mueven el campo `Hasta`, sumando al inicio los minutos exactos del umbral con el que el backend clasifica la modalidad. El que coincide con la franja cargada queda marcado (`aria-pressed`), así que además de ser un atajo sirve de lectura de lo que se está reservando. Quedan deshabilitados sin inicio, porque no habría a qué sumarle. El `idPrefijo` evita que choquen los `id` cuando los dos formularios conviven en la misma página |
 
 Las pantallas nuevas basadas en Server Components utilizan preferentemente `requireAuth()` desde `utils/serverAuth.js`.
@@ -871,6 +971,8 @@ Las pantallas nuevas basadas en Server Components utilizan preferentemente `requ
 |---|---|
 | `env.js` | Resuelve variables públicas tanto en desarrollo como en Docker |
 | `serverAuth.js` | Protección server-side mediante `requireAuth(allowedRoles)` |
+| `codigoAcceso.js` 🆕 | Normalización y formato del código de acceso, contenido del QR y texto de la ventana de ingreso |
+| `ocupacion.js` ✏️ | Ocupación por día. EN_CURSO ocupa hasta ahora si se pasó de hora (`hastaEfectivo`); VENCIDA no ocupa |
 | `franjaHoraria.js` | Todo lo que necesita la franja horaria en el front: el tamaño del bloque (`PASO_MINUTOS`), bajar un horario al bloque en el que cae, el arranque por defecto, los umbrales de jornada y la traducción de la modalidad que manda el backend. El formato legible (`formatearRango`) se arma a mano y no con `toLocaleString`, porque `es-AR` devuelve reloj de 12 horas (`10:00 a. m.`), peor de leer para horarios de cochera, y el resultado varía según el ICU del entorno. Distingue dos reglas que conviene no confundir ✏️: `redondearAlBloqueLocal` lleva al bloque más cercano lo que escribe una persona, y `alBloque` trunca hacia abajo el arranque por defecto. El redondeo se resuelve sobre un `Date` y no sobre el texto porque puede empujar a la hora siguiente, y hasta al día siguiente |
 
 Ejemplo:
@@ -905,9 +1007,19 @@ Convención: `test/` refleja la estructura de `app/`, `store/` y `utils/` (misma
 | `components/ReservasContent.test.jsx` ✏️ | Resolución de visitante/vehículo por patente, cochera deshabilitada hasta tener match, **regresión del bug de caché de vehículos al hacer foco**, envío de la reserva, y toda la franja horaria: arranque en el bloque de 15 en curso, `step` declarado, horarios fuera de bloque bajados al bloque, rango invertido, atajos de jornada llevados hasta el campo y la modalidad que muestra el listado. Se movió junto con el componente. Suma las cocheras accesibles: ocultas para el admin si el dueño no declaró discapacidad, sin filtrar de nuevo en modo visitante, y el mensaje de rechazo del backend |
 | `components/AtajosJornada.test.jsx` | `components/AtajosJornada.jsx`: que cada atajo caiga **justo** en el umbral con el que el backend clasifica la modalidad, que muevan solo el `Hasta`, que marquen el que coincide con la franja cargada y que queden deshabilitados sin inicio |
 | `dashboard-admin/PanelOperativo.test.jsx` | **Regresión del bug de la reserva que no se agregaba**: que el panel admin incluya el formulario de reservas, que un admin pueda crear una resolviendo el visitante por patente, y que la cuadrícula pase de "0/1 ocupadas" a "1/1 ocupadas" sin recargar |
+| `utils/codigoAcceso.test.js` 🆕 | Normalización, formato, contenido del QR y texto de la ventana |
+| `utils/ocupacionAcceso.test.js` 🆕 | Vehículos adentro en la ocupación: ocupan hasta ahora, excedidos, VENCIDA no ocupa |
+| `components/CodigoAccesoQR.test.jsx` 🆕 | QR con prefijo y colores fijos, carga y error |
+| `components/ModalCodigoAcceso.test.jsx` 🆕 | Render, copiar, Escape, fondo, foco atrapado y devuelto |
+| `components/ReservasListadoAcceso.test.jsx` 🆕 | Insignias nuevas, filtros Activas/Vencidas, *Ver QR* y la línea de ingreso/egreso |
+| `components/ReservasContentCodigo.test.jsx` 🆕 | El QR al reservar y desde *Ver QR* |
+| `components/LectorQR.test.jsx` 🆕 | Cámara simulada: permiso denegado, sin cámara, contexto inseguro, lectura con `BarcodeDetector` y con `jsqr`, liberación al desmontar |
+| `components/OcupacionCocherasAcceso.test.jsx` 🆕 | "Vehículo adentro" y exceso en el panel de ocupación |
+| `dashboard-admin/accesos/ControlAccesoContent.test.jsx` 🆕 | Código tipeado válido e inválido, normalización, ingreso, egreso, doble clic, errores del backend, escaneo y movimientos |
+| `dashboard-admin/accesos/pagina.test.jsx` 🆕 | La ruta exige ADMIN y el panel enlaza a Control de acceso |
 | `dashboard-user/MiPerfilContent.test.jsx` | Carga y gestión de vehículos propios, validaciones, errores, edición y eliminación con confirmación. Verifica que no se consulte el perfil ni se muestren datos personales o un acceso duplicado a Mis datos |
 
-El detalle de qué casos prueba cada archivo (front y back) está en `TESTS.md`, en la raíz del repo: **69 archivos y 779 tests** en total (455 del backend en 42 archivos, 324 del frontend en 27). Los dos suites corren solas en cada pull request, vía `.github/workflows/ci.yml`.
+El detalle de qué casos prueba cada archivo (front y back) está en `TESTS.md`, en la raíz del repo: **94 archivos y 1112 tests** en total (593 del backend en 53 archivos, 519 de Vitest en 41; aparte, la regresión de Playwright). Los dos suites corren solas en cada pull request, vía `.github/workflows/ci.yml`.
 
 ---
 
@@ -978,7 +1090,8 @@ y luego pueden ser gestionados por un administrador.
 | `visitantes` ✏️ | Liquibase | `id`, `nombre`, `documento`, `email`, `password`, `telefono`, `is_active`, `tiene_discapacidad`. Es a la vez la cuenta de login y la persona que reserva | `Visitante.java` |
 | `vehiculos` | Liquibase | `id`, `patente`, `tipo`, `visitante_id` | `Vehiculo.java` |
 | `cocheras` | Liquibase | `id`, `numero` (único: es lo que frena un número duplicado en altas simultáneas), `sector`, `tipo`, `estado` | `Cochera.java` |
-| `reservas` | Liquibase | `id`, `desde`, `hasta`, `visitante_id`, `vehiculo_id`, `cochera_id`, `estado`, `fecha_creacion` | `Reserva.java` |
+| `reservas` ✏️ | Liquibase | `id`, `desde`, `hasta`, `visitante_id`, `vehiculo_id`, `cochera_id`, `estado`, `fecha_creacion`, `codigo` (único), `codigo_emitido_at`, `ingreso_at`, `egreso_at`, `minutos_exceso` | `Reserva.java` |
+| `acceso_intentos` 🆕 | Liquibase | `id`, `fecha`, `operacion`, `codigo`, `reserva_id`, `resultado`, `actor_email` | `AccesoIntento.java` |
 | `visitante_authorities` | Liquibase | `visitante_id`, `authority` | `Visitante.authorities` |
 | `otp_codes` | Liquibase | `id`, `token`, `user_id`, `expires_at`, `used` | `OneTimePassword.java` |
 | `databasechangelog` / `databasechangeloglock` | Liquibase | Internas de Liquibase | — |

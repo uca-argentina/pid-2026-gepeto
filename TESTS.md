@@ -39,6 +39,186 @@ Las suites existentes que realizan altas o bajas administrativas usan
 Los tests de servicios también verifican que el alta operativa propague al admin
 y que la accesibilidad se valide sobre el ocupante, independientemente del autor.
 
+## `integration/AccesoControllerTests.java`
+
+_13 tests._ Caja negra de `/api/v1/accesos` contra la base real. Los datos se arman
+en el propio test y relativos al reloj, de modo que el barrido programado de
+vencidas no cambie el resultado si llega a correr en el medio.
+
+```
+[Caja negra] un anonimo recibe 401
+[Caja negra] un USER recibe 403 en los tres endpoints: solo el ADMIN valida
+[Caja negra] reservar, ver el QR, ingresar y egresar: la cochera se ocupa y se libera
+[Caja negra] el USER ve su codigo y nunca el de otro; el ADMIN ve todos
+[Caja negra] una reserva cancelada ya no muestra su codigo
+[Caja negra] codigo con formato invalido → 400; sin codigo o sin accion → 400
+[Caja negra] codigo inexistente → 404 en consulta y en registro
+[Caja negra] fuera de tolerancia (anticipado): la consulta lo explica y el registro da 400
+[Caja negra] vencida (no-show) → 400 y queda VENCIDA
+[Caja negra] cancelada → 400
+[Caja negra] ya usada → 400; egreso sin ingreso → 400
+[Caja negra] un vehiculo que se paso de hora egresa igual, marcado como excedido
+[Caja negra] un conflicto de concurrencia (optimistic lock) → 409
+```
+
+El flujo completo cubre además: QR con prefijo y código tipeado con guion en
+minúsculas, cochera fuera de `/disponibles` mientras el vehículo está adentro y de
+nuevo libre tras el egreso, doble clic (`yaRegistrado`), permanencia mínima, uso
+único, movimientos del día y el registro de intentos rechazados.
+
+## `integration/ReservaEnCursoOcupacionTests.java`
+
+_5 tests._ Las consultas de ocupación contra H2, con "ahora" fijo en 2030 para que el
+barrido no las toque.
+
+```
+un vehiculo adentro dentro de su horario ocupa su franja, como una CONFIRMADA
+un vehiculo que se paso de hora sigue bloqueando la cochera en el presente
+una VENCIDA (no-show) no ocupa: los chequeos de disponibilidad la ignoran
+una FINALIZADA (ya egreso) no ocupa aunque su franja siga corriendo
+el barrido encuentra como candidatas solo las CONFIRMADAS que ya empezaron
+```
+
+## `integration/ReservaAccesoMigracionTests.java`
+
+_1 test._ La migración 011 sobre una base con reservas: no toca sus datos, deja el
+código nullable y único (admite varios NULL, rechaza un duplicado), crea
+`acceso_intentos` y se puede ejecutar de nuevo sin cambios.
+
+## `service/AccesoServiceTests.java`
+
+_33 tests._ Caja blanca del control de acceso con reloj fijo. Reserva de 15:00 a
+17:00, código emitido a las 14:00: ventana de ingreso de 14:45 a 15:30.
+
+```
+consulta:
+  dentro de la ventana devuelve INGRESO valido con los datos, sin tocar la reserva
+  escanear el QR y tipear el codigo llegan a la misma reserva   (parametrizado: 3 casos)
+  antes de la ventana informa ANTICIPADO y a que hora abre
+  pasada la tolerancia la deja VENCIDA (evaluacion perezosa) y lo informa
+  con el vehiculo adentro devuelve EGRESO
+  si el vehiculo se paso de hora, la consulta muestra cuanto
+  un segundo escaneo enseguida del ingreso no habilita el egreso
+  una reserva FINALIZADA informa que el codigo ya se uso
+  una reserva CANCELADA tiene el codigo invalido
+  un formato invalido es 400 y queda registrado
+  un codigo inexistente es 404 y queda registrado
+registro de ingreso:
+  pasa a EN_CURSO, guarda la hora y deja el movimiento con el operador
+  justo en la apertura de la ventana (desde - 15) se acepta
+  justo en el limite de la tolerancia (desde + 30) se acepta
+  un segundo antes de la ventana se rechaza por ANTICIPADO, sin cambios
+  un segundo despues de la tolerancia se rechaza y la reserva queda VENCIDA
+  repetirlo dentro de 2 minutos (doble clic) devuelve lo registrado, sin registrar dos veces
+  repetirlo mas tarde se rechaza: el codigo ahora solo sirve para el egreso
+  una reserva cancelada no puede ingresar
+  una reserva VENCIDA por el barrido no puede ingresar
+  un conflicto de version (otro operador a la vez) se registra y se propaga para el 409
+registro de egreso:
+  sin ingreso previo se rechaza
+  antes de la permanencia minima (59 s) se rechaza
+  cumplida la permanencia minima pasa a FINALIZADA y libera la cochera
+  dentro de la gracia (hasta + 15) no se marca exceso
+  despues de la gracia se registra igual, marcado como excedido con los minutos
+  repetirlo dentro de 2 minutos devuelve lo registrado
+  uso unico: ingreso, egreso, y despues el codigo no sirve para nada
+  un operador sin cuenta no puede registrar
+movimientos del dia pide ingresos y egresos desde la medianoche del predio
+un rechazo no confia en una consulta previa: la regla se evalua al registrar
+```
+
+## `service/ReglasAccesoTests.java`
+
+_24 tests._ Bordes exactos de cada ventana con los valores por defecto.
+
+```
+ingreso anticipado:
+  la ventana abre 15 minutos antes de desde
+  un segundo antes de la apertura todavia es anticipado
+  justo en la apertura ya se puede ingresar
+tolerancia de ingreso tardio:
+  justo en el limite (desde + 30) todavia se puede ingresar
+  un segundo despues del limite ya vencio
+  si el codigo se emitio despues de desde, la tolerancia se cuenta desde la emision
+  sin fecha de emision, la tolerancia se cuenta desde desde
+  nunca pasa de hasta: en una franja corta la ventana cierra con la reserva
+  la ventana que se muestra cierra en la tolerancia cuando es anterior a hasta
+marcar VENCIDA:
+  pasa a VENCIDA una CONFIRMADA que vencio
+  no toca una CONFIRMADA dentro de la tolerancia
+  solo una CONFIRMADA puede vencer: un vehiculo adentro no vence nunca   (parametrizado: 4 casos)
+egreso:
+  un egreso a los 59 segundos del ingreso es prematuro
+  justo a los 60 segundos ya se puede egresar
+  justo al final de la gracia (hasta + 15) no hay exceso
+  un segundo despues de la gracia es excedido, contando desde hasta
+  un egreso antes de hasta no tiene exceso
+idempotencia:
+  repetir la accion a los 120 segundos devuelve lo registrado
+  a los 121 segundos ya no se considera el mismo pedido
+  sin registro previo no hay nada que devolver
+el reloj inyectado manda: ahora, instante e inicio del dia salen de el
+```
+
+## `service/CodigoAccesoTests.java`
+
+_29 tests._ Caja blanca del código corto.
+
+```
+el mismo id con el mismo secreto da siempre el mismo codigo
+el codigo tiene 10 caracteres del alfabeto Crockford (sin I, L, O ni U)
+ids distintos dan codigos distintos (1000 reservas, ninguna colision)
+sin el secreto no se llega al mismo codigo: otro secreto da otro valor
+el contador de intento rederiva un codigo distinto para el mismo id
+asignar guarda el codigo derivado y la fecha de emision
+si el codigo ya lo tiene otra reserva, se rederiva con el contador
+si nunca encuentra un codigo libre, falla en vez de quedar en un bucle
+normaliza prefijo, mayusculas, espacios, guiones y equivalencias   (parametrizado: 10 casos)
+rechaza lo que no es un codigo de 10 caracteres validos   (parametrizado: 7 casos)
+rechaza una entrada vacia o nula   (parametrizado: 2 casos)
+normalizar un codigo derivado lo deja igual: el QR y el tipeo llegan al mismo valor
+formatear lo muestra como XXXXX-XXXXX
+```
+
+## `component/CodigosAccesoBackfillTests.java`
+
+_3 tests._
+
+```
+asigna el codigo derivado del id a cada CONFIRMADA vigente sin codigo
+una reserva ya empezada al migrar recibe su tolerancia completa desde la migracion
+es idempotente: si no queda ninguna sin codigo, no escribe nada
+```
+
+## `filters/AccesoRateLimitFilterTests.java`
+
+_6 tests._ Caja blanca, con el filtro suelto (la suite de integración usa un límite
+alto a propósito para no depender del orden de las clases).
+
+```
+solo filtra /api/v1/accesos/**
+deja pasar 60 validaciones por minuto: un limite operativo, no el de 5 del login
+la 61ra recibe 429 con un mensaje en el formato de errores del proyecto
+cuenta por operador: otro operador desde la misma IP tiene su propio cupo
+sin usuario autenticado cuenta por IP
+no choca con RateLimitFilter: cada uno marca la request con su propio atributo
+```
+
+## `config/AccesoConfigTests.java`
+
+_4 tests._
+
+```
+en produccion, el secreto de desarrollo impide arrancar
+en desarrollo, el secreto por defecto se acepta (con una advertencia en el log)
+un secreto propio se acepta en produccion
+una variable definida pero vacia se rechaza en vez de dejar el HMAC sin clave
+```
+
+> Surefire cuenta los `@Nested` de `AccesoServiceTests` y `ReglasAccesoTests` en el
+> XML del reporte; el resumen `.txt` de esas dos clases muestra 0. Los conteos de
+> arriba salen del XML.
+
 ## `integration/PerfilControllerTests.java`
 
 _12 tests._
@@ -123,17 +303,19 @@ _1 tests._
 otpCleanup deletes all expired OTPs
 ```
 
-## `component/ReservasVencidasTests.java`
+## `component/ReservasVencidasTests.java` ✏️
 
-_4 tests._
+_6 tests._
 
-Caja blanca de la tarea que marca como FINALIZADA las reservas vencidas. Ojo con lo que **no** hace: no es lo que libera la cochera (eso sale del solapamiento de rangos, que funciona aunque la tarea nunca corra), solo mantiene el estado legible.
+Caja blanca del barrido que pasa a VENCIDA (no-show) las CONFIRMADAS a las que se les cerró la ventana de ingreso, con reloj fijo. Ya no marca FINALIZADA: eso ahora significa que el vehículo egresó. La validación del código hace la misma evaluación al momento, así que nada depende de que la tarea corra.
 
 ```
-pasa a FINALIZADA las reservas confirmadas cuya franja ya termino
-solo considera las reservas CONFIRMADAS
+pasa a VENCIDA (no FINALIZADA) una reserva cuya franja termino sin ingreso
+pasa a VENCIDA una reserva en curso de horario si ya paso la tolerancia de ingreso
+no toca una reserva que todavia esta dentro de la tolerancia
+solo considera las CONFIRMADAS: una EN_CURSO no vence nunca por tiempo
 no escribe en la base cuando no hay nada vencido
-marca todas las vencidas de una, no solo la primera
+marca todas las vencidas de una, no solo la primera, y deja las vigentes
 ```
 
 ## `component/RevokedUserCacheTests.java`
@@ -567,11 +749,11 @@ si la cuenta del token no existe, se ocultan las ACCESIBLE (lado conservador)
 la version sin datos de quien pide sigue devolviendo las ACCESIBLE
 ```
 
-## `service/CocheraServiceTests.java`
+## `service/CocheraServiceTests.java` ✏️
 
-_22 tests._
+_23 tests._
 
-Incluye la cancelacion automatica de reservas al deshabilitar una cochera.
+Incluye la cancelacion automatica de reservas al deshabilitar una cochera, y que un vehiculo adentro (EN_CURSO) ocupe la cochera aunque se haya pasado de hora.
 
 ```
 crear lanza ValidationException si ya existe una cochera con ese numero
@@ -596,6 +778,7 @@ crearEnLote lanza ValidationException si hay un numero repetido dentro del propi
 crearEnLote lanza ValidationException si un numero ya existe en la base, sin guardar nada
 crearEnLote guarda todas las cocheras del lote cuando son validas
 listarSectores delega en el repository
+listarDisponibles excluye cocheras con un vehiculo adentro (EN_CURSO), aunque se haya pasado de hora
 ```
 
 ## `service/NumeracionCocherasTests.java`
@@ -636,9 +819,9 @@ la regla no afecta a las cocheras que no son ACCESIBLE
 un flag en null se trata como 'sin discapacidad declarada'
 ```
 
-## `service/ReservaServiceTests.java`
+## `service/ReservaServiceTests.java` ✏️
 
-_32 tests._
+_39 tests._
 
 Las mismas reglas que `ReservaControllerTests`, pero con mocks y aisladas del repositorio. Incluye la validacion de la franja horaria: rango invertido, duracion cero, franja ya vencida, y el vehiculo comprometido en otra cochera. ✏️ El caso de cochera ACCESIBLE ahora parte de un visitante con la discapacidad declarada (la regla completa esta en `ReservaAccesibilidadTests`).
 
@@ -672,6 +855,13 @@ crear rechaza un fin que no cae en un bloque de 15 minutos
 crear rechaza un horario con segundos, aunque los minutos sean multiplo de 15
 crear acepta los cuatro bloques de la hora   (parametrizado: 4 casos)
 crear acepta una reserva de exactamente 15 minutos
+crear asigna el codigo de acceso a la reserva guardada, en la misma operacion
+crear rechaza la franja si en la cochera hay un vehiculo adentro (EN_CURSO)
+crear rechaza un vehiculo que esta adentro de otra cochera en esa franja
+cancelar rechaza una reserva EN_CURSO: corresponde registrar el egreso
+cancelar rechaza una reserva VENCIDA
+cancelar rechaza una CONFIRMADA a la que ya se le cerro la ventana de ingreso
+el codigo solo viaja mientras sirve: no se muestra en una reserva cancelada
 ```
 
 ## `service/UserServiceTests.java`
@@ -765,6 +955,145 @@ cambiarPasswordPropia lanza NotFoundException si no existe una cuenta con ese em
 ---
 
 # Frontend (`aparcar-front/test/`)
+
+## `dashboard-admin/accesos/ControlAccesoContent.test.jsx`
+
+_23 tests._ La pantalla de control de acceso con la API simulada. La cámara se
+reemplaza por un lector falso que entrega una lectura (la cámara real se prueba en
+`LectorQR.test.jsx`).
+
+```
+código escrito:
+  valida un código tipeado y muestra de quién es la reserva y qué corresponde
+  normaliza antes de consultar   (parametrizado: 4 casos: minúsculas, espacios, prefijo, O→0)
+  el campo muestra lo tipeado en mayúsculas
+  un código con formato inválido se rechaza sin consultar al backend
+  un código inexistente muestra el mensaje del backend
+  un código que no se puede usar muestra el motivo destacado y no ofrece registrar
+confirmación:
+  registra el ingreso, muestra el resultado y deja el campo listo para el siguiente
+  registra el egreso y avisa si el vehículo se pasó de hora
+  un doble clic en confirmar manda un solo registro
+  si el backend ya lo tenía registrado, lo informa sin duplicarlo
+  un rechazo del backend al registrar se muestra con su mensaje
+  un conflicto de concurrencia (409) pide volver a validar
+  sin conexión con el backend lo dice en vez de quedarse cargando
+escaneo:
+  lo leído con la cámara hace la misma consulta que el código escrito
+  después de registrar, el lector vuelve a prenderse solo para el siguiente vehículo
+  un QR que no es de AparcAR se rechaza sin consultar
+  si la cámara no se puede usar, el lector puede pasar al código escrito
+movimientos:
+  lista los movimientos del día y avisa si no hay
+  marca los egresos excedidos
+  si no se pueden cargar, lo dice
+```
+
+## `dashboard-admin/accesos/pagina.test.jsx`
+
+_2 tests._
+
+```
+exige ADMIN, muestra el control de acceso y permite volver al panel
+el panel del admin incorpora el acceso a Control de acceso
+```
+
+## `components/LectorQR.test.jsx`
+
+_10 tests._ `getUserMedia`, `BarcodeDetector`, el canvas y `jsqr` simulados.
+
+```
+no pide la cámara hasta que el operador la activa, y prefiere la trasera
+con BarcodeDetector lee el QR, entrega el texto y apaga la cámara
+sin BarcodeDetector usa jsqr sobre un cuadro del video
+si el operador no da permiso, lo explica y ofrece el código escrito
+si no hay cámara, lo dice
+en HTTP sin localhost avisa de entrada que la cámara no va a funcionar, sin pedirla
+libera la cámara al salir de la pantalla
+si se sale mientras el navegador pide permiso, apaga la cámara apenas llega
+Detener cámara la apaga sin salir de la pantalla
+con autoIniciar vuelve a prender la cámara sola para el siguiente vehículo
+```
+
+## `components/ModalCodigoAcceso.test.jsx`
+
+_9 tests._
+
+```
+es un diálogo modal con el QR, el código grande, los datos y la ventana de ingreso
+con el vehículo adentro recuerda que el mismo código sirve para salir
+copia el código con guion al portapapeles y lo confirma
+si el navegador no deja copiar, lo avisa
+cierra con Escape
+cierra con el botón Cerrar y con un clic en el fondo, no con un clic adentro
+atrapa el foco: arranca en cerrar y Tab da la vuelta sin salir del diálogo
+al cerrarse devuelve el foco a quien lo abrió y libera el scroll
+muestra el título que le pasen (por ejemplo, al confirmar la reserva)
+```
+
+## `components/CodigoAccesoQR.test.jsx`
+
+_4 tests._ `qrcode` simulado.
+
+```
+dibuja el QR con el prefijo APARCAR: y colores fijos, sin depender del tema
+mientras genera muestra un indicador de carga
+si no puede dibujarlo, remite al código escrito
+al cambiar de reserva no deja el QR de la anterior
+```
+
+## `components/ReservasListadoAcceso.test.jsx`
+
+_11 tests._ Los cuatro primeros corren en modo user y en modo admin.
+
+```
+Activas incluye las reservas con el vehículo adentro, y hay un filtro de Vencidas   (x2)
+muestra una insignia para cada estado nuevo   (x2)
+muestra la hora de ingreso, la de egreso y el exceso registrados en la puerta   (x2)
+una reserva con el vehículo adentro ya no se puede cancelar   (x2)
+el visitante lo ve en las CONFIRMADA y EN_CURSO, y abre el código de esa reserva
+no aparece en reservas sin código vigente
+el admin no lo ve en su listado
+```
+
+## `components/ReservasContentCodigo.test.jsx`
+
+_4 tests._
+
+```
+al reservar, el visitante ve enseguida el QR y el código de la reserva nueva
+el admin que reserva en nombre de otro no recibe el modal
+si el backend no devolvió código, no abre un modal vacío
+Ver QR en Mis reservas abre el código de esa reserva
+```
+
+## `components/OcupacionCocherasAcceso.test.jsx`
+
+_2 tests._
+
+```
+muestra EN_CURSO como ocupada con el vehículo adentro, y avisa si se pasó de hora
+una reserva con el vehículo adentro no se puede cancelar desde el panel
+```
+
+## `utils/codigoAcceso.test.js`
+
+_30 tests._ Normalización (9 casos válidos, 10 inválidos), formato, contenido del QR,
+texto de la ventana (mismo día, cruzando la medianoche, sin datos) y qué estados
+tienen un código vigente (5 estados más los casos sin código).
+
+## `utils/ocupacionAcceso.test.js`
+
+_6 tests._
+
+```
+un vehículo que se pasó de hora ocupa hasta ahora, no hasta su horario
+dentro de su horario ocupa lo reservado y no está excedido
+solo EN_CURSO se extiende: una CONFIRMADA o FINALIZADA ocupa su franja
+un vehículo de ayer que sigue adentro ocupa también hoy
+marca la cochera como ocupada con vehículo adentro y excedida
+una reserva VENCIDA (nunca llegó) no ocupa
+```
 
 ## `dashboard-admin/tarifas/TarifasManagement.test.jsx`
 
@@ -1357,10 +1686,18 @@ es case-insensitive
 
 | | Archivos | Tests |
 |---|---|---|
-| Backend | 44 | 465 |
-| Frontend (Vitest) | 31 | 418 |
+| Backend | 53 | 593 |
+| Frontend (Vitest) | 41 | 519 |
 | Frontend UI (Playwright) | 1 | 21 |
-| **Total** | **76** | **904** |
+| **Total** | **95** | **1133** |
+
+Control de acceso por código QR: agrega 128 casos de backend (9 archivos nuevos;
+`ReservaServiceTests`, `CocheraServiceTests` y `ReservasVencidasTests` suman casos) y
+101 de Vitest (10 archivos nuevos; `utils/reservasListado.test.js` ajusta su
+expectativa de contadores por el filtro Vencidas). Verificación: `mvn clean install`
+(593 tests, sin fallos), `npm test` (519 tests, sin fallos), `npm run lint` (sin
+errores; conserva la advertencia previa de React Hook Form) y `npm run build`. La
+regresión de Playwright no se volvió a correr en esta tanda.
 
 Refactors de Ver reservas y Mis reservas (solo frontend): agregan 36 tests de Vitest.
 `npm test -- --maxWorkers=2` pasa los 418 casos y `npm run build` compila.

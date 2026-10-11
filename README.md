@@ -27,6 +27,7 @@ Oficinas, universidades, sanatorios y organizadores de eventos administran sus c
 - 🅿️ **Cocheras clasificadas** por número, sector y tipo (auto, moto, accesible, carga)
 - 📅 **Reservas por fecha**, con asignación de una cochera compatible
 - 🚫 **Cero sobreocupación** — el sistema jamás asigna dos reservas al mismo lugar
+- 🎫 **Código QR de acceso** — cada reserva tiene su QR y un código corto; el operador registra ingreso y egreso en la puerta
 
 ## Cómo está armado
 
@@ -53,6 +54,100 @@ borra ni fusiona datos: si una base anterior contiene emails que solo difieren e
 mayúsculas/espacios, o documentos que solo difieren en espacios extremos, hay que
 resolver esos duplicados antes de aplicar la migración. El alta administrativa con
 vehículo y reserva conserva su flujo.
+
+### Control de acceso por código QR
+
+Cada reserva confirmada recibe, en el momento del alta, un **código corto** de 10
+caracteres (`XXXXX-XXXXX`, base32 sin I, L, O ni U para que no se confundan) y su
+**QR**, que lleva exactamente ese código con el prefijo `APARCAR:`. Escanear el QR y
+tipear el código son la misma operación.
+
+- **Visitante (USER):** en *Mis reservas*, cada reserva CONFIRMADA o EN_CURSO tiene
+  **Ver QR**: el QR, el código con botón *Copiar*, los datos de la reserva y la
+  ventana de ingreso ("Ingresá entre 14:45 y 15:30"). Al reservar, el QR se abre solo.
+- **Operador (ADMIN):** *Control de acceso* (`/dashboard-admin/accesos`) escanea con la
+  cámara o recibe el código tipeado, muestra de quién es la reserva y qué corresponde
+  (ingreso o egreso) y lo registra con un botón. Lista los movimientos del día.
+
+El código es solo una **llave**: se deriva con HMAC-SHA256 del id de la reserva y un
+secreto del servidor, así que no contiene ni filtra datos personales y no se puede
+falsificar. Los datos los devuelve el backend al validarlo.
+
+**Estados:** `CONFIRMADA → EN_CURSO` (ingreso) `→ FINALIZADA` (egreso). Además
+`CANCELADA` y `VENCIDA` (no se presentó). Un código sirve una vez para entrar y una
+vez para salir; con la reserva cancelada o vencida deja de valer. Una reserva en curso
+no se puede cancelar: se registra su egreso. Un vehículo adentro ocupa su cochera
+hasta que sale, aunque se pase de hora.
+
+**Reglas (configurables en `application.yml`, `aparcar.acceso.*`):**
+
+| Propiedad | Por defecto | Qué controla |
+|---|---|---|
+| `ingreso-anticipado-min` | 15 | Desde cuántos minutos antes de `desde` se acepta el ingreso |
+| `ingreso-tolerancia-min` | 30 | Hasta cuántos minutos después (contados desde el mayor entre `desde` y la emisión del código, y nunca después de `hasta`). Pasado eso, la reserva queda VENCIDA y libera la cochera |
+| `egreso-gracia-min` | 15 | Un egreso posterior a `hasta` + gracia se registra igual, marcado como excedido con sus minutos |
+| `permanencia-minima-seg` | 60 | No se acepta el egreso antes de este tiempo desde el ingreso (evita un segundo escaneo accidental) |
+| `idempotencia-seg` | 120 | Repetir la misma acción dentro de esta ventana devuelve lo ya registrado (`yaRegistrado: true`) |
+| `rate-limit-por-minuto` | 60 | Validaciones por minuto y por operador en `/api/v1/accesos/**` |
+| `codigo-secret` | `ACCESO_CODIGO_SECRET` | Secreto del HMAC (ver abajo) |
+
+**Endpoints (solo ADMIN):**
+
+| Método y ruta | Qué hace |
+|---|---|
+| `POST /api/v1/accesos/consulta` `{codigo}` | Sin efectos sobre la reserva. Devuelve los datos, la acción que corresponde (`INGRESO`/`EGRESO`) o el `motivo` por el que no se puede (`ANTICIPADO`, `VENCIDA`, `CANCELADA`, `YA_UTILIZADA`, `PERMANENCIA_MINIMA`). 400 si el formato es inválido, 404 si el código no existe |
+| `POST /api/v1/accesos/registro` `{codigo, accion}` | Registra el ingreso o el egreso, revalidando todo. 400 si la regla no lo permite (el motivo viaja en `details[0]`), 404 si no existe, 409 si otro operador lo registró al mismo tiempo |
+| `GET /api/v1/accesos/movimientos` | Ingresos y egresos del día |
+
+Cada intento de validación (válido o no) queda en la tabla `acceso_intentos` con el
+operador y el resultado. El código viaja en `ReservaResponseDto.acceso`, que solo
+reciben el dueño de la reserva y el ADMIN.
+
+#### El secreto `ACCESO_CODIGO_SECRET`
+
+Va en el `.env` del backend (ver `.env.example`). En desarrollo se puede omitir: se
+usa un valor fijo **solo para dev**. Con el perfil `prod` la aplicación **no arranca**
+sin un secreto propio. Generalo con `openssl rand -base64 32` y no lo subas al repo.
+Cambiarlo no invalida los códigos ya emitidos (se guardan en la reserva y se
+validan buscándolos en la base); solo cambia cómo se derivan los nuevos.
+
+#### Migración en bases existentes
+
+No hay pasos manuales. Al arrancar el backend actualizado:
+
+1. Liquibase aplica `011-acceso-reservas.yaml`: agrega a `reservas` las columnas
+   `codigo` (con índice único), `codigo_emitido_at`, `ingreso_at`, `egreso_at` y
+   `minutos_exceso`, y crea `acceso_intentos`. No modifica datos.
+2. `CodigosAccesoBackfill` les asigna código a las reservas **CONFIRMADAS vigentes**
+   que no lo tienen (el HMAC no se puede calcular en SQL). Es idempotente.
+   La tolerancia de ingreso de esas reservas se cuenta desde la migración, así que
+   una que ya había empezado no vence en el acto.
+3. Las reservas que el barrido viejo había marcado FINALIZADA por tiempo quedan como
+   están. Desde ahora, una reserva que termina sin ingreso queda VENCIDA.
+
+Definí `ACCESO_CODIGO_SECRET` **antes** de ese primer arranque en producción: los
+códigos del backfill se derivan con el secreto vigente en ese momento.
+
+#### Probar el lector de cámara desde el celular
+
+Los navegadores solo dan acceso a la cámara en un **contexto seguro**: HTTPS o
+`localhost`. Desde el celular, `http://192.168.x.x:3000` **no** es seguro, así que el
+lector avisa y queda el código escrito. Opciones:
+
+- **Túnel HTTPS** (recomendado): exponé el front y el back con un túnel, por ejemplo
+  `cloudflared tunnel --url http://localhost:3000` y otro para `:8080`. Poné la URL
+  HTTPS del back en `NEXT_PUBLIC_API_BASE_URL` del front y la del front en
+  `CORS_ORIGENES_EXTRA` del `.env` del back (admite comodines, por ejemplo
+  `https://*.trycloudflare.com`). Reiniciá ambos.
+- **IP local, sin cámara:** para probar el código escrito desde el celular alcanza con
+  `NEXT_PUBLIC_API_BASE_URL=http://<IP-de-tu-máquina>:8080` en el front, y
+  `CORS_ORIGENES_EXTRA=http://<IP-de-tu-máquina>:3000` en el back (en dev el CORS solo
+  permite `localhost`). Desde el celular abrí la URL *Network* que muestra `npm run dev`.
+- En Chrome de escritorio también podés marcar el origen como seguro en
+  `chrome://flags/#unsafely-treat-insecure-origin-as-secure` (solo para pruebas).
+
+El lector usa `BarcodeDetector` nativo cuando el navegador lo tiene (Chrome/Edge en
+Android y escritorio) y, si no, `jsqr`, que se descarga recién en ese momento.
 
 ### Estructura
 
