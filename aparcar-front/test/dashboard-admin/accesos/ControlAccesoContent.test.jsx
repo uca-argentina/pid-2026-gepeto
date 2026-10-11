@@ -136,6 +136,19 @@ describe("ControlAccesoContent: código escrito", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("No existe ninguna reserva con el código ZZZZZ-99999.");
   });
 
+  it("al cambiar el código escrito descarta la reserva previamente validada", async () => {
+    const user = userEvent.setup();
+    postMock.mockResolvedValueOnce(consultaValida());
+    render(<ControlAccesoContent />);
+    await tipear(user, "ABCDE12345");
+    await screen.findByRole("button", { name: "Registrar ingreso" });
+
+    await user.clear(screen.getByLabelText("Código de acceso"));
+
+    expect(screen.queryByRole("article")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Registrar ingreso" })).not.toBeInTheDocument();
+  });
+
   it("un código que no se puede usar muestra el motivo destacado y no ofrece registrar", async () => {
     const user = userEvent.setup();
     postMock.mockResolvedValueOnce({
@@ -154,6 +167,22 @@ describe("ControlAccesoContent: código escrito", () => {
     expect(screen.queryByRole("button", { name: /Registrar/ })).not.toBeInTheDocument();
     await user.click(within(tarjeta).getByRole("button", { name: "Validar otro código" }));
     expect(screen.queryByRole("article")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["COCHERA_OCUPADA", "La cochera sigue ocupada"],
+    ["VEHICULO_EN_CURSO", "El vehículo ya tiene un ingreso registrado"],
+  ])("muestra el rechazo %s sin permitir el ingreso", async (motivo, titulo) => {
+    const user = userEvent.setup();
+    postMock.mockResolvedValueOnce(consultaValida("INGRESO", {
+      valido: false, accion: null, motivo, mensaje: "Registrá primero el egreso pendiente.",
+    }));
+    render(<ControlAccesoContent />);
+
+    await tipear(user, "ABCDE12345");
+
+    expect(await screen.findByRole("article", { name: titulo })).toHaveTextContent("Registrá primero el egreso pendiente.");
+    expect(screen.queryByRole("button", { name: "Registrar ingreso" })).not.toBeInTheDocument();
   });
 });
 
@@ -222,6 +251,29 @@ describe("ControlAccesoContent: confirmación", () => {
     expect(await screen.findByText("Ingreso registrado")).toBeInTheDocument();
   });
 
+  it("impide validar otro código mientras se registra el movimiento", async () => {
+    const user = userEvent.setup();
+    let resolver;
+    postMock.mockResolvedValueOnce(consultaValida())
+      .mockReturnValueOnce(new Promise((resolve) => { resolver = resolve; }));
+    render(<ControlAccesoContent />);
+    const lecturaPendiente = lectorProps.ultimo.onLectura;
+    await tipear(user, "ABCDE12345");
+    await user.click(await screen.findByRole("button", { name: "Registrar ingreso" }));
+
+    expect(screen.getByRole("button", { name: "Validar" })).toBeDisabled();
+    expect(screen.getByRole("tab", { name: "Escanear QR" })).toBeDisabled();
+    expect(screen.getByLabelText("Código de acceso")).toHaveAttribute("readonly");
+    await act(async () => { await lecturaPendiente("APARCAR:FGHJK67890"); });
+    expect(postMock).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole("article", { name: "Corresponde: INGRESO" })).toBeInTheDocument();
+
+    await act(async () => { resolver(registroOk()); });
+
+    expect(await screen.findByText("Ingreso registrado")).toBeInTheDocument();
+    expect(screen.getByLabelText("Código de acceso")).not.toHaveAttribute("readonly");
+  });
+
   it("si el backend ya lo tenía registrado, lo informa sin duplicarlo", async () => {
     const user = userEvent.setup();
     postMock.mockResolvedValueOnce(consultaValida()).mockResolvedValueOnce(registroOk("INGRESO", {
@@ -272,6 +324,23 @@ describe("ControlAccesoContent: confirmación", () => {
 });
 
 describe("ControlAccesoContent: escaneo", () => {
+  it("una segunda lectura no reemplaza una consulta pendiente", async () => {
+    let resolver;
+    postMock.mockReturnValueOnce(new Promise((resolve) => { resolver = resolve; }));
+    render(<ControlAccesoContent />);
+
+    await act(() => {
+      lectorProps.ultimo.onLectura("APARCAR:ABCDE12345");
+      lectorProps.ultimo.onLectura("APARCAR:FGHJK67890");
+    });
+
+    expect(postMock).toHaveBeenCalledTimes(1);
+    expect(lectorProps.ultimo.disabled).toBe(true);
+    await act(() => resolver(consultaValida()));
+    expect(await screen.findByRole("article", { name: "Corresponde: INGRESO" })).toHaveTextContent("ABCDE-12345");
+    expect(lectorProps.ultimo.disabled).toBe(false);
+  });
+
   it("lo leído con la cámara hace la misma consulta que el código escrito", async () => {
     const user = userEvent.setup();
     postMock.mockResolvedValueOnce(consultaValida());

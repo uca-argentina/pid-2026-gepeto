@@ -79,6 +79,10 @@ vez para salir; con la reserva cancelada o vencida deja de valer. Una reserva en
 no se puede cancelar: se registra su egreso. Un vehículo adentro ocupa su cochera
 hasta que sale, aunque se pase de hora.
 
+El ingreso también comprueba que la cochera esté libre y que el vehículo no tenga
+otro ingreso pendiente de egreso. Esto se vuelve a validar al confirmar, incluso
+si dos operadores presentan códigos distintos al mismo tiempo.
+
 **Reglas (configurables en `application.yml`, `aparcar.acceso.*`):**
 
 | Propiedad | Por defecto | Qué controla |
@@ -95,7 +99,7 @@ hasta que sale, aunque se pase de hora.
 
 | Método y ruta | Qué hace |
 |---|---|
-| `POST /api/v1/accesos/consulta` `{codigo}` | Sin efectos sobre la reserva. Devuelve los datos, la acción que corresponde (`INGRESO`/`EGRESO`) o el `motivo` por el que no se puede (`ANTICIPADO`, `VENCIDA`, `CANCELADA`, `YA_UTILIZADA`, `PERMANENCIA_MINIMA`). 400 si el formato es inválido, 404 si el código no existe |
+| `POST /api/v1/accesos/consulta` `{codigo}` | No registra movimientos; si la tolerancia ya pasó, marca la reserva VENCIDA. Devuelve los datos, la acción que corresponde (`INGRESO`/`EGRESO`) o el `motivo` por el que no se puede (`ANTICIPADO`, `VENCIDA`, `CANCELADA`, `YA_UTILIZADA`, `PERMANENCIA_MINIMA`, `COCHERA_OCUPADA`, `VEHICULO_EN_CURSO`). 400 si el formato es inválido, 404 si el código no existe |
 | `POST /api/v1/accesos/registro` `{codigo, accion}` | Registra el ingreso o el egreso, revalidando todo. 400 si la regla no lo permite (el motivo viaja en `details[0]`), 404 si no existe, 409 si otro operador lo registró al mismo tiempo |
 | `GET /api/v1/accesos/movimientos` | Ingresos y egresos del día |
 
@@ -271,6 +275,12 @@ Instalar dependencias (solo hace falta la primera vez, o cuando cambia `package.
 ```bash
 npm install
 ```
+
+Al cambiar a una rama que incorpora el QR, ejecutá nuevamente `npm install`
+en `aparcar-front` antes de iniciar el frontend: instala `qrcode` y `jsqr`, ya
+declarados en `package.json` y `package-lock.json`. Si aparece
+`Module not found: Can't resolve 'qrcode'`, detené el frontend, instalá las
+dependencias y volvé a ejecutar `npm run dev`.
 
 **Para desarrollo día a día** (recarga automática al guardar cambios):
 ```bash

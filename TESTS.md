@@ -41,7 +41,7 @@ y que la accesibilidad se valide sobre el ocupante, independientemente del autor
 
 ## `integration/AccesoControllerTests.java`
 
-_13 tests._ Caja negra de `/api/v1/accesos` contra la base real. Los datos se arman
+_19 tests._ Caja negra de `/api/v1/accesos` contra la base real. Los datos se arman
 en el propio test y relativos al reloj, de modo que el barrido programado de
 vencidas no cambie el resultado si llega a correr en el medio.
 
@@ -59,6 +59,10 @@ vencidas no cambie el resultado si llega a correr en el medio.
 [Caja negra] ya usada → 400; egreso sin ingreso → 400
 [Caja negra] un vehiculo que se paso de hora egresa igual, marcado como excedido
 [Caja negra] un conflicto de concurrencia (optimistic lock) → 409
+[Caja negra] una cochera ocupada rechaza otro código hasta registrar el egreso anterior
+[Caja negra] la tolerancia anticipada no permite ingresar un vehículo que sigue adentro
+[Concurrencia] dos operadores con el mismo código registran un solo movimiento (ingreso y egreso)
+[Concurrencia] dos códigos distintos no ocupan la misma cochera ni el mismo vehículo (2 casos)
 ```
 
 El flujo completo cubre además: QR con prefijo y código tipeado con guion en
@@ -68,12 +72,14 @@ nuevo libre tras el egreso, doble clic (`yaRegistrado`), permanencia mínima, us
 
 ## `integration/ReservaEnCursoOcupacionTests.java`
 
-_5 tests._ Las consultas de ocupación contra H2, con "ahora" fijo en 2030 para que el
+_7 tests._ Las consultas de ocupación contra H2, con "ahora" fijo en 2030 para que el
 barrido no las toque.
 
 ```
 un vehiculo adentro dentro de su horario ocupa su franja, como una CONFIRMADA
 un vehiculo que se paso de hora sigue bloqueando la cochera en el presente
+un ingreso anticipado ocupa desde la entrada real, antes del inicio de la reserva
+un vehiculo excedido ocupa también un rango que empieza exactamente ahora
 una VENCIDA (no-show) no ocupa: los chequeos de disponibilidad la ignoran
 una FINALIZADA (ya egreso) no ocupa aunque su franja siga corriendo
 el barrido encuentra como candidatas solo las CONFIRMADAS que ya empezaron
@@ -958,7 +964,7 @@ cambiarPasswordPropia lanza NotFoundException si no existe una cuenta con ese em
 
 ## `dashboard-admin/accesos/ControlAccesoContent.test.jsx`
 
-_23 tests._ La pantalla de control de acceso con la API simulada. La cámara se
+_28 tests._ La pantalla de control de acceso con la API simulada. La cámara se
 reemplaza por un lector falso que entrega una lectura (la cámara real se prueba en
 `LectorQR.test.jsx`).
 
@@ -969,16 +975,20 @@ código escrito:
   el campo muestra lo tipeado en mayúsculas
   un código con formato inválido se rechaza sin consultar al backend
   un código inexistente muestra el mensaje del backend
+  al editar el código descarta la reserva validada anteriormente
+  rechaza cochera ocupada y vehículo con otro ingreso pendiente (2 casos)
   un código que no se puede usar muestra el motivo destacado y no ofrece registrar
 confirmación:
   registra el ingreso, muestra el resultado y deja el campo listo para el siguiente
   registra el egreso y avisa si el vehículo se pasó de hora
   un doble clic en confirmar manda un solo registro
+  impide validar otro código mientras se registra el movimiento
   si el backend ya lo tenía registrado, lo informa sin duplicarlo
   un rechazo del backend al registrar se muestra con su mensaje
   un conflicto de concurrencia (409) pide volver a validar
   sin conexión con el backend lo dice en vez de quedarse cargando
 escaneo:
+  una segunda lectura no reemplaza una consulta pendiente
   lo leído con la cámara hace la misma consulta que el código escrito
   después de registrar, el lector vuelve a prenderse solo para el siguiente vehículo
   un QR que no es de AparcAR se rechaza sin consultar
@@ -1000,12 +1010,16 @@ el panel del admin incorpora el acceso a Control de acceso
 
 ## `components/LectorQR.test.jsx`
 
-_10 tests._ `getUserMedia`, `BarcodeDetector`, el canvas y `jsqr` simulados.
+_14 tests._ `getUserMedia`, `BarcodeDetector`, el canvas y `jsqr` simulados.
 
 ```
 no pide la cámara hasta que el operador la activa, y prefiere la trasera
 con BarcodeDetector lee el QR, entrega el texto y apaga la cámara
 sin BarcodeDetector usa jsqr sobre un cuadro del video
+si el detector nativo falla al leer el video, usa jsqr
+no activa la cámara mientras se valida o registra un movimiento
+al deshabilitar se detiene la cámara y se ignoran las lecturas pendientes
+un permiso concedido después de deshabilitar el lector se libera sin reproducir video
 si el operador no da permiso, lo explica y ofrece el código escrito
 si no hay cámara, lo dice
 en HTTP sin localhost avisa de entrada que la cámara no va a funcionar, sin pedirla
@@ -1237,6 +1251,17 @@ autores y datos del ocupante, incluso cuando el fixture incluye esos datos.
 La cancelación comprueba la actualización de contadores sin perder el orden.
 La regresión reportada tenía los filtros con `display: block` y padding cero:
 verificar solamente que no hubiera overflow no alcanzaba para detectarla.
+
+## `test/browser/accesos.ui.mjs` (Playwright)
+
+_6 tests de navegador, independientes de Vitest._ API simulada sin modificar datos
+reales. Al confirmar una reserva, el visitante recibe el QR y puede volver a
+abrirlo; se rasteriza y decodifica el SVG real con `jsqr` en claro/escritorio y
+oscuro/celular. El administrador usa código escrito y payload QR para ingreso y
+egreso, y ve el rechazo al reutilizarlo. El lector procesa video de una cámara
+sintética con el decodificador real tanto sin detector nativo como cuando este
+falla, y libera el stream después de leer. Sin permiso de cámara sigue disponible
+la validación manual.
 
 Desde `aparcar-front`, instalar el navegador una vez y ejecutar:
 
@@ -1686,10 +1711,24 @@ es case-insensitive
 
 | | Archivos | Tests |
 |---|---|---|
-| Backend | 53 | 593 |
-| Frontend (Vitest) | 41 | 519 |
-| Frontend UI (Playwright) | 1 | 21 |
-| **Total** | **95** | **1133** |
+| Backend | 53 | 601 |
+| Frontend (Vitest) | 41 | 528 |
+| Frontend UI (Playwright) | 2 | 27 |
+| **Total** | **96** | **1156** |
+
+Corrección de QR y acceso: dependencias locales sincronizadas, margen del QR de
+4 módulos, lector con fallback cuando falla el detector nativo y liberación de
+cámara durante operaciones, controles contra consultas/confirmaciones mezcladas,
+ingreso protegido por ocupación y concurrencia entre reservas distintas, y
+ocupación desde un ingreso anticipado y durante un egreso pendiente. Agrega 8
+casos de backend, 9 de Vitest y 6 de Playwright. Frontend verificado con 528 tests
+Vitest, 27 pruebas Chrome, build de producción y lint sin errores (una advertencia
+previa de React Hook Form). Navegación real de admin en localhost: login, reservas
+y control de acceso, sin modificar reservas existentes. Backend: `mvn test`
+completo, 601 aprobados sin fallos ni errores, incluidos los cuatro escenarios
+concurrentes. En la primera corrida hubo un fallo intermitente de arranque en
+`PerfilSessionTests` (`local.server.port`); pasó aislado y en la corrida completa
+final sin modificar código de perfiles.
 
 Control de acceso por código QR: agrega 128 casos de backend (9 archivos nuevos;
 `ReservaServiceTests`, `CocheraServiceTests` y `ReservasVencidasTests` suman casos) y

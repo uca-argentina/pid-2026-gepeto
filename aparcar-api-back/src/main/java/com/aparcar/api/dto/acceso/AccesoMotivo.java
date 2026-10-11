@@ -13,6 +13,10 @@ public enum AccesoMotivo {
     PERMANENCIA_MINIMA,
     /** Se pidio un ingreso y el vehiculo ya esta adentro. */
     INGRESO_YA_REGISTRADO,
+    /** La reserva anterior de la cochera todavia no registro su egreso. */
+    COCHERA_OCUPADA,
+    /** El mismo vehiculo ya ingreso con otra reserva. */
+    VEHICULO_EN_CURSO,
     /** Se pidio un egreso y el vehiculo nunca ingreso. */
     SIN_INGRESO
 }

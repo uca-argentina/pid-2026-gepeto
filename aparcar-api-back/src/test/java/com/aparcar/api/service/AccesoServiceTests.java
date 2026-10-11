@@ -21,8 +21,10 @@ import com.aparcar.api.entity.reserva.Vehiculo;
 import com.aparcar.api.entity.reserva.VehiculoTipo;
 import com.aparcar.api.exception.NotFoundException;
 import com.aparcar.api.exception.ValidationException;
+import com.aparcar.api.repository.CocheraRepository;
 import com.aparcar.api.repository.ReservaMovimientoRepository;
 import com.aparcar.api.repository.ReservaRepository;
+import com.aparcar.api.repository.VehiculoRepository;
 import com.aparcar.api.repository.VisitanteRepository;
 import com.aparcar.api.service.impl.AccesoService;
 import com.aparcar.api.service.impl.RegistroIntentosAcceso;
@@ -78,6 +80,12 @@ class AccesoServiceTests {
     private VisitanteRepository visitanteRepository;
 
     @Mock
+    private VehiculoRepository vehiculoRepository;
+
+    @Mock
+    private CocheraRepository cocheraRepository;
+
+    @Mock
     private RegistroIntentosAcceso registroIntentos;
 
     private Reserva reserva;
@@ -91,10 +99,12 @@ class AccesoServiceTests {
         visitante.setEmail("juan@test.com");
 
         Vehiculo vehiculo = new Vehiculo();
+        vehiculo.setId(UUID.randomUUID());
         vehiculo.setPatente("AB123CD");
         vehiculo.setTipo(VehiculoTipo.AUTO);
 
         Cochera cochera = new Cochera();
+        cochera.setId(UUID.randomUUID());
         cochera.setNumero("A-01");
         cochera.setSector("Planta Baja");
         cochera.setTipo(CocheraTipo.AUTO);
@@ -118,11 +128,14 @@ class AccesoServiceTests {
 
         lenient().when(reservaRepository.findByCodigo(CODIGO)).thenReturn(Optional.of(reserva));
         lenient().when(visitanteRepository.findByEmail(OPERADOR)).thenReturn(Optional.of(operador));
+        lenient().when(vehiculoRepository.findByIdForUpdate(vehiculo.getId())).thenReturn(Optional.of(vehiculo));
+        lenient().when(cocheraRepository.findByIdForUpdate(cochera.getId())).thenReturn(Optional.of(cochera));
         lenient().when(reservaRepository.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
     }
 
     private AccesoService servicioA(LocalDateTime ahora) {
         return new AccesoService(reservaRepository, reservaMovimientoRepository, visitanteRepository,
+                vehiculoRepository, cocheraRepository,
                 AccesoDePrueba.reglas(AccesoDePrueba.relojEn(ahora)), registroIntentos);
     }
 

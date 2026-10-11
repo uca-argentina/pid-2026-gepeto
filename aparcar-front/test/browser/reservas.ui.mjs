@@ -55,7 +55,7 @@ for (const { rol, ruta, titulo } of [
         await expect(filtros).toHaveCSS("gap", "4px");
         const columnas = await filtros.evaluate((elemento) => getComputedStyle(elemento).gridTemplateColumns.split(" ").length);
         const anchoListado = (await listado.boundingBox()).width;
-        expect(columnas).toBe(anchoListado <= 560 ? 2 : 4);
+        expect(columnas).toBe(anchoListado <= 360 ? 2 : anchoListado <= 560 ? 3 : 5);
         for (const boton of await filtros.getByRole("button").all()) {
           expect((await boton.boundingBox()).height).toBeGreaterThanOrEqual(44);
         }

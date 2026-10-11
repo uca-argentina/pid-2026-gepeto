@@ -20,7 +20,7 @@ export default function CodigoAccesoQR({ codigo }) {
       .then((modulo) => (modulo.default ?? modulo).toString(payloadQR(codigo), {
         type: "svg",
         errorCorrectionLevel: "M",
-        margin: 2,
+        margin: 4,
         color: { dark: "#000000", light: "#ffffff" },
       }))
       .then((svg) => {
