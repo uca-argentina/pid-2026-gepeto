@@ -23,7 +23,11 @@ COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
 
 COPY scripts/entrypoint.sh ./scripts/entrypoint.sh
-RUN chmod +x ./scripts/entrypoint.sh
+# El `sed` saca los retornos de carro: clonado en Windows, el script queda con
+# finales CRLF y el shebang pasa a ser "#!/bin/sh", un interprete que no
+# existe. El contenedor arrancaba en bucle con "no such file or directory",
+# nombrando al script y no al interprete, que es lo que despista.
+RUN sed -i 's/$//' ./scripts/entrypoint.sh && chmod +x ./scripts/entrypoint.sh
 
 EXPOSE 3000
 

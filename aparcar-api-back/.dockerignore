@@ -1,0 +1,23 @@
+# Lo que no tiene que viajar al build.
+#
+# `target/` es lo mas importante: son cientos de MB de clases ya compiladas en
+# esta maquina que el contenedor va a recompilar igual. Si entra al contexto,
+# cada despliegue sube ese peso al servidor de build para despues tirarlo.
+target/
+
+# Credenciales locales. El contenedor recibe su configuracion por variables de
+# entorno del hosting, nunca por un archivo copiado desde la maquina de alguien.
+.env
+
+.git/
+.gitignore
+.idea/
+*.iml
+*.log
+
+# Documentacion y utilidades de desarrollo: no cambian lo que corre.
+README.md
+Makefile
+Taskfile.yml
+docker-compose.yaml
+scripts/

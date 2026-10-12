@@ -137,7 +137,17 @@ public class ProdSecurityConfig {
                                 "/api/v1/cocheras/disponibles",
                                 "/register",
                                 "/forgot-password",
-                                "/reset-password"
+                                "/reset-password",
+                                // Docker la consulta sin credenciales para
+                                // saber si el contenedor sigue vivo, y lo
+                                // reinicia cuando no responde. Pidiendo
+                                // autenticacion, el 401 se leia como "caido" y
+                                // el contenedor se reiniciaba sin parar.
+                                //
+                                // No expone nada: devuelve solo {"status":"UP"}.
+                                // El resto de /actuator/** sigue limitado a
+                                // localhost por la regla de mas abajo.
+                                "/actuator/health"
                         ).permitAll()
                         // Los datos propios del visitante van primero: si no,
                         // caerian en la regla de ADMIN de /api/v1/visitantes/**
@@ -167,8 +177,7 @@ public class ProdSecurityConfig {
                         .requestMatchers(
                                 "/api/v1/reservas/**",
                                 "/api/v1/vehiculos/**",
-                                "/login",
-                                "/actuator/health"
+                                "/login"
                         ).authenticated()
 
                         .requestMatchers("/actuator/**")
