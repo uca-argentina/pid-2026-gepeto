@@ -1,0 +1,150 @@
+# La pila de produccion completa, para correr en la instancia EC2.
+#
+# Son cuatro contenedores en una sola maquina. El unico que se asoma a internet
+# es Caddy; los otros tres se hablan por la red interna de Docker y no tienen
+# ningun puerto publicado.
+#
+#   internet :80/:443
+#        |
+#      caddy ---- /backend/* --> backend :8080 --> db :5432
+#        \------- /*          -> frontend :3000
+#
+# Las imagenes NO se compilan aca: las construye GitHub Actions y esta maquina
+# solo las baja ya hechas. Compilar el backend mientras la aplicacion esta
+# sirviendo deja la instancia sin memoria y sin CPU justo cuando hace falta.
+#
+# Uso en la instancia:
+#   docker compose pull && docker compose up -d
+#
+# La configuracion sale de un archivo .env que vive solo en la instancia y
+# nunca en git. Esta al lado de este archivo, y .env.example dice que lleva.
+
+name: aparcar
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:?falta DB_USERNAME en .env}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?falta DB_PASSWORD en .env}
+      POSTGRES_DB: ${DB_NAME:-aparcar_db}
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      # Lo unico que no se puede recrear. Si se pierde este volumen, se
+      # pierden las reservas: es lo que hay que respaldar.
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    # Sin `ports`: la base no se publica. Se llega a ella solo desde los otros
+    # contenedores, por el nombre de host `db`.
+
+  backend:
+    image: ${IMAGE_REPO:?falta IMAGE_REPO en .env}/backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+
+      # `db` es el nombre del servicio de arriba: Docker lo resuelve solo
+      # dentro de la red interna.
+      DB_URL: jdbc:postgresql://db:5432/${DB_NAME:-aparcar_db}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_DIALECT: org.hibernate.dialect.PostgreSQLDialect
+
+      # Firma los tokens de sesion. Si cambia, todas las sesiones abiertas
+      # dejan de valer.
+      JWT_SECRET: ${JWT_SECRET:?falta JWT_SECRET en .env}
+
+      # Firma los codigos QR de las reservas. La aplicacion se niega a
+      # arrancar en produccion sin esta variable: con el valor de desarrollo,
+      # cualquiera que conozca el id de una reserva podria calcular su codigo
+      # de acceso y entrar al estacionamiento con una reserva ajena.
+      ACCESO_CODIGO_SECRET: ${ACCESO_CODIGO_SECRET:?falta ACCESO_CODIGO_SECRET en .env}
+
+      # La primera cuenta. Sin esto la base queda sin ningun usuario y no se
+      # puede entrar: el alta de visitantes la hace un ADMIN y el primer ADMIN
+      # no se puede crear desde la aplicacion. Lo usa ProdSeeder, una sola vez.
+      ADMIN_EMAIL: ${ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ADMIN_DOCUMENTO: ${ADMIN_DOCUMENTO}
+      ADMIN_NOMBRE: ${ADMIN_NOMBRE:-Administrador}
+
+      # Solo para recuperar contraseña. Si quedan vacias, el resto anda igual.
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+
+      # El contenedor arranca en UTC. Sin esto los horarios de las reservas se
+      # corren tres horas.
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+
+      # La JVM mira la memoria del contenedor, no la de la maquina. Sin un
+      # techo, en una instancia chica se pasa del limite y el kernel mata el
+      # proceso apenas entran unos pedidos.
+      JAVA_OPTS: -XX:MaxRAMPercentage=70
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # wget viene en la imagen base de Alpine; curl no.
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    deploy:
+      resources:
+        limits:
+          memory: ${BACKEND_MEM:-1200M}
+
+  frontend:
+    image: ${IMAGE_REPO}/frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+
+      # Ruta relativa a proposito: el navegador pide al mismo origen por el que
+      # entro, y Caddy lo reenvia al backend. Por eso no hace falta saber aca
+      # cual es el dominio, y por eso no hay CORS.
+      NEXT_PUBLIC_API_BASE_URL: /backend
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+    depends_on:
+      backend:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 400M
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Vacia hasta que tengan el dominio: `:-` cubre tanto que no exista como
+      # que este vacia, y en ese caso Caddy escucha en el puerto 80 y se entra
+      # por IP, sin HTTPS.
+      DOMINIO: ${DOMINIO:-:80}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Los certificados viven aca. Sin este volumen, Caddy vuelve a pedirlos
+      # en cada reinicio y Let's Encrypt termina bloqueando por limite de
+      # emisiones.
+      - caddy_data:/data
+      - caddy_config:/config
+      - caddy_logs:/var/log/caddy
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  db_data:
+  caddy_data:
+  caddy_config:
+  caddy_logs:

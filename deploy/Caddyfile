@@ -1,0 +1,55 @@
+# Caddy: la unica puerta de entrada desde internet.
+#
+# Resuelve tres cosas a la vez:
+#
+#   1. HTTPS. Saca y renueva el certificado de Let's Encrypt solo, sin cron ni
+#      scripts, siempre que DOMINIO sea un nombre que resuelva a esta maquina.
+#
+#   2. Un solo origen. El navegador ve una sola direccion: el frontend y el
+#      backend quedan detras de la misma. Eso hace que CORS no se active nunca,
+#      porque deja de haber "otro origen" al que pedirle permiso.
+#
+#   3. La base de datos no se publica. Postgres no expone ningun puerto hacia
+#      afuera en compose: solo existe dentro de la red interna de Docker.
+#
+# Si DOMINIO esta vacia, compose manda `:80` y Caddy escucha por IP sin HTTPS.
+# Sirve para probar que todo levanta, pero no para dejarlo publicado.
+#
+# El default de Caddy ({$VAR:algo}) no sirve aca: solo aplica cuando la
+# variable no existe, y compose siempre la define. Con la variable definida y
+# vacia, esta linea quedaba sin direccion y Caddy leia las llaves de abajo como
+# el bloque de opciones globales, fallando con "unrecognized global option".
+# Por eso el valor por defecto se resuelve en compose, no aca.
+{$DOMINIO} {
+	encode gzip
+
+	# `handle_path` recorta el prefijo antes de reenviar: un pedido a
+	# /backend/api/v1/reservas le llega al backend como /api/v1/reservas.
+	#
+	# Es la pieza que evita tener que tocar una sola ruta del backend. Sin el
+	# prefijo habria choques: /login y /register existen en los dos lados (en
+	# el front son paginas, en el backend son endpoints) y no habria forma de
+	# saber a quien mandar cada pedido.
+	handle_path /backend/* {
+		reverse_proxy backend:8080 {
+			# Sin esto el backend ve como IP de origen la del contenedor de
+			# Caddy, siempre la misma, y el limitador de intentos de login
+			# contaria todos los pedidos del mundo como si fueran de una sola
+			# persona.
+			header_up X-Forwarded-For {remote_host}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	# Todo lo demas es el frontend.
+	handle {
+		reverse_proxy frontend:3000
+	}
+
+	log {
+		output file /var/log/caddy/access.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}
