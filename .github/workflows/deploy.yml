@@ -95,17 +95,35 @@ jobs:
     name: Actualizar la instancia
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Habilita que GITHUB_TOKEN pueda bajar las imagenes publicadas arriba.
+      packages: read
 
     steps:
       - name: Bajar las imagenes nuevas y reiniciar
         uses: appleboy/ssh-action@v1
+        env:
+          # GITHUB_TOKEN lo genera GitHub para esta corrida y vence al
+          # terminarla. Alcanza para que la instancia baje las imagenes sin
+          # que haya que crear ni renovar ningun token a mano, y sin tener que
+          # hacer publicos los paquetes.
+          GHCR_USUARIO: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
-          script_stop: true
+          # Sin esto las dos variables de arriba no cruzan a la sesion remota.
+          envs: GHCR_USUARIO,GHCR_TOKEN
           script: |
             set -e
+
+            # Los paquetes del repositorio son privados, asi que hay que
+            # autenticarse antes de bajarlos. Por entrada estandar para que el
+            # token no quede en el historial de la instancia.
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USUARIO" --password-stdin
+
             cd ~/aparcar
 
             # Trae los cambios de compose.yaml y del Caddyfile, que viven en el
