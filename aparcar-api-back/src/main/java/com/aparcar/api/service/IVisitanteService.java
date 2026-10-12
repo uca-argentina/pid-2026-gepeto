@@ -26,7 +26,7 @@ public interface IVisitanteService {
      *                             para hoy.
      * @throws NotFoundException   Si la cochera indicada no existe.
      */
-    VisitanteAltaResponseDto altaConReserva(VisitanteAltaDto dto);
+    VisitanteAltaResponseDto altaConReserva(VisitanteAltaDto dto, String requesterEmail);
 
     /**
      * @throws NotFoundException Si no existe un visitante con ese id.
@@ -43,6 +43,10 @@ public interface IVisitanteService {
     /**
      * Actualiza los campos que el visitante puede cambiar de si mismo (telefono
      * y email). No permite modificar nombre ni documento.
+     *
+     * <p>Tambien permite declarar o quitar la discapacidad
+     * ({@code tieneDiscapacidad}). Si ese campo viene null no se toca lo que
+     * ya estaba guardado.
      *
      * @throws NotFoundException   Si no existe una cuenta con ese email.
      * @throws ValidationException Si el email nuevo ya lo usa otra cuenta.

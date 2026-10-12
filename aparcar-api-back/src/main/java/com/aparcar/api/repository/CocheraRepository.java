@@ -3,16 +3,24 @@ package com.aparcar.api.repository;
 import com.aparcar.api.entity.reserva.Cochera;
 import com.aparcar.api.entity.reserva.CocheraEstado;
 import com.aparcar.api.entity.reserva.CocheraTipo;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
 public interface CocheraRepository extends JpaRepository<Cochera, UUID> {
+    /** Serializa los ingresos a una misma cochera, incluso con reservas distintas. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT c FROM Cochera c WHERE c.id = :id")
+    Optional<Cochera> findByIdForUpdate(@Param("id") UUID id);
+
     boolean existsByNumero(String numero);
 
     List<Cochera> findByEstado(CocheraEstado estado);
@@ -36,4 +44,13 @@ public interface CocheraRepository extends JpaRepository<Cochera, UUID> {
 
     @Query("SELECT DISTINCT c.sector FROM Cochera c ORDER BY c.sector")
     List<String> findDistinctSectores();
+
+    /**
+     * Todos los numeros de cochera existentes. Lo usa la numeracion
+     * automatica del alta por planta para saber desde donde seguir cada
+     * prefijo. Trae solo la columna, y para un unico predio son unos pocos
+     * cientos de valores: no hace falta filtrar por prefijo en SQL.
+     */
+    @Query("SELECT c.numero FROM Cochera c")
+    List<String> findAllNumeros();
 }

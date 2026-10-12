@@ -7,17 +7,140 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
 public interface ReservaRepository extends JpaRepository<Reserva, UUID> {
-    boolean existsByCocheraIdAndFechaAndEstado(UUID cocheraId, LocalDate fecha, ReservaEstado estado);
 
-    List<Reserva> findByFechaAndEstado(LocalDate fecha, ReservaEstado estado);
+    List<Reserva> findByEstadoOrderByFechaCreacionAscIdAsc(ReservaEstado estado);
+
+    List<Reserva> findByVisitanteEmailAndConfirmadaDesdeEsperaAtIsNotNullAndNotificacionLeidaAtIsNullOrderByConfirmadaDesdeEsperaAtDesc(String email);
+
+    // ---- Solapamiento de franjas ----
+    //
+    // Toda la regla de "no se pisan" vive en esta condicion:
+    //
+    //     r.desde < :hasta AND r.hasta > :desde
+    //
+    // Es el test estandar de interseccion de intervalos semiabiertos. Cubre los
+    // cuatro casos de superposicion (la nueva empieza dentro, termina dentro,
+    // contiene a la existente, o esta contenida) y deja pasar el caso borde que
+    // queremos permitir: si una termina exactamente cuando la otra empieza, no
+    // hay solapamiento y la cochera se puede volver a reservar en ese instante.
+    //
+    // Que una reserva vencida libere la cochera sola sale de aca: su rango ya
+    // no intersecta ningun rango futuro, sin necesidad de que corra ninguna
+    // tarea de limpieza.
+
+    /** True si la cochera ya tiene una reserva en ese estado pisando el rango. */
+    @Query("SELECT COUNT(r) > 0 FROM Reserva r "
+            + "WHERE r.cochera.id = :cocheraId AND r.estado = :estado "
+            + "AND r.desde < :hasta AND r.hasta > :desde")
+    boolean existeSolapadaEnCochera(@Param("cocheraId") UUID cocheraId,
+                                    @Param("estado") ReservaEstado estado,
+                                    @Param("desde") LocalDateTime desde,
+                                    @Param("hasta") LocalDateTime hasta);
+
+    /**
+     * True si el vehiculo ya esta comprometido en otra cochera durante el rango.
+     * Un mismo auto no puede estar en dos lugares a la vez.
+     */
+    @Query("SELECT COUNT(r) > 0 FROM Reserva r "
+            + "WHERE r.vehiculo.id = :vehiculoId AND r.estado = :estado "
+            + "AND r.desde < :hasta AND r.hasta > :desde")
+    boolean existeSolapadaEnVehiculo(@Param("vehiculoId") UUID vehiculoId,
+                                     @Param("estado") ReservaEstado estado,
+                                     @Param("desde") LocalDateTime desde,
+                                     @Param("hasta") LocalDateTime hasta);
+
+    /** Las reservas en ese estado que pisan el rango, sin importar la cochera. */
+    @Query("SELECT r FROM Reserva r JOIN FETCH r.cochera "
+            + "WHERE r.estado = :estado AND r.desde < :hasta AND r.hasta > :desde")
+    List<Reserva> findSolapadas(@Param("estado") ReservaEstado estado,
+                                @Param("desde") LocalDateTime desde,
+                                @Param("hasta") LocalDateTime hasta);
+
+    // ---- Vehiculos adentro (EN_CURSO) ----
+    //
+    // Una reserva EN_CURSO ocupa hasta que el vehiculo egresa, no hasta su
+    // "hasta": si se paso de hora sigue bloqueando la cochera. Su fin efectivo
+    // es el mayor entre "hasta" y ahora, asi que se pisa con [desde, hasta) si
+    //
+    //     (r.desde < :hasta OR r.ingresoAt < :hasta)
+    //     AND (r.hasta > :desde OR ahora >= :desde)
+    //
+    // Un ingreso anticipado ocupa desde ingresoAt. Si la franja pedida empieza
+    // exactamente ahora tambien ocupa: el vehiculo todavia no egreso.
+    // "ahora >= desde" no depende de la fila: se calcula en Java y viaja como
+    // booleano (comparar dos parametros entre si deja a Hibernate sin tipo).
+
+    /** True si hay un vehiculo adentro de la cochera durante el rango. */
+    default boolean existeEnCursoEnCochera(UUID cocheraId, LocalDateTime desde, LocalDateTime hasta,
+                                           LocalDateTime ahora) {
+        return existeEnCursoEnCochera(cocheraId, desde, hasta, !ahora.isBefore(desde));
+    }
+
+    @Query("SELECT COUNT(r) > 0 FROM Reserva r "
+            + "WHERE r.cochera.id = :cocheraId "
+            + "AND r.estado = com.aparcar.api.entity.reserva.ReservaEstado.EN_CURSO "
+            + "AND (r.desde < :hasta OR r.ingresoAt < :hasta) AND (r.hasta > :desde OR :yaEmpezo = true)")
+    boolean existeEnCursoEnCochera(@Param("cocheraId") UUID cocheraId,
+                                   @Param("desde") LocalDateTime desde,
+                                   @Param("hasta") LocalDateTime hasta,
+                                   @Param("yaEmpezo") boolean yaEmpezo);
+
+    /** True si el vehiculo esta adentro de alguna cochera durante el rango. */
+    default boolean existeEnCursoConVehiculo(UUID vehiculoId, LocalDateTime desde, LocalDateTime hasta,
+                                             LocalDateTime ahora) {
+        return existeEnCursoConVehiculo(vehiculoId, desde, hasta, !ahora.isBefore(desde));
+    }
+
+    @Query("SELECT COUNT(r) > 0 FROM Reserva r "
+            + "WHERE r.vehiculo.id = :vehiculoId "
+            + "AND r.estado = com.aparcar.api.entity.reserva.ReservaEstado.EN_CURSO "
+            + "AND (r.desde < :hasta OR r.ingresoAt < :hasta) AND (r.hasta > :desde OR :yaEmpezo = true)")
+    boolean existeEnCursoConVehiculo(@Param("vehiculoId") UUID vehiculoId,
+                                     @Param("desde") LocalDateTime desde,
+                                     @Param("hasta") LocalDateTime hasta,
+                                     @Param("yaEmpezo") boolean yaEmpezo);
+
+    /** Las reservas EN_CURSO que ocupan el rango, sin importar la cochera. */
+    default List<Reserva> findEnCursoSolapadas(LocalDateTime desde, LocalDateTime hasta, LocalDateTime ahora) {
+        return findEnCursoSolapadas(desde, hasta, !ahora.isBefore(desde));
+    }
+
+    @Query("SELECT r FROM Reserva r JOIN FETCH r.cochera "
+            + "WHERE r.estado = com.aparcar.api.entity.reserva.ReservaEstado.EN_CURSO "
+            + "AND (r.desde < :hasta OR r.ingresoAt < :hasta) AND (r.hasta > :desde OR :yaEmpezo = true)")
+    List<Reserva> findEnCursoSolapadas(@Param("desde") LocalDateTime desde,
+                                       @Param("hasta") LocalDateTime hasta,
+                                       @Param("yaEmpezo") boolean yaEmpezo);
+
+    /**
+     * Candidatas a VENCIDA: las que siguen en ese estado y ya empezaron. Cual
+     * vencio de verdad lo decide ReglasAcceso (la tolerancia no es una columna).
+     */
+    List<Reserva> findByEstadoAndDesdeLessThan(ReservaEstado estado, LocalDateTime momento);
+
+    // ---- Codigo de acceso ----
+
+    boolean existsByCodigo(String codigo);
+
+    @Query("SELECT r FROM Reserva r JOIN FETCH r.visitante JOIN FETCH r.vehiculo JOIN FETCH r.cochera "
+            + "WHERE r.codigo = :codigo")
+    Optional<Reserva> findByCodigo(@Param("codigo") String codigo);
+
+    /** Reservas vigentes sin codigo: las anteriores a la feature, para el backfill. */
+    List<Reserva> findByEstadoAndCodigoIsNullAndHastaAfter(ReservaEstado estado, LocalDateTime momento);
 
     boolean existsByCocheraId(UUID cocheraId);
+
+    boolean existsByCocheraIdAndEstadoAndIdNot(UUID cocheraId, ReservaEstado estado, UUID reservaId);
+
+    boolean existsByVehiculoIdAndEstadoAndIdNot(UUID vehiculoId, ReservaEstado estado, UUID reservaId);
 
     List<Reserva> findByCocheraIdAndEstado(UUID cocheraId, ReservaEstado estado);
 
@@ -31,10 +154,17 @@ public interface ReservaRepository extends JpaRepository<Reserva, UUID> {
     // sin importar el fetch por defecto de Hibernate para @ManyToOne.
 
     @Override
-    @Query("SELECT r FROM Reserva r JOIN FETCH r.visitante JOIN FETCH r.vehiculo JOIN FETCH r.cochera")
+    @Query("SELECT DISTINCT r FROM Reserva r JOIN FETCH r.visitante JOIN FETCH r.vehiculo LEFT JOIN FETCH r.cochera "
+            + "LEFT JOIN FETCH r.historial")
     List<Reserva> findAll();
 
-    @Query("SELECT r FROM Reserva r JOIN FETCH r.visitante JOIN FETCH r.vehiculo JOIN FETCH r.cochera "
+    @Query("SELECT DISTINCT r FROM Reserva r JOIN FETCH r.visitante JOIN FETCH r.vehiculo LEFT JOIN FETCH r.cochera "
+            + "LEFT JOIN FETCH r.historial "
             + "WHERE r.visitante.email = :email")
     List<Reserva> findByVisitanteEmail(@Param("email") String email);
+
+    @Query("SELECT DISTINCT r FROM Reserva r JOIN FETCH r.visitante JOIN FETCH r.vehiculo LEFT JOIN FETCH r.cochera "
+            + "LEFT JOIN FETCH r.historial "
+            + "WHERE r.visitante.email = :email AND r.recurrenciaId IS NOT NULL ORDER BY r.desde")
+    List<Reserva> findRecurrentesByVisitanteEmail(@Param("email") String email);
 }

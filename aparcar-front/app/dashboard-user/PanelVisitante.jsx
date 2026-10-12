@@ -18,7 +18,10 @@ export default function PanelVisitante() {
 
   return (
     <div className="visitor-dashboard">
-      <MiPerfilContent onVehiculosCambiaron={() => setVehiculosKey((k) => k + 1)} />
+      {/* Los cambios de vehículos refrescan las patentes del formulario. */}
+      <MiPerfilContent
+        onVehiculosCambiaron={() => setVehiculosKey((k) => k + 1)}
+      />
       <ReservasContent modo="user" refreshKey={vehiculosKey} />
     </div>
   );

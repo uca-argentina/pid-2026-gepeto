@@ -1,0 +1,15 @@
+databaseChangeLog:
+  - changeSet:
+      id: 009-nombre-estacionamiento
+      author: aparcar
+      changes:
+        - addColumn:
+            tableName: visitantes
+            columns:
+              - column:
+                  name: nombre_estacionamiento
+                  type: varchar(100)
+      rollback:
+        - dropColumn:
+            tableName: visitantes
+            columnName: nombre_estacionamiento

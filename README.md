@@ -27,6 +27,7 @@ Oficinas, universidades, sanatorios y organizadores de eventos administran sus c
 - 🅿️ **Cocheras clasificadas** por número, sector y tipo (auto, moto, accesible, carga)
 - 📅 **Reservas por fecha**, con asignación de una cochera compatible
 - 🚫 **Cero sobreocupación** — el sistema jamás asigna dos reservas al mismo lugar
+- 🎫 **Código QR de acceso** — cada reserva tiene su QR y un código corto; el operador registra ingreso y egreso en la puerta
 
 ## Cómo está armado
 
@@ -53,6 +54,173 @@ borra ni fusiona datos: si una base anterior contiene emails que solo difieren e
 mayúsculas/espacios, o documentos que solo difieren en espacios extremos, hay que
 resolver esos duplicados antes de aplicar la migración. El alta administrativa con
 vehículo y reserva conserva su flujo.
+
+### Control de acceso por código QR
+
+Cada reserva confirmada recibe, en el momento del alta, un **código corto** de 10
+caracteres (`XXXXX-XXXXX`, base32 sin I, L, O ni U para que no se confundan) y su
+**QR**, que lleva exactamente ese código con el prefijo `APARCAR:`. Escanear el QR y
+tipear el código son la misma operación.
+
+- **Visitante (USER):** en *Mis reservas*, cada reserva CONFIRMADA o EN_CURSO tiene
+  **Ver QR**: el QR, el código con botón *Copiar*, los datos de la reserva y la
+  ventana de ingreso ("Ingresá entre 14:45 y 15:30"). Al reservar, el QR se abre solo.
+- **Operador (ADMIN):** *Control de acceso* (`/dashboard-admin/accesos`) escanea con la
+  cámara o recibe el código tipeado, muestra de quién es la reserva y qué corresponde
+  (ingreso o egreso) y lo registra con un botón. Lista los movimientos del día.
+
+El código es solo una **llave**: se deriva con HMAC-SHA256 del id de la reserva y un
+secreto del servidor, así que no contiene ni filtra datos personales y no se puede
+falsificar. Los datos los devuelve el backend al validarlo.
+
+**Estados:** `CONFIRMADA → EN_CURSO` (ingreso) `→ FINALIZADA` (egreso). Además
+`CANCELADA` y `VENCIDA` (no se presentó). Un código sirve una vez para entrar y una
+vez para salir; con la reserva cancelada o vencida deja de valer. Una reserva en curso
+no se puede cancelar: se registra su egreso. Un vehículo adentro ocupa su cochera
+hasta que sale, aunque se pase de hora.
+
+El ingreso también comprueba que la cochera esté libre y que el vehículo no tenga
+otro ingreso pendiente de egreso. Esto se vuelve a validar al confirmar, incluso
+si dos operadores presentan códigos distintos al mismo tiempo.
+
+**Reglas (configurables en `application.yml`, `aparcar.acceso.*`):**
+
+| Propiedad | Por defecto | Qué controla |
+|---|---|---|
+| `ingreso-anticipado-min` | 15 | Desde cuántos minutos antes de `desde` se acepta el ingreso |
+| `ingreso-tolerancia-min` | 30 | Hasta cuántos minutos después (contados desde el mayor entre `desde` y la emisión del código, y nunca después de `hasta`). Pasado eso, la reserva queda VENCIDA y libera la cochera |
+| `egreso-gracia-min` | 15 | Un egreso posterior a `hasta` + gracia se registra igual, marcado como excedido con sus minutos |
+| `permanencia-minima-seg` | 60 | No se acepta el egreso antes de este tiempo desde el ingreso (evita un segundo escaneo accidental) |
+| `idempotencia-seg` | 120 | Repetir la misma acción dentro de esta ventana devuelve lo ya registrado (`yaRegistrado: true`) |
+| `rate-limit-por-minuto` | 60 | Validaciones por minuto y por operador en `/api/v1/accesos/**` |
+| `codigo-secret` | `ACCESO_CODIGO_SECRET` | Secreto del HMAC (ver abajo) |
+
+**Endpoints (solo ADMIN):**
+
+| Método y ruta | Qué hace |
+|---|---|
+| `POST /api/v1/accesos/consulta` `{codigo}` | No registra movimientos; si la tolerancia ya pasó, marca la reserva VENCIDA. Devuelve los datos, la acción que corresponde (`INGRESO`/`EGRESO`) o el `motivo` por el que no se puede (`ANTICIPADO`, `VENCIDA`, `CANCELADA`, `YA_UTILIZADA`, `PERMANENCIA_MINIMA`, `COCHERA_OCUPADA`, `VEHICULO_EN_CURSO`). 400 si el formato es inválido, 404 si el código no existe |
+| `POST /api/v1/accesos/registro` `{codigo, accion}` | Registra el ingreso o el egreso, revalidando todo. 400 si la regla no lo permite (el motivo viaja en `details[0]`), 404 si no existe, 409 si otro operador lo registró al mismo tiempo |
+| `GET /api/v1/accesos/movimientos` | Ingresos y egresos del día |
+
+Cada intento de validación (válido o no) queda en la tabla `acceso_intentos` con el
+operador y el resultado. El código viaja en `ReservaResponseDto.acceso`, que solo
+reciben el dueño de la reserva y el ADMIN.
+
+#### El secreto `ACCESO_CODIGO_SECRET`
+
+Va en el `.env` del backend (ver `.env.example`). En desarrollo se puede omitir: se
+usa un valor fijo **solo para dev**. Con el perfil `prod` la aplicación **no arranca**
+sin un secreto propio. Generalo con `openssl rand -base64 32` y no lo subas al repo.
+Cambiarlo no invalida los códigos ya emitidos (se guardan en la reserva y se
+validan buscándolos en la base); solo cambia cómo se derivan los nuevos.
+
+#### Migración en bases existentes
+
+No hay pasos manuales. Al arrancar el backend actualizado:
+
+1. Liquibase aplica `011-acceso-reservas.yaml`: agrega a `reservas` las columnas
+   `codigo` (con índice único), `codigo_emitido_at`, `ingreso_at`, `egreso_at` y
+   `minutos_exceso`, y crea `acceso_intentos`. No modifica datos.
+2. `CodigosAccesoBackfill` les asigna código a las reservas **CONFIRMADAS vigentes**
+   que no lo tienen (el HMAC no se puede calcular en SQL). Es idempotente.
+   La tolerancia de ingreso de esas reservas se cuenta desde la migración, así que
+   una que ya había empezado no vence en el acto.
+3. Las reservas que el barrido viejo había marcado FINALIZADA por tiempo quedan como
+   están. Desde ahora, una reserva que termina sin ingreso queda VENCIDA.
+
+Definí `ACCESO_CODIGO_SECRET` **antes** de ese primer arranque en producción: los
+códigos del backfill se derivan con el secreto vigente en ese momento.
+
+#### Probar el lector de cámara desde el celular
+
+Los navegadores solo dan acceso a la cámara en un **contexto seguro**: HTTPS o
+`localhost`. Desde el celular, `http://192.168.x.x:3000` **no** es seguro, así que el
+lector avisa y queda el código escrito. Opciones:
+
+- **Túnel HTTPS** (recomendado): exponé el front y el back con un túnel, por ejemplo
+  `cloudflared tunnel --url http://localhost:3000` y otro para `:8080`. Poné la URL
+  HTTPS del back en `NEXT_PUBLIC_API_BASE_URL` del front y la del front en
+  `CORS_ORIGENES_EXTRA` del `.env` del back (admite comodines, por ejemplo
+  `https://*.trycloudflare.com`). Reiniciá ambos.
+- **IP local, sin cámara:** para probar el código escrito desde el celular alcanza con
+  `NEXT_PUBLIC_API_BASE_URL=http://<IP-de-tu-máquina>:8080` en el front, y
+  `CORS_ORIGENES_EXTRA=http://<IP-de-tu-máquina>:3000` en el back (en dev el CORS solo
+  permite `localhost`). Desde el celular abrí la URL *Network* que muestra `npm run dev`.
+- En Chrome de escritorio también podés marcar el origen como seguro en
+  `chrome://flags/#unsafely-treat-insecure-origin-as-secure` (solo para pruebas).
+
+El lector usa `BarcodeDetector` nativo cuando el navegador lo tiene (Chrome/Edge en
+Android y escritorio) y, si no, `jsqr`, que se descarga recién en ese momento.
+
+### Dashboard del administrador
+
+Desde el panel de administración, la nueva solapa **Dashboard** abre
+`/dashboard-admin/dashboard`. Conserva el panel de ocupación por cochera y agrega
+una vista de la operación del día, adaptable a celular, tablet y escritorio en
+los temas claro y oscuro:
+
+- **Ocupación actual:** porcentaje sobre cocheras habilitadas, lugares físicamente
+  libres, vehículos presentes y cocheras fuera de servicio. Los vehículos que
+  siguen dentro de una cochera deshabilitada se informan por separado.
+- **Reservas del día:** reservas que comienzan hoy, con desglose por estado.
+  Incluye canceladas y no presentados; no cuenta una reserva de varios días otra
+  vez cada día.
+- **No presentados:** reservas de hoy vencidas sin ingreso, usando la tolerancia
+  y la emisión del código existentes, incluso antes del siguiente barrido.
+- **Estadías excedidas:** reservas en curso que superan el fin más la gracia de
+  egreso. No se liberan lugares por el solo paso del tiempo.
+- **Actividad por hora:** ingresos y egresos reales de hoy, con gráfico y tabla
+  accesible. **Sectores más utilizados:** ordenados por ingresos del día.
+- **Próximas llegadas:** hasta cinco reservas pendientes que comienzan en las
+  próximas dos horas, con el total del intervalo, incluso al cruzar medianoche.
+
+Todos los horarios corresponden a la zona del estacionamiento. La ocupación
+incluye ingresos de días anteriores todavía sin egreso; los lugares libres
+representan disponibilidad física, no una promesa de disponibilidad para reservar.
+Las métricas se actualizan cada 60 segundos mientras la pestaña está visible,
+al volver a ella o al pulsar **Actualizar**. Si falla la consulta, se avisa y se
+conserva la última lectura, con su fecha y hora.
+
+`GET /api/v1/dashboard` exige **ADMIN** y devuelve un resumen sin datos personales
+ni códigos de acceso, con `Cache-Control: no-store`. La lectura usa una única
+foto transaccional y proyecciones acotadas, sin cargar todo el historial ni
+modificar reservas. Liquibase aplica `012-dashboard-indices.yaml` al reiniciar
+el backend: agrega índices de consulta, sin cambiar los datos existentes.
+
+### Reservas recurrentes y lista de espera
+
+El administrador tiene una sección **Mis reservas recurrentes**
+(`/dashboard-admin/recurrentes`) para agregar, editar y eliminar sus propios
+vehículos y reservarlos semanalmente. La recurrencia es exclusiva de su cuenta:
+no aparece en **Nueva reserva** ni en el alta de visitantes, y no permite elegir
+vehículos de otros usuarios.
+
+Se eligen los días y una fecha de fin inclusiva, conservando el vehículo, la
+cochera y la duración de cada reserva. La serie admite hasta 90 reservas dentro
+de un año: se valida completa y, si alguna fecha tiene un conflicto, no se crea
+ninguna. Cada reserva conserva su propio precio, QR y cancelación individual.
+Las series recurrentes no ingresan a lista de espera.
+
+Si no hay cocheras disponibles, tanto el visitante como el administrador pueden
+aceptar entrar en **Lista de espera**. También está disponible en el alta rápida
+de visitantes. Esa solicitud conserva la franja y el precio cotizado, pero no
+ocupa una cochera ni tiene QR. Se puede cancelar desde el listado habitual.
+
+Al liberarse un lugar, se revisan las solicitudes por orden de llegada y se
+confirma la primera que puede utilizarlo durante toda su franja, respetando el
+tipo de vehículo, la accesibilidad y la categoría cotizada. Las solicitudes
+cuyo horario terminó vencen sin reservar lugar. La revisión también se ejecuta
+periódicamente para recuperar disponibilidad sin depender de una pantalla abierta.
+
+La confirmación genera el QR y una **notificación dentro de la aplicación** para
+el dueño de la reserva. El aviso permanece hasta marcarlo como leído, incluso si
+la confirmación ocurrió mientras estaba desconectado.
+
+El backend actualizado aplica automáticamente la migración Liquibase
+`013-reservas-recurrentes-espera.yaml`. Las asignaciones y promociones se
+serializan con un bloqueo transaccional en la base para proteger la última
+cochera disponible ante solicitudes simultáneas.
 
 ### Estructura
 
@@ -108,7 +276,7 @@ npm --version
 ## 2. Clonar el repo
 
 ```bash
-git clone https://github.com/martincoronels/aparcar.git
+git clone https://github.com/uca-argentina/pid-2026-gepeto.git
 cd aparcar
 ```
 
@@ -176,6 +344,12 @@ Instalar dependencias (solo hace falta la primera vez, o cuando cambia `package.
 ```bash
 npm install
 ```
+
+Al cambiar a una rama que incorpora el QR, ejecutá nuevamente `npm install`
+en `aparcar-front` antes de iniciar el frontend: instala `qrcode` y `jsqr`, ya
+declarados en `package.json` y `package-lock.json`. Si aparece
+`Module not found: Can't resolve 'qrcode'`, detené el frontend, instalá las
+dependencias y volvé a ejecutar `npm run dev`.
 
 **Para desarrollo día a día** (recarga automática al guardar cambios):
 ```bash

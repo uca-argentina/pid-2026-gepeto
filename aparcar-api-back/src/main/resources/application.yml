@@ -35,6 +35,24 @@ spring:
       mail.smtp.starttls.enable: true
       mail.smtp.ssl.enable: false
 
+aparcar:
+  acceso:
+    # Ventana de ingreso: desde N minutos antes de "desde" hasta N minutos
+    # despues (sin pasar de "hasta"). Pasada la tolerancia sin ingreso, la
+    # reserva queda VENCIDA y libera la cochera.
+    ingreso-anticipado-min: 15
+    ingreso-tolerancia-min: 30
+    # Un egreso posterior a "hasta" + gracia se registra igual, marcado como excedido.
+    egreso-gracia-min: 15
+    # Evita que un segundo escaneo accidental registre la salida.
+    permanencia-minima-seg: 60
+    # Repetir la misma accion dentro de esta ventana devuelve lo ya registrado.
+    idempotencia-seg: 120
+    rate-limit-por-minuto: 60
+    # Secreto del HMAC de los codigos. El valor por defecto es solo para
+    # desarrollo: con el perfil prod la aplicacion no arranca sin la variable.
+    codigo-secret: ${ACCESO_CODIGO_SECRET:solo-desarrollo-cambiar-en-produccion}
+
 springdoc:
   swagger-ui:
     path: /docs
@@ -48,3 +66,16 @@ management:
     web:
       exposure:
         include: health
+  endpoint:
+    health:
+      # Esta ruta la consulta Docker sin credenciales para saber si el
+      # contenedor esta sano, asi que solo tiene que decir si la aplicacion
+      # responde, nunca el detalle de la base ni de los componentes.
+      show-details: never
+  health:
+    mail:
+      # Spring incluia el servidor de correo en el chequeo. Con la casilla sin
+      # configurar daba DOWN y arrastraba el estado general, de modo que Docker
+      # daba el contenedor por enfermo y lo reiniciaba en loop. El arranque de
+      # la aplicacion no depende del correo: es solo para recuperar contraseña.
+      enabled: false

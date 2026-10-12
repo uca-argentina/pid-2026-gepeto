@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import api from "@/app/api";
 
 const { getMock, postMock, putMock, deleteMock, toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
@@ -12,25 +11,20 @@ const { getMock, postMock, putMock, deleteMock, toastSuccessMock, toastErrorMock
   toastErrorMock: vi.fn(),
 }));
 
-vi.mock("@/app/api", () => ({ default: { get: getMock, post: postMock, put: putMock, delete: deleteMock} }));
+vi.mock("@/app/api", () => ({ default: { get: getMock, post: postMock, put: putMock, delete: deleteMock } }));
 vi.mock("sonner", () => ({ toast: { success: toastSuccessMock, error: toastErrorMock } }));
 
 const { default: MiPerfilContent } = await import("@/app/dashboard-user/MiPerfilContent");
 
-const PERFIL = {
-  id: "v1",
-  nombre: "Juan Perez",
-  documento: "30111222",
-  email: "juan@test.com",
-};
-
-function mockPerfil({ perfil = PERFIL, vehiculos = [] } = {}) {
+function mockVehiculos({ vehiculos = [] } = {}) {
   getMock.mockImplementation((url) => {
-    if (url === "/api/v1/visitantes/me") return Promise.resolve({ data: perfil });
     if (url === "/api/v1/vehiculos") return Promise.resolve({ data: vehiculos });
     return Promise.reject(new Error(`URL no mockeada: ${url}`));
   });
 }
+
+/** Espera a que termine la carga: el campo de patente del alta solo aparece después. */
+const campoPatente = () => screen.findByLabelText("Patente");
 
 describe("MiPerfilContent", () => {
   beforeEach(() => {
@@ -41,35 +35,39 @@ describe("MiPerfilContent", () => {
     getMock.mockReturnValue(new Promise(() => {}));
     render(<MiPerfilContent />);
 
-    expect(screen.getByText("Cargando tus datos...")).toBeInTheDocument();
+    expect(screen.getByText("Cargando tus vehículos...")).toBeInTheDocument();
   });
 
-  // Al unificar visitante y cuenta, el perfil ya no se "carga una sola vez":
-  // viene con el alta. Si existe la cuenta, existen el nombre y el documento.
-  it("no ofrece ningun formulario de autoregistro: el perfil viene con la cuenta", async () => {
-    mockPerfil();
+  it("carga los vehículos sin consultar el perfil personal", async () => {
+    mockVehiculos();
     render(<MiPerfilContent />);
-    await screen.findByText("Juan Perez");
+    await campoPatente();
 
-    expect(screen.queryByRole("button", { name: /guardar mis datos/i })).not.toBeInTheDocument();
-    expect(screen.queryByPlaceholderText("DNI / documento")).not.toBeInTheDocument();
+    expect(getMock).toHaveBeenCalledWith("/api/v1/vehiculos");
+    expect(getMock.mock.calls.every(([url]) => url === "/api/v1/vehiculos")).toBe(true);
   });
 
-  it("muestra sus datos y sus vehiculos", async () => {
-    mockPerfil({ vehiculos: [{ id: "veh1", patente: "ABC123", tipo: "AUTO" }] });
-    render(<MiPerfilContent />);
+  // Ahora es una sección dentro de "Mis datos": un único encabezado propio y
+  // un ancla para que el acceso directo del panel caiga justo acá.
+  it("es una sección 'Mis vehículos' con ancla, sin datos personales ni accesos al perfil", async () => {
+    mockVehiculos({ vehiculos: [{ id: "veh1", patente: "ABC123", tipo: "AUTO" }] });
+    const { container } = render(<MiPerfilContent />);
 
-    expect(await screen.findByText("Juan Perez")).toBeInTheDocument();
-    expect(screen.getByText(/Documento 30111222/)).toBeInTheDocument();
-    expect(screen.getByText("ABC123")).toBeInTheDocument();
+    const seccion = await screen.findByRole("region", { name: "Mis vehículos" });
+    expect(seccion).toHaveAttribute("id", "mis-vehiculos");
+    expect(await screen.findByRole("img", { name: "Patente ABC123" })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading")).toHaveLength(1);
+    expect(screen.queryByText(/documento|email|mi cuenta|mis datos/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(container.querySelector("#mis-vehiculos")).toBe(seccion);
   });
 
   // El backend filtra los vehiculos por la cuenta autenticada, asi que el
   // frontend ya no tiene que decirle de quien son.
   it("pide sus vehiculos sin mandar visitanteId", async () => {
-    mockPerfil();
+    mockVehiculos();
     render(<MiPerfilContent />);
-    await screen.findByText("Juan Perez");
+    await campoPatente();
 
     const llamadas = getMock.mock.calls.filter((c) => c[0] === "/api/v1/vehiculos");
     expect(llamadas.length).toBeGreaterThan(0);
@@ -77,119 +75,160 @@ describe("MiPerfilContent", () => {
   });
 
   it("si todavia no tiene ningun vehiculo, avisa que no cargo ninguno", async () => {
-    mockPerfil({ vehiculos: [] });
+    mockVehiculos({ vehiculos: [] });
     render(<MiPerfilContent />);
 
     expect(await screen.findByText("Todavía no cargaste ningún vehículo.")).toBeInTheDocument();
   });
 
-  it("un error al cargar el perfil muestra un toast de error", async () => {
+  it("un error al cargar vehículos muestra un aviso y no habilita el formulario", async () => {
     getMock.mockRejectedValue({ response: { status: 500 } });
     render(<MiPerfilContent />);
 
-    await waitFor(() => expect(toastErrorMock).toHaveBeenCalledWith("No se pudieron cargar tus datos."));
+    expect(await screen.findByText("No se pudieron cargar tus vehículos.")).toBeInTheDocument();
+    expect(toastErrorMock).toHaveBeenCalledWith("No se pudieron cargar tus vehículos.");
+    expect(screen.queryByRole("button", { name: /agregar/i })).not.toBeInTheDocument();
   });
 
-  it("agregar un vehiculo con patente invalida muestra el error de formato", async () => {
-    mockPerfil({ vehiculos: [] });
+  describe("leyenda de formato de la patente", () => {
+    it("con AUTO (por defecto) muestra el formato actual y el anterior de auto", async () => {
+      mockVehiculos();
+      render(<MiPerfilContent />);
+      const patente = await campoPatente();
+
+      expect(patente).toHaveAttribute("placeholder", "AB 123 CD / ABC 123");
+      expect(patente).toHaveAccessibleDescription("Formato actual: AB 123 CD · anterior: ABC 123");
+    });
+
+    it("al elegir MOTO cambia al formato actual y anterior de moto", async () => {
+      mockVehiculos();
+      const user = userEvent.setup();
+      render(<MiPerfilContent />);
+      const patente = await campoPatente();
+
+      await user.selectOptions(screen.getByLabelText("Tipo de vehículo"), "MOTO");
+
+      expect(patente).toHaveAttribute("placeholder", "A 123 BCD / 123 ABC");
+      expect(patente).toHaveAccessibleDescription("Formato actual: A 123 BCD · anterior: 123 ABC");
+    });
+
+    it.each(["AUTO", "CARGA"])("al volver a %s desde MOTO usa otra vez el formato de auto", async (tipo) => {
+      mockVehiculos();
+      const user = userEvent.setup();
+      render(<MiPerfilContent />);
+      const patente = await campoPatente();
+
+      await user.selectOptions(screen.getByLabelText("Tipo de vehículo"), "MOTO");
+      await user.selectOptions(screen.getByLabelText("Tipo de vehículo"), tipo);
+
+      expect(patente).toHaveAttribute("placeholder", "AB 123 CD / ABC 123");
+    });
+
+    it("la edicion tambien sigue al tipo elegido", async () => {
+      mockVehiculos({ vehiculos: [{ id: "veh1", patente: "ABC123", tipo: "AUTO" }] });
+      const user = userEvent.setup();
+      render(<MiPerfilContent />);
+      const fila = (await screen.findByRole("img", { name: "Patente ABC123" })).closest("li");
+
+      await user.click(within(fila).getByRole("button", { name: /^editar$/i }));
+      await user.selectOptions(within(fila).getByLabelText("Tipo de vehículo"), "MOTO");
+
+      expect(within(fila).getByLabelText("Patente")).toHaveAttribute("placeholder", "A 123 BCD / 123 ABC");
+    });
+  });
+
+  it("agregar un vehiculo con patente invalida muestra el error de formato coherente con la leyenda", async () => {
+    mockVehiculos({ vehiculos: [] });
     const user = userEvent.setup();
     render(<MiPerfilContent />);
-    await screen.findByText("Juan Perez");
 
-    await user.type(screen.getByPlaceholderText("ABC123 / AB123CD"), "123");
+    await user.type(await campoPatente(), "123");
     await user.click(screen.getByRole("button", { name: /agregar/i }));
 
-    expect(await screen.findByText("Formato inválido para auto/carga (ej: ABC123 o AB123CD)")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Formato inválido para auto/carga. Usá AB 123 CD (actual) o ABC 123 (anterior)"
+    );
     expect(postMock).not.toHaveBeenCalled();
   });
 
   it("agregar un vehiculo con patente de auto para un tipo MOTO muestra el error especifico de moto", async () => {
-    mockPerfil({ vehiculos: [] });
+    mockVehiculos({ vehiculos: [] });
     const user = userEvent.setup();
     render(<MiPerfilContent />);
-    await screen.findByText("Juan Perez");
+    const patente = await campoPatente();
 
-    await user.selectOptions(screen.getByRole("combobox"), "MOTO");
-    await user.type(screen.getByPlaceholderText("ABC123 / AB123CD"), "ABC123");
+    await user.selectOptions(screen.getByLabelText("Tipo de vehículo"), "MOTO");
+    await user.type(patente, "ABC123");
     await user.click(screen.getByRole("button", { name: /agregar/i }));
 
-    expect(await screen.findByText("Formato inválido para moto (ej: 123ABC o A123BCD)")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Formato inválido para moto. Usá A 123 BCD (actual) o 123 ABC (anterior)"
+    );
+    expect(patente).toBeInvalid();
     expect(postMock).not.toHaveBeenCalled();
   });
 
   it("agrega un vehiculo propio sin mandar visitanteId y refresca la lista", async () => {
-    mockPerfil({ vehiculos: [] });
+    mockVehiculos({ vehiculos: [] });
     postMock.mockResolvedValue({ data: {} });
     const onVehiculosCambiaron = vi.fn();
     const user = userEvent.setup();
     render(<MiPerfilContent onVehiculosCambiaron={onVehiculosCambiaron} />);
-    await screen.findByText("Juan Perez");
 
-    await user.type(screen.getByPlaceholderText("ABC123 / AB123CD"), "ABC123");
+    await user.type(await campoPatente(), "ABC123");
     await user.click(screen.getByRole("button", { name: /agregar/i }));
 
     await waitFor(() => expect(onVehiculosCambiaron).toHaveBeenCalled());
+    expect(postMock).toHaveBeenCalledWith("/api/v1/vehiculos", { patente: "ABC123", tipo: "AUTO" });
   });
 
-  it("el boton 'Editar mis datos' precarga telefono y email actuales", async () => {
-    mockPerfil({ perfil: { ...PERFIL, telefono: "111", email: "a@a.com" } });
+  // La leyenda muestra la patente separada en bloques: si se escribe así, se
+  // manda compacta y en mayúsculas, que es lo que acepta el backend.
+  it.each([
+    ["ab 123 cd", "AUTO", "AB123CD"],
+    ["abc-123", "AUTO", "ABC123"],
+    ["a 123 bcd", "MOTO", "A123BCD"],
+    ["123 abc", "MOTO", "123ABC"],
+  ])("escribir '%s' (%s) envia la patente normalizada %s", async (escrita, tipo, enviada) => {
+    mockVehiculos({ vehiculos: [] });
+    postMock.mockResolvedValue({ data: {} });
     const user = userEvent.setup();
     render(<MiPerfilContent />);
-    await screen.findByText("Juan Perez");
+    const patente = await campoPatente();
 
-    await user.click(screen.getByRole("button", { name: /editar mis datos/i }));
-
-    expect(screen.getByDisplayValue("111")).toBeInTheDocument();
-    expect(screen.getByDisplayValue("a@a.com")).toBeInTheDocument();
-  });
-
-  it("guarda los cambios de telefono/email con PUT /api/v1/visitantes/me", async () => {
-    const putMock = vi.fn().mockResolvedValue({
-      data: { ...PERFIL, telefono: "222", email: "b@b.com" },
-    });
-    api.put = putMock;
-    mockPerfil({ perfil: { ...PERFIL, telefono: "", email: "" } });
-    const user = userEvent.setup();
-    render(<MiPerfilContent />);
-    await screen.findByText("Juan Perez");
-
-    await user.click(screen.getByRole("button", { name: /editar mis datos/i }));
-    await user.type(screen.getByLabelText("Teléfono"), "222");
-    await user.type(screen.getByLabelText("Email"), "b@b.com");
-    await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
+    await user.selectOptions(screen.getByLabelText("Tipo de vehículo"), tipo);
+    await user.type(patente, escrita);
+    await user.click(screen.getByRole("button", { name: /agregar/i }));
 
     await waitFor(() =>
-      expect(putMock).toHaveBeenCalledWith("/api/v1/visitantes/me", { telefono: "222", email: "b@b.com" })
+      expect(postMock).toHaveBeenCalledWith("/api/v1/vehiculos", { patente: enviada, tipo })
     );
-    expect(toastSuccessMock).toHaveBeenCalledWith("Tus datos se actualizaron correctamente");
   });
 
-  // El email dejo de ser un dato de contacto opcional: es el identificador de
-  // login, asi que vaciarlo dejaria a la cuenta sin forma de entrar.
-  it("no deja vaciar el email, porque es con lo que se inicia sesion", async () => {
-    const putMock = vi.fn();
-    api.put = putMock;
-    mockPerfil({ perfil: { ...PERFIL, email: "" } });
-    const user = userEvent.setup();
+  it("muestra cada vehiculo como una patente grafica con su tipo", async () => {
+    mockVehiculos({
+      vehiculos: [
+        { id: "veh1", patente: "AB123CD", tipo: "AUTO" },
+        { id: "veh2", patente: "123ABC", tipo: "MOTO" },
+      ],
+    });
     render(<MiPerfilContent />);
-    await screen.findByText("Juan Perez");
 
-    await user.click(screen.getByRole("button", { name: /editar mis datos/i }));
-    await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
-
-    expect(await screen.findByText("El email es obligatorio")).toBeInTheDocument();
-    expect(putMock).not.toHaveBeenCalled();
+    const auto = await screen.findByRole("img", { name: "Patente AB123CD" });
+    const moto = screen.getByRole("img", { name: "Patente 123ABC" });
+    expect(auto).toHaveAttribute("data-formato", "auto-mercosur");
+    expect(moto).toHaveAttribute("data-formato", "moto-anterior");
+    expect(within(auto.closest("li")).getByText("Auto")).toBeInTheDocument();
+    expect(within(moto.closest("li")).getByText("Moto")).toBeInTheDocument();
   });
 
   it("edita un vehiculo existente con PUT /api/v1/vehiculos/{id}", async () => {
-    const putMock = vi.fn().mockResolvedValue({ data: {} });
-    api.put = putMock;
-    mockPerfil({ vehiculos: [{ id: "veh1", patente: "ABC123", tipo: "AUTO" }] });
+    putMock.mockResolvedValue({ data: {} });
+    mockVehiculos({ vehiculos: [{ id: "veh1", patente: "ABC123", tipo: "AUTO" }] });
 
     const user = userEvent.setup();
     render(<MiPerfilContent />);
-    const patente = await screen.findByText("ABC123");
-    const fila = patente.closest("li");
+    const fila = (await screen.findByRole("img", { name: "Patente ABC123" })).closest("li");
 
     await user.click(within(fila).getByRole("button", { name: /^editar$/i }));
     await user.click(within(fila).getByRole("button", { name: /^guardar$/i }));
@@ -200,119 +239,16 @@ describe("MiPerfilContent", () => {
   });
 
   it("elimina un vehiculo con confirmacion", async () => {
-    const deleteMock = vi.fn().mockResolvedValue({});
-    api.delete = deleteMock;
+    deleteMock.mockResolvedValue({});
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    mockPerfil({ vehiculos: [{ id: "veh1", patente: "ABC123", tipo: "AUTO" }] });
+    mockVehiculos({ vehiculos: [{ id: "veh1", patente: "ABC123", tipo: "AUTO" }] });
     const user = userEvent.setup();
     render(<MiPerfilContent />);
-    await screen.findByText("ABC123");
+    const fila = (await screen.findByRole("img", { name: "Patente ABC123" })).closest("li");
 
-    await user.click(screen.getByRole("button", { name: /eliminar/i }));
+    await user.click(within(fila).getByRole("button", { name: /eliminar/i }));
 
+    expect(window.confirm).toHaveBeenCalledWith("¿Seguro que querés eliminar el vehículo ABC123?");
     await waitFor(() => expect(deleteMock).toHaveBeenCalledWith("/api/v1/vehiculos/veh1"));
-  });
-});
-
-describe("MiPerfilContent: cambiar contraseña", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  async function abrirFormulario() {
-    mockPerfil();
-    const user = userEvent.setup();
-    render(<MiPerfilContent />);
-    await screen.findByText("Juan Perez");
-    await user.click(screen.getByRole("button", { name: /cambiar contraseña/i }));
-    return user;
-  }
-
-  it("el formulario esta oculto hasta tocar 'Cambiar contraseña'", async () => {
-    mockPerfil();
-    render(<MiPerfilContent />);
-    await screen.findByText("Juan Perez");
-
-    expect(screen.queryByLabelText("Contraseña actual")).not.toBeInTheDocument();
-  });
-
-  it("manda la actual y la nueva a PUT /api/v1/visitantes/me/password", async () => {
-    const putMock = vi.fn().mockResolvedValue({ data: {} });
-    api.put = putMock;
-    const user = await abrirFormulario();
-
-    await user.type(screen.getByLabelText("Contraseña actual"), "30111222");
-    await user.type(screen.getByLabelText("Contraseña nueva"), "claveNueva1");
-    await user.type(screen.getByLabelText("Repetir contraseña nueva"), "claveNueva1");
-    await user.click(screen.getByRole("button", { name: /guardar contraseña/i }));
-
-    await waitFor(() =>
-      expect(putMock).toHaveBeenCalledWith("/api/v1/visitantes/me/password", {
-        passwordActual: "30111222",
-        passwordNueva: "claveNueva1",
-      })
-    );
-    expect(toastSuccessMock).toHaveBeenCalledWith("Tu contraseña se cambió correctamente");
-  });
-
-  // Pedir la actual es lo que evita que alguien con la sesión abierta deje al
-  // dueño afuera de su cuenta.
-  it("exige la contraseña actual", async () => {
-    const putMock = vi.fn();
-    api.put = putMock;
-    const user = await abrirFormulario();
-
-    await user.type(screen.getByLabelText("Contraseña nueva"), "claveNueva1");
-    await user.type(screen.getByLabelText("Repetir contraseña nueva"), "claveNueva1");
-    await user.click(screen.getByRole("button", { name: /guardar contraseña/i }));
-
-    expect(await screen.findByText("Ingresá tu contraseña actual")).toBeInTheDocument();
-    expect(putMock).not.toHaveBeenCalled();
-  });
-
-  it("rechaza una contraseña nueva de menos de 8 caracteres", async () => {
-    const putMock = vi.fn();
-    api.put = putMock;
-    const user = await abrirFormulario();
-
-    await user.type(screen.getByLabelText("Contraseña actual"), "30111222");
-    await user.type(screen.getByLabelText("Contraseña nueva"), "corta");
-    await user.type(screen.getByLabelText("Repetir contraseña nueva"), "corta");
-    await user.click(screen.getByRole("button", { name: /guardar contraseña/i }));
-
-    expect(
-      await screen.findByText("La contraseña nueva debe tener al menos 8 caracteres")
-    ).toBeInTheDocument();
-    expect(putMock).not.toHaveBeenCalled();
-  });
-
-  it("avisa si la repeticion no coincide", async () => {
-    const putMock = vi.fn();
-    api.put = putMock;
-    const user = await abrirFormulario();
-
-    await user.type(screen.getByLabelText("Contraseña actual"), "30111222");
-    await user.type(screen.getByLabelText("Contraseña nueva"), "claveNueva1");
-    await user.type(screen.getByLabelText("Repetir contraseña nueva"), "otraDistinta1");
-    await user.click(screen.getByRole("button", { name: /guardar contraseña/i }));
-
-    expect(await screen.findByText("Las contraseñas no coinciden")).toBeInTheDocument();
-    expect(putMock).not.toHaveBeenCalled();
-  });
-
-  it("si el backend rechaza el cambio, muestra su mensaje", async () => {
-    api.put = vi.fn().mockRejectedValue({
-      response: { data: { message: "La contraseña actual no es correcta." } },
-    });
-    const user = await abrirFormulario();
-
-    await user.type(screen.getByLabelText("Contraseña actual"), "equivocada");
-    await user.type(screen.getByLabelText("Contraseña nueva"), "claveNueva1");
-    await user.type(screen.getByLabelText("Repetir contraseña nueva"), "claveNueva1");
-    await user.click(screen.getByRole("button", { name: /guardar contraseña/i }));
-
-    await waitFor(() =>
-      expect(toastErrorMock).toHaveBeenCalledWith("La contraseña actual no es correcta.")
-    );
   });
 });

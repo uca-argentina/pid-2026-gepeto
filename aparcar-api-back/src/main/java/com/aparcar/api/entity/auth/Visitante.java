@@ -47,6 +47,9 @@ public class Visitante {
 
     private String telefono;
 
+    @Column(name = "nombre_estacionamiento", length = 100)
+    private String nombreEstacionamiento;
+
     @ElementCollection(targetClass = AppAuthority.class, fetch = FetchType.EAGER)
     @CollectionTable(name = "visitante_authorities", joinColumns = @JoinColumn(name = "visitante_id"))
     @Enumerated(EnumType.STRING)
@@ -55,6 +58,22 @@ public class Visitante {
 
     @Column(name = "is_active", nullable = false)
     private Boolean isActive;
+
+    /**
+     * Si la persona tiene una discapacidad que la habilita a usar las cocheras
+     * de tipo ACCESIBLE.
+     *
+     * <p>Es un dato autodeclarado: lo marca el propio visitante desde su
+     * perfil (o el admin al darlo de alta, si ya lo sabe). No hay flujo de
+     * aprobacion: el sistema confia en la declaracion, igual que un permiso
+     * de estacionamiento en la calle.
+     *
+     * <p>Arranca en false para cualquier cuenta nueva, se cree por el
+     * constructor que se cree, asi ninguna alta existente tiene que acordarse
+     * de setearlo.
+     */
+    @Column(name = "tiene_discapacidad", nullable = false)
+    private Boolean tieneDiscapacidad = false;
 
     public Visitante(String nombre, String documento, String email, String password, String telefono,
                      Set<AppAuthority> authorities, Boolean isActive) {
@@ -65,5 +84,14 @@ public class Visitante {
         this.telefono = telefono;
         this.authorities = authorities;
         this.isActive = isActive;
+    }
+
+    /**
+     * True si esta persona puede reservar una cochera ACCESIBLE. Tolera null
+     * (lo trata como false) para no depender de que nadie haya seteado el
+     * campo a mano en un objeto armado fuera de la base.
+     */
+    public boolean puedeUsarCocheraAccesible() {
+        return Boolean.TRUE.equals(tieneDiscapacidad);
     }
 }

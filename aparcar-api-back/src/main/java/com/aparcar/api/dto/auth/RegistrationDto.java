@@ -40,6 +40,13 @@ public class RegistrationDto {
     @Size(max = 255, message = "El teléfono no puede superar los 255 caracteres")
     private String telefono;
 
+    /**
+     * Opcional: la persona puede declarar al registrarse que tiene una
+     * discapacidad (habilita las cocheras ACCESIBLE). Si no viene se toma
+     * como false; se puede cambiar despues desde el perfil.
+     */
+    private Boolean tieneDiscapacidad;
+
     public RegistrationDto(String nombre, String documento, String email, String password, String telefono) {
         setNombre(nombre);
         setDocumento(documento);

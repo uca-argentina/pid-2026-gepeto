@@ -1,0 +1,4 @@
+# Los scripts de shell van siempre con finales de linea LF, aunque se clonen
+# en Windows. Con CRLF el shebang queda como "#!/bin/sh\r" y el contenedor no
+# arranca: Linux busca un interprete llamado "sh\r" que no existe.
+*.sh text eol=lf

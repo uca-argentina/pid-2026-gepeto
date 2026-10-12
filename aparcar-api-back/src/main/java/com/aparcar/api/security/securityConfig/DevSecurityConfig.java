@@ -1,6 +1,8 @@
 package com.aparcar.api.security.securityConfig;
 
 import com.aparcar.api.component.IRevokedUserCache;
+import com.aparcar.api.config.AccesoProperties;
+import com.aparcar.api.filters.AccesoRateLimitFilter;
 import com.aparcar.api.filters.JWTGeneratorFilter;
 import com.aparcar.api.filters.JWTValidationFilter;
 import com.aparcar.api.filters.RateLimitFilter;
@@ -23,6 +25,7 @@ import org.springframework.security.web.context.RequestAttributeSecurityContextR
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.web.cors.CorsConfiguration;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -61,6 +64,8 @@ public class DevSecurityConfig {
      *                                  context.
      * @param env                       The Spring environment for accessing
      *                                  properties.
+     * @param accesoProperties          Reglas del control de acceso (rate limit
+     *                                  de /api/v1/accesos/**).
      * @return The configured SecurityFilterChain.
      */
     @Bean
@@ -68,7 +73,8 @@ public class DevSecurityConfig {
             HttpSecurity http,
             IRevokedUserCache revokedUserCache,
             SecurityContextRepository securityContextRepository,
-            Environment env) {
+            Environment env,
+            AccesoProperties accesoProperties) {
 
         String secret = env.getProperty(JWT_SECRET_KEY, JWT_SECRET_DEFAULT);
         boolean isDev = Arrays.asList(env.getActiveProfiles()).contains(DEV_ENV);
@@ -82,6 +88,9 @@ public class DevSecurityConfig {
         RateLimitFilter rateLimitFilter =
                 new RateLimitFilter();
 
+        AccesoRateLimitFilter accesoRateLimitFilter =
+                new AccesoRateLimitFilter(accesoProperties.rateLimitPorMinuto());
+
         return http
                 .securityContext(context ->
                         context.securityContextRepository(securityContextRepository))
@@ -91,8 +100,16 @@ public class DevSecurityConfig {
                         corsCustomizer.configurationSource(request -> {
                             CorsConfiguration config = new CorsConfiguration();
 
-                            config.setAllowedOriginPatterns(
-                                    List.of("http://localhost:*"));
+                            // CORS_ORIGENES_EXTRA (separados por coma) suma
+                            // origenes para probar desde otro dispositivo: la
+                            // IP local de la maquina o un tunel HTTPS, que es
+                            // lo que necesita la camara del celular.
+                            List<String> origenes = new ArrayList<>(List.of("http://localhost:*"));
+                            Arrays.stream(env.getProperty("CORS_ORIGENES_EXTRA", "").split(","))
+                                    .map(String::trim)
+                                    .filter(origen -> !origen.isEmpty())
+                                    .forEach(origenes::add);
+                            config.setAllowedOriginPatterns(origenes);
 
                             config.setAllowedMethods(
                                     List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
@@ -112,6 +129,10 @@ public class DevSecurityConfig {
 
                 .authorizeHttpRequests(requests -> requests
 
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/tarifas", "/api/v1/tarifas/cotizacion")
+                        .hasAnyAuthority("ADMIN", "USER")
+                        .requestMatchers("/api/v1/tarifas", "/api/v1/tarifas/**").hasAuthority("ADMIN")
+
                         .requestMatchers(
                                 "/api/v1/cocheras/disponibles",
                                 "/register",
@@ -127,6 +148,11 @@ public class DevSecurityConfig {
                                 "/api/v1/visitantes/me",
                                 "/api/v1/visitantes/me/**"
                         ).authenticated()
+
+                        // Validar codigos de acceso (ingreso y egreso) es
+                        // tarea del operador: solo ADMIN.
+                        .requestMatchers("/api/v1/accesos/**").hasAuthority("ADMIN")
+                        .requestMatchers("/api/v1/dashboard", "/api/v1/dashboard/**").hasAuthority("ADMIN")
 
                         // Solo ADMIN puede gestionar usuarios, dar de alta
                         // visitantes con reserva y
@@ -160,6 +186,11 @@ public class DevSecurityConfig {
 
                 .addFilterBefore(
                         rateLimitFilter,
+                        JWTValidationFilter.class)
+
+                // Despues del JWT, para contar por operador y no por IP.
+                .addFilterAfter(
+                        accesoRateLimitFilter,
                         JWTValidationFilter.class)
 
                 .httpBasic(config ->

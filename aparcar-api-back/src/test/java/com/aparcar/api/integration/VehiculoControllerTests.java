@@ -20,6 +20,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.springframework.security.core.context.SecurityContextHolder.getContext;
+import static org.hamcrest.Matchers.hasSize;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.securityContext;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -78,6 +79,48 @@ public class VehiculoControllerTests {
     }
 
     // ---- Seguridad ----
+
+    @Test
+    @WithMockUser(username = DUEÑO, authorities = {"ADMIN"})
+    void gestionPropiaAdminCreaListaEditaYEliminaSinDependerDelTitularDelCliente() throws Exception {
+        var context = getContext();
+        Visitante propio = crearVisitante("11111111", DUEÑO);
+        Visitante ajeno = crearVisitante("22222222", OTRO);
+        crearVehiculo("XX123ZZ", VehiculoTipo.AUTO, ajeno);
+        mockMvc.perform(post("/api/v1/vehiculos/mios").with(securityContext(context))
+                        .contentType(MediaType.APPLICATION_JSON).content("""
+                                {"patente":"ab123zz","tipo":"AUTO","visitanteId":"%s"}
+                                """.formatted(ajeno.getId())))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.patente").value("AB123ZZ"))
+                .andExpect(jsonPath("$.visitanteId").value(propio.getId().toString()));
+        UUID id = vehiculoRepository.findByVisitanteId(propio.getId()).getFirst().getId();
+        mockMvc.perform(get("/api/v1/vehiculos/mios").param("visitanteId", ajeno.getId().toString())
+                        .with(securityContext(context)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value(id.toString()));
+        mockMvc.perform(put("/api/v1/vehiculos/mios/{id}", id).with(securityContext(context))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"patente\":\"CD123ZZ\",\"tipo\":\"AUTO\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.patente").value("CD123ZZ"));
+        mockMvc.perform(delete("/api/v1/vehiculos/mios/{id}", id).with(securityContext(context)))
+                .andExpect(status().isNoContent());
+        mockMvc.perform(get("/api/v1/vehiculos/mios").with(securityContext(context)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$", hasSize(0)));
+    }
+
+    @Test
+    @WithMockUser(username = DUEÑO, authorities = {"ADMIN"})
+    void gestionPropiaAdminNoPermiteEditarNiEliminarVehiculosAjenos() throws Exception {
+        var context = getContext();
+        crearVisitante("11111111", DUEÑO);
+        Visitante ajeno = crearVisitante("22222222", OTRO);
+        Vehiculo vehiculo = crearVehiculo("XX123ZZ", VehiculoTipo.AUTO, ajeno);
+        mockMvc.perform(put("/api/v1/vehiculos/mios/{id}", vehiculo.getId()).with(securityContext(context))
+                        .contentType(MediaType.APPLICATION_JSON).content("{\"patente\":\"CD123ZZ\",\"tipo\":\"AUTO\"}"))
+                .andExpect(status().isForbidden());
+        mockMvc.perform(delete("/api/v1/vehiculos/mios/{id}", vehiculo.getId()).with(securityContext(context)))
+                .andExpect(status().isForbidden());
+    }
 
     @Test
     @WithAnonymousUser

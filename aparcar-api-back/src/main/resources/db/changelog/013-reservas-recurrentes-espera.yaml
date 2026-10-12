@@ -1,0 +1,58 @@
+databaseChangeLog:
+  - changeSet:
+      id: 013-reservas-recurrentes-espera
+      author: aparcar
+      changes:
+        - dropNotNullConstraint:
+            tableName: reservas
+            columnName: cochera_id
+            columnDataType: uuid
+        - addColumn:
+            tableName: reservas
+            columns:
+              - column:
+                  name: recurrencia_id
+                  type: uuid
+              - column:
+                  name: confirmada_desde_espera_at
+                  type: timestamp with time zone
+              - column:
+                  name: notificacion_leida_at
+                  type: timestamp with time zone
+        - createIndex:
+            tableName: reservas
+            indexName: idx_reservas_espera_orden
+            columns:
+              - column:
+                  name: estado
+              - column:
+                  name: fecha_creacion
+              - column:
+                  name: id
+        - createIndex:
+            tableName: reservas
+            indexName: idx_reservas_recurrencia
+            columns:
+              - column:
+                  name: recurrencia_id
+        - createTable:
+            tableName: planificacion_reservas
+            columns:
+              - column:
+                  name: id
+                  type: integer
+                  constraints:
+                    nullable: false
+                    primaryKey: true
+        - insert:
+            tableName: planificacion_reservas
+            columns:
+              - column:
+                  name: id
+                  valueNumeric: 1
+        - sql:
+            sql: >-
+              ALTER TABLE reservas ADD CONSTRAINT ck_reservas_asignacion
+              CHECK ((estado <> 'LISTA_ESPERA' OR
+                     (cochera_id IS NULL AND codigo IS NULL AND tipo_tarifa IS NOT NULL AND precio_total IS NOT NULL))
+                     AND (estado NOT IN ('CONFIRMADA', 'EN_CURSO', 'FINALIZADA') OR cochera_id IS NOT NULL))

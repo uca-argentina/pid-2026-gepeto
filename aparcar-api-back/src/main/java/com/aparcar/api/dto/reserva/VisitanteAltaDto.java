@@ -1,14 +1,14 @@
 package com.aparcar.api.dto.reserva;
 
 import com.aparcar.api.entity.reserva.VehiculoTipo;
+import com.aparcar.api.entity.reserva.CocheraTipo;
 import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.FutureOrPresent;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
@@ -35,21 +35,37 @@ public class VisitanteAltaDto {
 
     private String telefono;
 
-    // Acepta formato argentino viejo (AAA000) y Mercosur (AA000AA)
+    // El formato depende de tipoVehiculo y se valida en VehiculoService.
     @NotBlank(message = "La patente es obligatoria")
-    @Pattern(
-            regexp = "^([A-Za-z]{3}[0-9]{3}|[A-Za-z]{2}[0-9]{3}[A-Za-z]{2})$",
-            message = "La patente debe tener formato AAA000 o AA000AA"
-    )
     private String patente;
 
     @NotNull(message = "El tipo de vehiculo es obligatorio")
     private VehiculoTipo tipoVehiculo;
 
-    @NotNull(message = "La cochera es obligatoria")
     private UUID cocheraId;
 
+    private boolean listaEspera;
+
+    private CocheraTipo tipoCochera;
+
     // Si se omite, se conserva el alta para hoy de los clientes existentes.
-    @FutureOrPresent(message = "La fecha no puede ser anterior a hoy")
-    private LocalDate fecha;
+    /**
+     * Franja de la reserva que se crea junto con el alta. Si no vienen, el
+     * servicio usa "desde ahora y por una hora".
+     */
+    private LocalDateTime desde;
+
+    private LocalDateTime hasta;
+
+    private BigDecimal precioEsperado;
+
+    /**
+     * Opcional: el admin lo marca si ya sabe, al momento del alta, que la
+     * persona tiene una discapacidad. Si no viene se toma como false, y el
+     * propio visitante lo puede cambiar despues desde su perfil.
+     *
+     * <p>Se aplica ANTES de crear la reserva del alta, asi que un alta con
+     * esto en true puede reservar directamente una cochera ACCESIBLE.
+     */
+    private Boolean tieneDiscapacidad;
 }

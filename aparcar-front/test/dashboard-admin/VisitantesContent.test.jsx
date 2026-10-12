@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const { getMock, postMock, toastSuccessMock, toastErrorMock } = vi.hoisted(() => ({
@@ -24,6 +24,7 @@ const cochera = (overrides = {}) => ({
 
 function mockCocheras(disponibles = []) {
   getMock.mockImplementation((url) => {
+    if (url === "/api/v1/tarifas/cotizacion") return Promise.resolve({ data: { tipo: "AUTO", total: 1000, horas: 1 } });
     if (url === "/api/v1/cocheras/disponibles") return Promise.resolve({ data: disponibles });
     return Promise.reject(new Error(`URL no mockeada: ${url}`));
   });
@@ -43,12 +44,58 @@ async function completarFormulario(user, overrides = {}) {
   if (valores.patente) await user.type(screen.getByPlaceholderText("ABC123 / AB123CD"), valores.patente);
 }
 
+describe("VisitantesContent: alta en espera y errores del servidor", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it.each(["123ABC", "a 123-bcd"])("envía una moto %s a lista de espera con patente normalizada", async (patente) => {
+    mockCocheras();
+    postMock.mockResolvedValue({ data: { reserva: { estado: "LISTA_ESPERA" } } });
+    const user = userEvent.setup();
+    render(<VisitantesContent />);
+    await completarFormulario(user, { patente });
+    await user.selectOptions(screen.getByLabelText("Tipo de vehículo"), "MOTO");
+    expect(screen.getByLabelText("Patente")).toHaveAttribute("placeholder", "123ABC / A123BCD");
+    await user.click(await screen.findByLabelText("Acepto ingresar a la lista de espera"));
+    await user.click(screen.getByRole("button", { name: "Dar de alta e ingresar a lista de espera" }));
+    await waitFor(() => expect(postMock).toHaveBeenCalledWith("/api/v1/visitantes/alta", expect.objectContaining({
+      patente: patente === "123ABC" ? "123ABC" : "A123BCD", tipoVehiculo: "MOTO",
+      cocheraId: null, listaEspera: true, tipoCochera: "MOTO",
+    })));
+    expect(toastSuccessMock).toHaveBeenCalledWith(expect.stringContaining("reserva en lista de espera"));
+  });
+
+  it("muestra el detalle de validación junto al campo y conserva los datos", async () => {
+    mockCocheras();
+    postMock.mockRejectedValue({ response: { data: { message: "Validation failed", details: ["patente: Revisá la patente de la moto."] } } });
+    const user = userEvent.setup();
+    render(<VisitantesContent />);
+    await completarFormulario(user);
+    await user.click(await screen.findByLabelText("Acepto ingresar a la lista de espera"));
+    await user.click(screen.getByRole("button", { name: "Dar de alta e ingresar a lista de espera" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Revisá la patente de la moto.");
+    expect(toastErrorMock).toHaveBeenCalledWith("Revisá la patente de la moto.");
+    expect(screen.getByLabelText("Patente")).toHaveValue("ABC123");
+    expect(screen.queryByText("Validation failed")).not.toBeInTheDocument();
+  });
+
+  it("traduce una validación sin detalles a una indicación útil", async () => {
+    mockCocheras();
+    postMock.mockRejectedValue({ response: { data: { message: "Validation failed" } } });
+    const user = userEvent.setup();
+    render(<VisitantesContent />);
+    await completarFormulario(user);
+    await user.click(await screen.findByLabelText("Acepto ingresar a la lista de espera"));
+    await user.click(screen.getByRole("button", { name: "Dar de alta e ingresar a lista de espera" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Revisá los datos del visitante y del vehículo antes de continuar.");
+  });
+});
+
 describe("VisitantesContent (alta de visitante con reserva)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("consulta disponibilidad y reserva para la fecha elegida, limpiando la cochera anterior", async () => {
+  it("consulta disponibilidad y reserva para la franja elegida, limpiando la cochera anterior", async () => {
     mockCocheras([cochera()]);
     postMock.mockResolvedValue({ data: {} });
     const user = userEvent.setup();
@@ -56,35 +103,63 @@ describe("VisitantesContent (alta de visitante con reserva)", () => {
     await completarFormulario(user);
     await user.selectOptions(screen.getByLabelText("Cochera"), "c1");
 
-    const futura = new Date();
-    futura.setDate(futura.getDate() + 7);
-    const fecha = futura.toISOString().split("T")[0];
-    fireEvent.change(screen.getByLabelText("Fecha"), { target: { value: fecha } });
+    const desde = "2099-01-01T08:00";
+    const hasta = "2099-01-01T12:00";
+    fireEvent.change(screen.getByLabelText("Desde"), { target: { value: desde } });
+    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: hasta } });
 
-    await waitFor(() => expect(getMock).toHaveBeenLastCalledWith(
-      "/api/v1/cocheras/disponibles", { params: { fecha, tipoVehiculo: "AUTO" } }
+    await waitFor(() => expect(getMock).toHaveBeenCalledWith(
+      "/api/v1/cocheras/disponibles", { params: { desde, hasta, tipoVehiculo: "AUTO" } }
     ));
+    // Cambiar la franja invalida la cochera elegida: podría estar ocupada.
     expect(screen.getByLabelText("Cochera")).toHaveValue("");
+
     await user.selectOptions(screen.getByLabelText("Cochera"), "c1");
     await user.click(screen.getByRole("button", { name: /dar de alta y reservar/i }));
+
     await waitFor(() => expect(postMock).toHaveBeenCalledWith(
-      "/api/v1/visitantes/alta", expect.objectContaining({ fecha, cocheraId: "c1" })
+      "/api/v1/visitantes/alta", expect.objectContaining({ desde, hasta, cocheraId: "c1" })
     ));
   });
 
-  it("ignora respuestas de disponibilidad de una fecha anterior y deshabilita la cochera sin fecha", async () => {
+  // Si el usuario mueve la franja dos veces seguidas, la respuesta de la
+  // consulta vieja no puede pisar a la nueva.
+  it("ignora la respuesta de disponibilidad de una franja que ya cambio", async () => {
     let resolverAnterior;
-    getMock.mockImplementationOnce(() => new Promise((resolve) => { resolverAnterior = resolve; }))
-      .mockResolvedValue({ data: [cochera({ id: "c2", numero: "A-02" })] });
+    let primeraDisponibilidad = true;
+    getMock.mockImplementation((url) => {
+      if (url === "/api/v1/tarifas/cotizacion") return Promise.resolve({ data: { total: 1000, tipo: "AUTO" } });
+      if (primeraDisponibilidad) {
+        primeraDisponibilidad = false;
+        return new Promise((resolve) => { resolverAnterior = resolve; });
+      }
+      return Promise.resolve({ data: [cochera({ id: "c2", numero: "A-02" })] });
+    });
     render(<VisitantesContent />);
-    fireEvent.change(screen.getByLabelText("Fecha"), { target: { value: "2099-01-01" } });
+
+    fireEvent.change(screen.getByLabelText("Hasta"), { target: { value: "2099-01-01T12:00" } });
+
     await screen.findByRole("option", { name: /A-02/ });
     await act(async () => resolverAnterior({ data: [cochera()] }));
-    expect(screen.queryByRole("option", { name: /A-01/ })).not.toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Fecha"), { target: { value: "" } });
-    expect(screen.getByLabelText("Cochera")).toBeDisabled();
-    expect(screen.queryByRole("option", { name: /A-02/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /A-01/ })).not.toBeInTheDocument();
+  });
+
+  // Se escriba lo que se escriba, el horario cae en un bloque de 15.
+  // Mientras se tipea se permite cualquier minuto; el bloque se aplica al salir,
+  // redondeando al mas cercano. Acomodarlo en cada tecla impedia escribirlos.
+  it("el horario se redondea al bloque de 15 mas cercano al salir del campo", async () => {
+    mockCocheras([cochera()]);
+    render(<VisitantesContent />);
+
+    const hasta = screen.getByLabelText("Hasta");
+    fireEvent.change(hasta, { target: { value: "2099-01-01T18:23" } });
+    expect(hasta).toHaveValue("2099-01-01T18:23");
+
+    fireEvent.blur(hasta);
+
+    await waitFor(() => expect(hasta).toHaveValue("2099-01-01T18:30"));
+    expect(screen.getByLabelText("Desde")).toHaveAttribute("step", "900");
   });
 
   it("muestra errores si se envia el formulario vacio", async () => {
@@ -227,5 +302,83 @@ describe("VisitantesContent (alta de visitante con reserva)", () => {
       expect(toastErrorMock).toHaveBeenCalledWith("Ya existe un visitante con ese documento.")
     );
     expect(toastSuccessMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("VisitantesContent: discapacidad", () => {
+  const LABEL = "Persona con discapacidad (opcional)";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("muestra el checkbox de discapacidad desmarcado por defecto", () => {
+    mockCocheras();
+    render(<VisitantesContent />);
+
+    expect(screen.getByLabelText(LABEL)).toBeInTheDocument();
+    expect(screen.getByLabelText(LABEL)).not.toBeChecked();
+  });
+
+  // Es opcional: si el admin no lo toca, el alta sale igual y con false.
+  it("sin marcarlo, manda tieneDiscapacidad: false", async () => {
+    mockCocheras([cochera()]);
+    postMock.mockResolvedValue({ data: {} });
+    const user = userEvent.setup();
+    render(<VisitantesContent />);
+
+    await completarFormulario(user);
+    await screen.findByRole("option", { name: /A-01/ });
+    await user.selectOptions(screen.getByLabelText("Cochera"), "c1");
+    await user.click(screen.getByRole("button", { name: /dar de alta y reservar/i }));
+
+    await waitFor(() => expect(postMock).toHaveBeenCalledTimes(1));
+    expect(postMock.mock.calls[0][1]).toMatchObject({ tieneDiscapacidad: false });
+  });
+
+  it("marcado, manda tieneDiscapacidad: true y permite reservar una ACCESIBLE", async () => {
+    mockCocheras([cochera(), cochera({ id: "c9", numero: "A-09", tipo: "ACCESIBLE" })]);
+    postMock.mockResolvedValue({ data: {} });
+    const user = userEvent.setup();
+    render(<VisitantesContent />);
+
+    await completarFormulario(user);
+    await user.click(screen.getByLabelText(LABEL));
+    await screen.findByRole("option", { name: /A-09/ });
+    await user.selectOptions(screen.getByLabelText("Cochera"), "c9");
+    await user.click(screen.getByRole("button", { name: /dar de alta y reservar/i }));
+
+    await waitFor(() => expect(postMock).toHaveBeenCalledTimes(1));
+    expect(postMock.mock.calls[0][1]).toMatchObject({ tieneDiscapacidad: true, cocheraId: "c9" });
+  });
+
+  // Ofrecerle una ACCESIBLE a alguien sin la marca solo termina en un rechazo
+  // del backend después de completar todo el formulario.
+  it("oculta las cocheras ACCESIBLE hasta que se marca el checkbox", async () => {
+    mockCocheras([cochera(), cochera({ id: "c9", numero: "A-09", tipo: "ACCESIBLE" })]);
+    const user = userEvent.setup();
+    render(<VisitantesContent />);
+
+    await screen.findByRole("option", { name: /A-01/ });
+    expect(screen.queryByRole("option", { name: /A-09/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/Las cocheras accesibles aparecen al marcar/)).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText(LABEL));
+
+    expect(await screen.findByRole("option", { name: /A-09/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Las cocheras accesibles aparecen al marcar/)).not.toBeInTheDocument();
+  });
+
+  it("si se desmarca con una ACCESIBLE elegida, la deselecciona", async () => {
+    mockCocheras([cochera(), cochera({ id: "c9", numero: "A-09", tipo: "ACCESIBLE" })]);
+    const user = userEvent.setup();
+    render(<VisitantesContent />);
+
+    await user.click(screen.getByLabelText(LABEL));
+    await screen.findByRole("option", { name: /A-09/ });
+    await user.selectOptions(screen.getByLabelText("Cochera"), "c9");
+    await user.click(screen.getByLabelText(LABEL));
+
+    await waitFor(() => expect(screen.getByLabelText("Cochera")).toHaveValue(""));
   });
 });

@@ -1,0 +1,22 @@
+databaseChangeLog:
+  # Las cocheras ACCESIBLE solo las puede reservar una persona con
+  # discapacidad. El dato lo declara el propio visitante (o el admin al darlo
+  # de alta), asi que alcanza con un booleano en la cuenta.
+  #
+  # Las cuentas que ya existen arrancan en false: nadie queda habilitado sin
+  # haberlo declarado. El default y el NOT NULL van en el mismo addColumn, que
+  # es portable entre Postgres (prod) y H2 (tests): las filas existentes
+  # reciben el default al crearse la columna.
+  - changeSet:
+      id: 007-visitante-tiene-discapacidad
+      author: claude
+      changes:
+        - addColumn:
+            tableName: visitantes
+            columns:
+              - column:
+                  name: tiene_discapacidad
+                  type: boolean
+                  defaultValueBoolean: false
+                  constraints:
+                    nullable: false

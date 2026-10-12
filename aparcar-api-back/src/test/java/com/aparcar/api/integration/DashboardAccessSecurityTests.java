@@ -83,7 +83,9 @@ class DashboardAccessSecurityTests {
     @WithAnonymousUser
     @DisplayName("GET /api/v1/cocheras/disponibles es público")
     void cocherasDisponiblesIsPublic() throws Exception {
-        mockMvc.perform(get("/api/v1/cocheras/disponibles").param("fecha", "2026-12-31"))
+        mockMvc.perform(get("/api/v1/cocheras/disponibles")
+                        .param("desde", "2026-12-31T10:00:00")
+                        .param("hasta", "2026-12-31T18:00:00"))
                 .andExpect(status().isOk());
     }
 

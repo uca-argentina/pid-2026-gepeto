@@ -1,6 +1,7 @@
 package com.aparcar.api.service.impl;
 
 import com.aparcar.api.dto.auth.ChangePasswordDto;
+import com.aparcar.api.component.IRevokedUserCache;
 import com.aparcar.api.dto.reserva.ReservaRequestDto;
 import com.aparcar.api.dto.reserva.ReservaResponseDto;
 import com.aparcar.api.dto.reserva.VehiculoRequestDto;
@@ -19,10 +20,12 @@ import com.aparcar.api.service.IVehiculoService;
 import com.aparcar.api.service.IVisitanteService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -34,10 +37,11 @@ public class VisitanteService implements IVisitanteService {
     private final IVehiculoService vehiculoService;
     private final IReservaService reservaService;
     private final PasswordEncoder passwordEncoder;
+    private final IRevokedUserCache revokedUserCache;
 
     @Override
     @Transactional
-    public VisitanteAltaResponseDto altaConReserva(VisitanteAltaDto dto) {
+    public VisitanteAltaResponseDto altaConReserva(VisitanteAltaDto dto, String requesterEmail) {
         if (visitanteRepository.existsByDocumento(dto.getDocumento())) {
             throw new ValidationException("Ya existe un visitante con ese documento.");
         }
@@ -49,14 +53,19 @@ public class VisitanteService implements IVisitanteService {
         // La contraseña inicial es el documento. Es deliberado: el admin da de
         // alta al visitante en el momento y le puede decir con que entrar sin
         // tener que inventar y comunicar una contraseña aparte.
-        Visitante visitante = visitanteRepository.save(new Visitante(
+        Visitante nuevo = new Visitante(
                 dto.getNombre(),
                 dto.getDocumento(),
                 dto.getEmail(),
                 passwordEncoder.encode(dto.getDocumento()),
                 dto.getTelefono(),
                 Set.of(AppAuthority.USER),
-                true));
+                true);
+        // Se setea antes de guardar y antes de crear la reserva: si el admin
+        // marca que la persona tiene discapacidad, la reserva del alta ya puede
+        // ser en una cochera ACCESIBLE.
+        nuevo.setTieneDiscapacidad(Boolean.TRUE.equals(dto.getTieneDiscapacidad()));
+        Visitante visitante = visitanteRepository.save(nuevo);
 
         VehiculoRequestDto vehiculoDto = new VehiculoRequestDto();
         vehiculoDto.setPatente(dto.getPatente());
@@ -72,8 +81,20 @@ public class VisitanteService implements IVisitanteService {
         reservaDto.setVisitanteId(visitante.getId());
         reservaDto.setVehiculoId(vehiculo.id());
         reservaDto.setCocheraId(dto.getCocheraId());
-        reservaDto.setFecha(dto.getFecha() != null ? dto.getFecha() : LocalDate.now());
-        ReservaResponseDto reserva = reservaService.crear(reservaDto, visitante.getEmail(), true);
+        reservaDto.setListaEspera(dto.isListaEspera());
+        reservaDto.setTipoCochera(dto.getTipoCochera());
+        // Por defecto el alta cubre desde ahora y por una hora: el admin esta
+        // registrando a alguien que acaba de llegar. Si manda la franja, manda.
+        //
+        // El "ahora" se baja al bloque de 15 en curso: las reservas se toman en
+        // bloques, y un now() crudo (14:07:33) seria rechazado por la propia
+        // validacion del servicio de reservas.
+        LocalDateTime desde = dto.getDesde() != null ? dto.getDesde() : alBloqueDe15(LocalDateTime.now());
+        LocalDateTime hasta = dto.getHasta() != null ? dto.getHasta() : desde.plusHours(1);
+        reservaDto.setDesde(desde);
+        reservaDto.setHasta(hasta);
+        reservaDto.setPrecioEsperado(dto.getPrecioEsperado());
+        ReservaResponseDto reserva = reservaService.crear(reservaDto, requesterEmail, true);
 
         return new VisitanteAltaResponseDto(toResponseDto(visitante), vehiculo, reserva);
     }
@@ -97,6 +118,17 @@ public class VisitanteService implements IVisitanteService {
     public VisitanteResponseDto actualizarPropio(String email, VisitanteUpdateDto dto) {
         Visitante visitante = buscarPorEmail(email);
 
+        boolean esAdmin = visitante.getAuthorities() != null
+                && visitante.getAuthorities().contains(AppAuthority.ADMIN);
+        if (!esAdmin && (dto.getDocumento() != null || dto.getNombreEstacionamiento() != null)) {
+            throw new AccessDeniedException("Solo un administrador puede editar el documento o el nombre del estacionamiento.");
+        }
+
+        if (dto.getDocumento() != null && !dto.getDocumento().equals(visitante.getDocumento())
+                && visitanteRepository.existsByDocumento(dto.getDocumento())) {
+            throw new ValidationException("Ya existe un visitante con ese documento.");
+        }
+
         // El email es con lo que se inicia sesion, asi que cambiarlo cambia el
         // login: hay que asegurarse de que no se lo pise a otra cuenta.
         boolean cambiaEmail = !visitante.getEmail().equalsIgnoreCase(dto.getEmail());
@@ -104,10 +136,34 @@ public class VisitanteService implements IVisitanteService {
             throw new ValidationException("Ya existe una cuenta con ese email.");
         }
 
-        visitante.setTelefono(dto.getTelefono());
+        if (dto.getDocumento() != null) {
+            visitante.setDocumento(dto.getDocumento());
+        }
+        if (dto.getNombreEstacionamiento() != null) {
+            visitante.setNombreEstacionamiento(dto.getNombreEstacionamiento().isBlank()
+                    ? null : dto.getNombreEstacionamiento());
+        }
+        visitante.setTelefono(dto.getTelefono() == null ? null : dto.getTelefono().trim());
         visitante.setEmail(dto.getEmail());
 
-        return toResponseDto(visitanteRepository.save(visitante));
+        // null = "no lo mandaron": se respeta lo que ya estaba. Solo un valor
+        // explicito (true o false) cambia la declaracion.
+        if (dto.getTieneDiscapacidad() != null) {
+            visitante.setTieneDiscapacidad(dto.getTieneDiscapacidad());
+        }
+
+        Visitante guardado;
+        try {
+            guardado = visitanteRepository.saveAndFlush(visitante);
+        } catch (DataIntegrityViolationException ex) {
+            throw new ValidationException("El email o documento ya está en uso. Revisá tus datos.");
+        }
+        // El JWT identifica por email. Tras guardar, se cierran las sesiones con
+        // la identidad anterior; el cliente invita a entrar con el nuevo email.
+        if (cambiaEmail) {
+            revokedUserCache.revokeSessions(email);
+        }
+        return toResponseDto(guardado);
     }
 
     @Override
@@ -128,6 +184,11 @@ public class VisitanteService implements IVisitanteService {
         visitanteRepository.save(visitante);
     }
 
+    /** Baja un momento al bloque de 15 minutos en el que cae. */
+    private static LocalDateTime alBloqueDe15(LocalDateTime momento) {
+        return momento.withMinute(momento.getMinute() / 15 * 15).withSecond(0).withNano(0);
+    }
+
     private Visitante buscarPorId(UUID id) {
         return visitanteRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("Visitante no encontrado."));
@@ -144,6 +205,8 @@ public class VisitanteService implements IVisitanteService {
                 visitante.getNombre(),
                 visitante.getDocumento(),
                 visitante.getTelefono(),
-                visitante.getEmail());
+                visitante.getEmail(),
+                visitante.puedeUsarCocheraAccesible(),
+                visitante.getNombreEstacionamiento());
     }
 }

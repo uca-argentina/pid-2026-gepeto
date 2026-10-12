@@ -1,5 +1,6 @@
 package com.aparcar.api.service;
 
+import com.aparcar.api.config.AccesoDePrueba;
 import com.aparcar.api.config.UnitTests;
 import com.aparcar.api.dto.reserva.ReservaRequestDto;
 import com.aparcar.api.entity.reserva.Cochera;
@@ -16,22 +17,30 @@ import com.aparcar.api.repository.CocheraRepository;
 import com.aparcar.api.repository.ReservaRepository;
 import com.aparcar.api.repository.VehiculoRepository;
 import com.aparcar.api.repository.VisitanteRepository;
+import com.aparcar.api.service.impl.CodigoAcceso;
+import com.aparcar.api.service.impl.ReglasAcceso;
 import com.aparcar.api.service.impl.ReservaService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.springframework.security.access.AccessDeniedException;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -55,6 +64,18 @@ public class ReservaServiceTests {
     @Mock
     private CocheraRepository cocheraRepository;
 
+    @Mock
+    private ITarifaService tarifaService;
+
+    @Mock
+    private CodigoAcceso codigoAcceso;
+
+    @Spy
+    private ReglasAcceso reglasAcceso = AccesoDePrueba.reglasConRelojReal();
+
+    @Mock
+    private com.aparcar.api.service.impl.PlanificacionReservas planificacion;
+
     @InjectMocks
     private ReservaService reservaService;
 
@@ -62,9 +83,19 @@ public class ReservaServiceTests {
     private Vehiculo vehiculo;
     private Cochera cochera;
     private ReservaRequestDto dto;
+    private LocalDateTime desde;
+    private LocalDateTime hasta;
 
     @BeforeEach
     void setUp() {
+        Visitante admin = new Visitante();
+        admin.setId(UUID.randomUUID());
+        admin.setNombre("Administrador");
+        admin.setEmail(ADMIN_EMAIL);
+        lenient().when(visitanteRepository.findByEmail(ADMIN_EMAIL)).thenReturn(Optional.of(admin));
+        lenient().when(tarifaService.cotizar(any(), any(), any())).thenAnswer(i ->
+                new com.aparcar.api.dto.reserva.CotizacionResponseDto(i.getArgument(0),
+                        new java.math.BigDecimal("1000.00"), "ARS", 0, 0, 1, 0));
         visitante = new Visitante();
         visitante.setId(UUID.randomUUID());
         visitante.setEmail(VISITANTE_EMAIL);
@@ -80,11 +111,19 @@ public class ReservaServiceTests {
         cochera.setEstado(CocheraEstado.HABILITADA);
         cochera.setTipo(CocheraTipo.AUTO);
 
+        // Franja de referencia: dentro de una hora, por una hora. En el futuro
+        // para que no choque con la regla de "no puede terminar en el pasado".
+        // Alineada al bloque de 15: desde que las reservas se toman en bloques,
+        // un now() crudo (14:07:33) seria rechazado por la propia validacion.
+        desde = LocalDateTime.now().plusHours(1).withMinute(0).withSecond(0).withNano(0);
+        hasta = desde.plusHours(1);
+
         dto = new ReservaRequestDto();
         dto.setVisitanteId(visitante.getId());
         dto.setVehiculoId(vehiculo.getId());
         dto.setCocheraId(cochera.getId());
-        dto.setFecha(LocalDate.now());
+        dto.setDesde(desde);
+        dto.setHasta(hasta);
 
         // lenient: algunos tests fallan antes de llegar a estos lookups, y en
         // modo estricto Mockito marcaria esos stubs como "unnecessary"
@@ -122,7 +161,10 @@ public class ReservaServiceTests {
     @DisplayName("crear permite una cochera ACCESIBLE para cualquier tipo de vehiculo")
     void crearPermiteCocheraAccesibleParaCualquierVehiculo() {
         cochera.setTipo(CocheraTipo.ACCESIBLE);
-        when(reservaRepository.existsByCocheraIdAndFechaAndEstado(cochera.getId(), dto.getFecha(), ReservaEstado.CONFIRMADA))
+        // La regla de vehiculo se sigue cumpliendo; la de persona exige que el
+        // dueño tenga declarada la discapacidad (ver ReservaAccesibilidadTests).
+        visitante.setTieneDiscapacidad(true);
+        when(reservaRepository.existeSolapadaEnCochera(cochera.getId(), ReservaEstado.CONFIRMADA, desde, hasta))
                 .thenReturn(false);
         when(reservaRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
@@ -130,9 +172,9 @@ public class ReservaServiceTests {
     }
 
     @Test
-    @DisplayName("crear lanza ValidationException si la cochera ya tiene una reserva confirmada ese dia")
+    @DisplayName("crear lanza ValidationException si la cochera ya esta reservada en esa franja")
     void crearLanzaValidationExceptionSiCocheraYaEstaReservada() {
-        when(reservaRepository.existsByCocheraIdAndFechaAndEstado(cochera.getId(), dto.getFecha(), ReservaEstado.CONFIRMADA))
+        when(reservaRepository.existeSolapadaEnCochera(cochera.getId(), ReservaEstado.CONFIRMADA, desde, hasta))
                 .thenReturn(true);
 
         assertThrows(ValidationException.class, () -> reservaService.crear(dto, ADMIN_EMAIL, true));
@@ -141,7 +183,7 @@ public class ReservaServiceTests {
     @Test
     @DisplayName("crear guarda la reserva como CONFIRMADA cuando todas las validaciones pasan")
     void crearGuardaReservaConfirmadaCuandoTodoEsValido() {
-        when(reservaRepository.existsByCocheraIdAndFechaAndEstado(cochera.getId(), dto.getFecha(), ReservaEstado.CONFIRMADA))
+        when(reservaRepository.existeSolapadaEnCochera(cochera.getId(), ReservaEstado.CONFIRMADA, desde, hasta))
                 .thenReturn(false);
         when(reservaRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
@@ -159,7 +201,7 @@ public class ReservaServiceTests {
     void crearIgnoraElVisitanteIdDelDtoSiNoEsAdmin() {
         dto.setVisitanteId(UUID.randomUUID()); // intenta reservar para otro
         when(visitanteRepository.findByEmail(VISITANTE_EMAIL)).thenReturn(Optional.of(visitante));
-        when(reservaRepository.existsByCocheraIdAndFechaAndEstado(cochera.getId(), dto.getFecha(), ReservaEstado.CONFIRMADA))
+        when(reservaRepository.existeSolapadaEnCochera(cochera.getId(), ReservaEstado.CONFIRMADA, desde, hasta))
                 .thenReturn(false);
         when(reservaRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
@@ -279,10 +321,263 @@ public class ReservaServiceTests {
         assertThrows(NotFoundException.class, () -> reservaService.cancelar(id, ADMIN_EMAIL, true));
     }
 
+    // ---- Franja horaria ----
+
+    @Test
+    @DisplayName("crear rechaza una franja con fin anterior al inicio")
+    void crearRechazaFranjaInvertida() {
+        dto.setDesde(desde);
+        dto.setHasta(desde.minusHours(1));
+
+        assertThrows(ValidationException.class, () -> reservaService.crear(dto, ADMIN_EMAIL, true));
+        verify(reservaRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("crear rechaza una franja de duracion cero")
+    void crearRechazaFranjaDeDuracionCero() {
+        dto.setHasta(dto.getDesde());
+
+        assertThrows(ValidationException.class, () -> reservaService.crear(dto, ADMIN_EMAIL, true));
+        verify(reservaRepository, never()).save(any());
+    }
+
+    // Reservar algo que ya termino no tendria efecto: no ocuparia la cochera
+    // en ningun momento futuro.
+    @Test
+    @DisplayName("crear rechaza una franja que termina en el pasado")
+    void crearRechazaFranjaEnteramenteVencida() {
+        dto.setDesde(LocalDateTime.now().minusHours(3).withMinute(0).withSecond(0).withNano(0));
+        dto.setHasta(LocalDateTime.now().minusHours(2).withMinute(0).withSecond(0).withNano(0));
+
+        assertThrows(ValidationException.class, () -> reservaService.crear(dto, ADMIN_EMAIL, true));
+        verify(reservaRepository, never()).save(any());
+    }
+
+    // El admin registra a alguien que ya entro hace un rato, y el formulario
+    // arranca en "ahora" y tarda unos segundos en enviarse: un desde pasado
+    // tiene que seguir siendo valido mientras la franja no haya terminado.
+    @Test
+    @DisplayName("crear acepta un inicio en el pasado mientras el fin siga siendo futuro")
+    void crearAceptaInicioPasadoConFinFuturo() {
+        // Alineados al bloque, como exige la regla de los 15 minutos.
+        LocalDateTime inicioPasado = LocalDateTime.now().minusHours(1).withMinute(30).withSecond(0).withNano(0);
+        LocalDateTime finFuturo = LocalDateTime.now().plusHours(1).withMinute(30).withSecond(0).withNano(0);
+        dto.setDesde(inicioPasado);
+        dto.setHasta(finFuturo);
+        when(reservaRepository.existeSolapadaEnCochera(cochera.getId(), ReservaEstado.CONFIRMADA, inicioPasado, finFuturo))
+                .thenReturn(false);
+        when(reservaRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        assertEquals(ReservaEstado.CONFIRMADA, reservaService.crear(dto, ADMIN_EMAIL, true).estado());
+    }
+
+    // Un mismo auto no puede estar ocupando dos cocheras al mismo tiempo,
+    // aunque las dos cocheras esten libres.
+    @Test
+    @DisplayName("crear rechaza si el vehiculo ya tiene otra reserva en esa franja")
+    void crearRechazaVehiculoComprometidoEnOtraCochera() {
+        when(reservaRepository.existeSolapadaEnVehiculo(vehiculo.getId(), ReservaEstado.CONFIRMADA, desde, hasta))
+                .thenReturn(true);
+
+        assertThrows(ValidationException.class, () -> reservaService.crear(dto, ADMIN_EMAIL, true));
+        verify(reservaRepository, never()).save(any());
+    }
+
+    // La disponibilidad se consulta solo contra CONFIRMADA: las canceladas y
+    // las ya finalizadas no ocupan.
+    @Test
+    @DisplayName("crear consulta el solapamiento solo contra reservas CONFIRMADAS")
+    void crearConsultaSolapamientoSoloContraConfirmadas() {
+        when(reservaRepository.existeSolapadaEnCochera(cochera.getId(), ReservaEstado.CONFIRMADA, desde, hasta))
+                .thenReturn(false);
+        when(reservaRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        reservaService.crear(dto, ADMIN_EMAIL, true);
+
+        verify(reservaRepository).existeSolapadaEnCochera(cochera.getId(), ReservaEstado.CONFIRMADA, desde, hasta);
+        verify(reservaRepository, never())
+                .existeSolapadaEnCochera(any(), org.mockito.ArgumentMatchers.eq(ReservaEstado.CANCELADA), any(), any());
+    }
+
+    @Test
+    @DisplayName("cancelar rechaza una reserva cuya franja ya termino")
+    void cancelarRechazaUnaReservaYaTerminada() {
+        Reserva terminada = reservaDe(visitante);
+        terminada.setDesde(LocalDateTime.now().minusHours(3));
+        terminada.setHasta(LocalDateTime.now().minusHours(1));
+        when(reservaRepository.findById(terminada.getId())).thenReturn(Optional.of(terminada));
+
+        assertThrows(ValidationException.class,
+                () -> reservaService.cancelar(terminada.getId(), VISITANTE_EMAIL, false));
+        verify(reservaRepository, never()).save(any());
+    }
+
+    // ---- Bloques de 15 minutos ----
+    //
+    // La regla vive en el backend y no solo en el tablero del frontend: si
+    // estuviera unicamente en la UI, cualquier cliente que pegue a la API
+    // podria reservar de 14:07 a 15:23.
+
+    @Test
+    @DisplayName("crear rechaza un inicio que no cae en un bloque de 15 minutos")
+    void crearRechazaInicioFueraDeBloque() {
+        dto.setDesde(desde.withMinute(7).withSecond(0).withNano(0));
+
+        assertThrows(ValidationException.class, () -> reservaService.crear(dto, ADMIN_EMAIL, true));
+        verify(reservaRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("crear rechaza un fin que no cae en un bloque de 15 minutos")
+    void crearRechazaFinFueraDeBloque() {
+        dto.setHasta(hasta.withMinute(23).withSecond(0).withNano(0));
+
+        assertThrows(ValidationException.class, () -> reservaService.crear(dto, ADMIN_EMAIL, true));
+        verify(reservaRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("crear rechaza un horario con segundos, aunque los minutos sean multiplo de 15")
+    void crearRechazaHorarioConSegundos() {
+        dto.setDesde(desde.withMinute(30).withSecond(42).withNano(0));
+
+        assertThrows(ValidationException.class, () -> reservaService.crear(dto, ADMIN_EMAIL, true));
+        verify(reservaRepository, never()).save(any());
+    }
+
+    @ParameterizedTest(name = "minuto {0} es un bloque valido")
+    @ValueSource(ints = {0, 15, 30, 45})
+    @DisplayName("crear acepta los cuatro bloques de la hora")
+    void crearAceptaLosCuatroBloques(int minuto) {
+        LocalDateTime inicio = desde.withMinute(minuto).withSecond(0).withNano(0);
+        LocalDateTime fin = inicio.plusMinutes(15);
+        dto.setDesde(inicio);
+        dto.setHasta(fin);
+        when(reservaRepository.existeSolapadaEnCochera(cochera.getId(), ReservaEstado.CONFIRMADA, inicio, fin))
+                .thenReturn(false);
+        when(reservaRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        assertEquals(ReservaEstado.CONFIRMADA, reservaService.crear(dto, ADMIN_EMAIL, true).estado());
+    }
+
+    // La reserva mas corta posible es un bloque.
+    @Test
+    @DisplayName("crear acepta una reserva de exactamente 15 minutos")
+    void crearAceptaUnaReservaDeUnBloque() {
+        LocalDateTime inicio = desde.withMinute(0).withSecond(0).withNano(0);
+        LocalDateTime fin = inicio.plusMinutes(15);
+        dto.setDesde(inicio);
+        dto.setHasta(fin);
+        when(reservaRepository.existeSolapadaEnCochera(cochera.getId(), ReservaEstado.CONFIRMADA, inicio, fin))
+                .thenReturn(false);
+        when(reservaRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        assertEquals(ReservaEstado.CONFIRMADA, reservaService.crear(dto, ADMIN_EMAIL, true).estado());
+    }
+
+    // ---- Codigo de acceso y vehiculos adentro ----
+
+    @Test
+    @DisplayName("crear asigna el codigo de acceso a la reserva guardada, en la misma operacion")
+    void crearAsignaElCodigoDeAcceso() {
+        when(reservaRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+        org.mockito.Mockito.doAnswer(i -> {
+            Reserva guardada = i.getArgument(0);
+            guardada.setCodigo("ABCDE12345");
+            return null;
+        }).when(codigoAcceso).asignar(any(Reserva.class), any(java.time.Instant.class));
+
+        var response = reservaService.crear(dto, ADMIN_EMAIL, true);
+
+        verify(codigoAcceso).asignar(any(Reserva.class), any(java.time.Instant.class));
+        assertEquals("ABCDE12345", response.acceso().codigo());
+        // La ventana de ingreso viaja calculada: de 15 minutos antes a 30 despues.
+        assertEquals(desde.minusMinutes(15), response.acceso().ingresoDesde());
+    }
+
+    // Un vehiculo que se paso de hora sigue adentro: la cochera no se libera
+    // hasta que egresa, aunque su "hasta" ya haya pasado.
+    @Test
+    @DisplayName("crear rechaza la franja si en la cochera hay un vehiculo adentro (EN_CURSO)")
+    void crearRechazaSiHayUnVehiculoAdentro() {
+        when(reservaRepository.existeEnCursoEnCochera(eq(cochera.getId()), eq(desde), eq(hasta),
+                any(LocalDateTime.class))).thenReturn(true);
+
+        assertThrows(ValidationException.class, () -> reservaService.crear(dto, ADMIN_EMAIL, true));
+        verify(reservaRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("crear rechaza un vehiculo que esta adentro de otra cochera en esa franja")
+    void crearRechazaUnVehiculoQueEstaAdentro() {
+        when(reservaRepository.existeEnCursoConVehiculo(eq(vehiculo.getId()), eq(desde), eq(hasta),
+                any(LocalDateTime.class))).thenReturn(true);
+
+        assertThrows(ValidationException.class, () -> reservaService.crear(dto, ADMIN_EMAIL, true));
+        verify(reservaRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("cancelar rechaza una reserva EN_CURSO: corresponde registrar el egreso")
+    void cancelarRechazaUnaReservaEnCurso() {
+        Reserva enCurso = reservaDe(visitante);
+        enCurso.setEstado(ReservaEstado.EN_CURSO);
+        when(reservaRepository.findById(enCurso.getId())).thenReturn(Optional.of(enCurso));
+
+        ValidationException e = assertThrows(ValidationException.class,
+                () -> reservaService.cancelar(enCurso.getId(), ADMIN_EMAIL, true));
+
+        assertTrue(e.getMessage().contains("egreso"));
+        assertEquals(ReservaEstado.EN_CURSO, enCurso.getEstado());
+        verify(reservaRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("cancelar rechaza una reserva VENCIDA")
+    void cancelarRechazaUnaReservaVencida() {
+        Reserva vencida = reservaDe(visitante);
+        vencida.setEstado(ReservaEstado.VENCIDA);
+        when(reservaRepository.findById(vencida.getId())).thenReturn(Optional.of(vencida));
+
+        assertThrows(ValidationException.class,
+                () -> reservaService.cancelar(vencida.getId(), VISITANTE_EMAIL, false));
+        verify(reservaRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("cancelar rechaza una CONFIRMADA a la que ya se le cerro la ventana de ingreso")
+    void cancelarRechazaUnaConfirmadaFueraDeTolerancia() {
+        Reserva sinIngreso = reservaDe(visitante);
+        sinIngreso.setDesde(LocalDateTime.now().minusHours(1).withSecond(0).withNano(0));
+        sinIngreso.setHasta(LocalDateTime.now().plusHours(1).withSecond(0).withNano(0));
+        when(reservaRepository.findById(sinIngreso.getId())).thenReturn(Optional.of(sinIngreso));
+
+        assertThrows(ValidationException.class,
+                () -> reservaService.cancelar(sinIngreso.getId(), VISITANTE_EMAIL, false));
+    }
+
+    @Test
+    @DisplayName("el codigo solo viaja mientras sirve: no se muestra en una reserva cancelada")
+    void elCodigoSoloViajaMientrasSirve() {
+        Reserva vigente = reservaDe(visitante);
+        vigente.setCodigo("ABCDE12345");
+        Reserva cancelada = reservaDe(visitante);
+        cancelada.setCodigo("FGHJK67890");
+        cancelada.setEstado(ReservaEstado.CANCELADA);
+        when(reservaRepository.findByVisitanteEmail(VISITANTE_EMAIL)).thenReturn(List.of(vigente, cancelada));
+
+        var response = reservaService.listar(VISITANTE_EMAIL, false);
+
+        assertEquals("ABCDE12345", response.get(0).acceso().codigo());
+        assertNull(response.get(1).acceso().codigo());
+    }
+
     private Reserva reservaDe(Visitante dueño) {
         Reserva reserva = new Reserva();
         reserva.setId(UUID.randomUUID());
-        reserva.setFecha(LocalDate.now());
+        reserva.setDesde(desde);
+        reserva.setHasta(hasta);
         reserva.setVisitante(dueño);
         reserva.setVehiculo(vehiculo);
         reserva.setCochera(cochera);

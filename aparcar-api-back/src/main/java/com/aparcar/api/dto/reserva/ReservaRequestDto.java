@@ -1,10 +1,11 @@
 package com.aparcar.api.dto.reserva;
 
-import jakarta.validation.constraints.FutureOrPresent;
 import jakarta.validation.constraints.NotNull;
+import com.aparcar.api.entity.reserva.CocheraTipo;
 import lombok.Data;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Data
@@ -19,10 +20,26 @@ public class ReservaRequestDto {
     @NotNull(message = "El vehiculo es obligatorio")
     private UUID vehiculoId;
 
-    @NotNull(message = "La cochera es obligatoria")
     private UUID cocheraId;
 
-    @NotNull(message = "La fecha es obligatoria")
-    @FutureOrPresent(message = "La fecha no puede ser anterior a hoy")
-    private LocalDate fecha;
+    /** Consentimiento expreso para esperar si no queda lugar en esta categoria. */
+    private boolean listaEspera;
+
+    private CocheraTipo tipoCochera;
+
+    /**
+     * Inicio de la franja. No lleva @FutureOrPresent a proposito: el formulario
+     * lo arranca en "ahora", y entre que se abre y se envia pasan segundos que
+     * lo dejarian en el pasado por unos instantes. Ademas el admin necesita
+     * poder registrar a alguien que ya entro hace un rato. Lo que si se exige
+     * (en el servicio) es que la franja no este enteramente vencida.
+     */
+    @NotNull(message = "El inicio de la reserva es obligatorio")
+    private LocalDateTime desde;
+
+    @NotNull(message = "El fin de la reserva es obligatorio")
+    private LocalDateTime hasta;
+
+    /** Solo se compara: el servidor calcula siempre el importe definitivo. */
+    private BigDecimal precioEsperado;
 }

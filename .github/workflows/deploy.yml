@@ -1,0 +1,143 @@
+# Despliegue automatico: push a main -> la instancia EC2 queda actualizada.
+#
+# El trabajo pesado ocurre aca, no en la instancia. GitHub compila las dos
+# imagenes y las publica en GHCR (el registro de contenedores de GitHub, sin
+# costo para este repositorio); la instancia solo las baja ya hechas y
+# reinicia los contenedores.
+#
+# Se hace asi por dos razones:
+#   - Compilar el backend con Maven necesita ~1,5 GB y varios minutos de CPU.
+#     Hacerlo en la instancia mientras la aplicacion atiende la deja sin
+#     memoria y sin CPU justo cuando hace falta.
+#   - Cada imagen queda etiquetada con el hash del commit. Si un despliegue
+#     sale mal, volver atras es poner ese hash en IMAGE_TAG y levantar de
+#     nuevo: no hay que recompilar nada.
+#
+# Secretos que hay que cargar en el repositorio
+# (Settings > Secrets and variables > Actions):
+#   VM_HOST     IP elastica de la instancia EC2
+#   VM_USER     usuario con el que entra por SSH (en Ubuntu: ubuntu)
+#   VM_SSH_KEY  el contenido del archivo .pem que descargaste de AWS
+#
+# GITHUB_TOKEN no hay que cargarlo: lo da GitHub solo.
+
+name: Deploy
+
+on:
+  push:
+    branches: ["main"]
+  # Permite relanzar el despliegue a mano desde la pestaña Actions, sin tener
+  # que hacer un commit vacio.
+  workflow_dispatch:
+
+# Si entran dos pushes seguidos, que el segundo espere en vez de pisar al
+# primero a mitad de camino.
+concurrency:
+  group: deploy-produccion
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: Compilar y publicar imagenes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Convierte el nombre del repositorio a minuscula: GHCR las exige y
+      # "uca-argentina/PID..." con mayusculas haria fallar el push.
+      - name: Preparar nombre de las imagenes
+        id: nombres
+        run: echo "repo=${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Entrar a GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./aparcar-api-back
+          file: ./aparcar-api-back/dockerfiles/server.Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.nombres.outputs.repo }}/backend:latest
+            ${{ env.REGISTRY }}/${{ steps.nombres.outputs.repo }}/backend:${{ github.sha }}
+          # Guarda las capas intermedias entre corridas: sin esto, cada
+          # despliegue vuelve a bajar todas las dependencias de Maven.
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      - name: Frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./aparcar-front
+          file: ./aparcar-front/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.nombres.outputs.repo }}/frontend:latest
+            ${{ env.REGISTRY }}/${{ steps.nombres.outputs.repo }}/frontend:${{ github.sha }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+  deploy:
+    name: Actualizar la instancia
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Bajar las imagenes nuevas y reiniciar
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -e
+            cd ~/aparcar
+
+            # Trae los cambios de compose.yaml y del Caddyfile, que viven en el
+            # repositorio. El .env no se toca: existe solo en esta maquina.
+            git fetch --quiet origin main
+            git reset --hard --quiet origin/main
+
+            cd deploy
+            docker compose pull --quiet
+            docker compose up -d --remove-orphans
+
+            # Borra las imagenes viejas que quedaron sin usar. En un disco
+            # chico, un par de meses de despliegues lo llenan.
+            docker image prune -f
+
+      - name: Comprobar que quedo arriba
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: |
+            # El backend tarda en arrancar: se le dan hasta dos minutos antes
+            # de dar el despliegue por fallido.
+            for i in $(seq 1 24); do
+              estado=$(docker inspect --format='{{.State.Health.Status}}' aparcar-backend-1 2>/dev/null || echo "sin-estado")
+              if [ "$estado" = "healthy" ]; then
+                echo "Backend sano. Despliegue terminado."
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "El backend no llego a estado sano. Ultimos registros:"
+            docker compose -f ~/aparcar/deploy/compose.yaml logs --tail=60 backend
+            exit 1

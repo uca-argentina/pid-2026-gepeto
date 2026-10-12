@@ -1,37 +1,49 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { toast } from "sonner";
 import api from "@/app/api";
+import AtajosJornada from "@/components/AtajosJornada";
+import CotizacionReserva from "@/components/CotizacionReserva";
+import ModalCodigoAcceso from "@/components/ModalCodigoAcceso";
+import PatenteVisual from "@/components/PatenteVisual";
+import ReservasListado from "@/components/ReservasListado";
+import AvisoListaEspera from "@/components/AvisoListaEspera";
+import NotificacionesReservas from "@/components/NotificacionesReservas";
+import RepeticionReserva, { contarRepeticiones, limiteRepeticion } from "@/components/RepeticionReserva";
+import useCotizacion from "@/hooks/useCotizacion";
+import useDisponibilidad from "@/hooks/useDisponibilidad";
+import { tieneCodigoVigente } from "@/utils/codigoAcceso";
+import {
+  PASO_MINUTOS,
+  redondearAlBloqueLocal,
+  formatearRango,
+  franjaPorDefecto,
+} from "@/utils/franjaHoraria";
 
-const reservaSchema = z.object({
-  patente: z.string().min(1, "Ingresá una patente"),
-  cocheraId: z.string().min(1, "Selecciona una cochera"),
-  fecha: z.string().min(1, "Selecciona una fecha"),
-});
+const reservaSchema = z
+  .object({
+    patente: z.string().min(1, "Ingresá una patente"),
+    cocheraId: z.string().optional(),
+    listaEspera: z.boolean().optional(),
+    desde: z.string().min(1, "Elegí desde cuándo"),
+    hasta: z.string().min(1, "Elegí hasta cuándo"),
+  })
+  .refine((d) => d.listaEspera || Boolean(d.cocheraId), {
+    message: "Selecciona una cochera", path: ["cocheraId"],
+  })
+  .refine((d) => !d.desde || !d.hasta || d.hasta > d.desde, {
+    message: "El fin tiene que ser posterior al inicio",
+    path: ["hasta"],
+  });
 
 const inputClasses =
   "ui-input";
 const labelClasses = "ui-label";
-const today = () => new Date().toISOString().split("T")[0];
-
-function EstadoBadge({ estado }) {
-  const isConfirmada = estado === "CONFIRMADA";
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-        isConfirmada
-          ? "bg-accent/10 text-link ring-1 ring-inset ring-accent/30"
-          : "bg-ink/5 text-ink/50 ring-1 ring-inset ring-ink/10"
-      }`}
-    >
-      {estado}
-    </span>
-  );
-}
 
 // Lo usan los dos dashboards, pero no hacen lo mismo:
 //
@@ -39,6 +51,8 @@ function EstadoBadge({ estado }) {
 //   de cualquier visitante ya registrado. Ve todas las reservas del sistema.
 // - modo "user": elige entre sus propias patentes y reserva a su nombre. Ve
 //   solo sus reservas.
+// - modo "recurrentes": el ADMIN reserva únicamente para sus vehículos y ve
+//   sus propias series desde una pantalla separada de las reservas de visitantes.
 //
 // La separación es real, no cosmética: el backend ignora el visitanteId que
 // mande un USER y usa su cuenta, y filtra el listado por dueño. Lo de acá es
@@ -48,14 +62,25 @@ function EstadoBadge({ estado }) {
 // la cuadrícula de ocupación, que vive en un componente hermano. Se dispara
 // tanto al crear una reserva como al cancelarla, porque las dos cosas cambian
 // qué cocheras están libres.
-export default function ReservasContent({ modo = "user", onOcupacionCambiada, refreshKey = 0 }) {
+export default function ReservasContent({
+  modo = "user",
+  onOcupacionCambiada,
+  refreshKey = 0,
+  layout = "apilado",
+}) {
   const esAdmin = modo === "admin";
+  const recurrente = modo === "recurrentes";
 
   const [visitantes, setVisitantes] = useState([]);
   const [vehiculos, setVehiculos] = useState([]);
-  const [cocheras, setCocheras] = useState([]);
+  const [diasSemana, setDiasSemana] = useState([]);
+  const [repetirHasta, setRepetirHasta] = useState("");
   const [reservas, setReservas] = useState([]);
   const [loadingReservas, setLoadingReservas] = useState(true);
+  const [errorReservas, setErrorReservas] = useState(false);
+  // La reserva cuyo código de acceso (QR) se está mostrando.
+  const [reservaCodigo, setReservaCodigo] = useState(null);
+  const [codigoRecienCreado, setCodigoRecienCreado] = useState(false);
 
   const {
     register,
@@ -66,12 +91,16 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(reservaSchema),
-    defaultValues: { fecha: today(), patente: "" },
+    // La reserva arranca por defecto en este momento; el "hasta" se elige.
+    defaultValues: { ...franjaPorDefecto(), patente: "", cocheraId: "", listaEspera: false },
   });
 
   const patente = watch("patente");
   const cocheraId = watch("cocheraId");
-  const fecha = watch("fecha");
+  const desde = watch("desde");
+  const hasta = watch("hasta");
+  const listaEspera = watch("listaEspera");
+  const rangoValido = Boolean(desde && hasta && hasta > desde);
 
   const vehiculoEncontrado = useMemo(() => {
     const normalizada = patente?.trim().toUpperCase();
@@ -86,14 +115,40 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
     return visitantes.find((v) => v.id === vehiculoEncontrado.visitanteId) || null;
   }, [esAdmin, vehiculoEncontrado, visitantes]);
 
+  const disponibilidad = useDisponibilidad(vehiculoEncontrado?.tipo, desde, hasta, recurrente);
+  const cocheras = disponibilidad.cocheras;
+
+  // Para un visitante, /disponibles ya viene filtrado por el backend según su
+  // perfil. El admin, en cambio, recibe todas las cocheras (reserva en nombre
+  // de otros), así que las ACCESIBLE se ocultan acá cuando el dueño del
+  // vehículo no declaró discapacidad: ofrecerlas solo lleva a un rechazo.
+  // La comparación es estricta con `false` para no ocultar nada si el dato no
+  // viene (visitante no encontrado todavía o un backend anterior al campo).
+  const ocultarAccesibles = esAdmin && visitanteEncontrado?.tieneDiscapacidad === false;
+  const cocherasOfrecidas = useMemo(
+    () => (ocultarAccesibles ? cocheras.filter((c) => c.tipo !== "ACCESIBLE") : cocheras),
+    [cocheras, ocultarAccesibles]
+  );
+  const hayAccesiblesOcultas = cocherasOfrecidas.length < cocheras.length;
+  const cocheraElegida = cocherasOfrecidas.find((c) => c.id === cocheraId);
+  const puedeEsperar = disponibilidad.lista && cocherasOfrecidas.length === 0 && !recurrente;
+  const enEspera = puedeEsperar && listaEspera;
+  const cantidadRepeticiones = contarRepeticiones(desde, repetirHasta, diasSemana);
+  const diaInicial = desde ? new Date(`${desde.slice(0, 10)}T12:00:00`).getDay() || 7 : null;
+  const repeticionValida = !recurrente || (cantidadRepeticiones > 0 && cantidadRepeticiones <= 90
+    && repetirHasta <= limiteRepeticion(desde) && diasSemana.includes(diaInicial));
+  const cotizacion = useCotizacion(cocheraElegida?.tipo ?? vehiculoEncontrado?.tipo, desde, hasta);
+
   const cargarReservas = async () => {
     setLoadingReservas(true);
+    setErrorReservas(false);
     try {
-      // El backend ya devuelve todas las reservas si sos ADMIN, y solo las
-      // propias si sos visitante. Acá no hay nada que filtrar.
-      const res = await api.get("/api/v1/reservas");
+      // El endpoint de recurrentes limita el listado a las series del admin
+      // autenticado; la pantalla operativa conserva el listado general.
+      const res = await api.get(recurrente ? "/api/v1/reservas/recurrentes" : "/api/v1/reservas");
       setReservas(res.data);
     } catch {
+      setErrorReservas(true);
       toast.error("No se pudieron cargar las reservas.");
     } finally {
       setLoadingReservas(false);
@@ -101,12 +156,13 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
   };
 
   // GET /api/v1/vehiculos devuelve el catálogo completo para el ADMIN y solo
-  // los propios para un visitante, así que la misma llamada sirve en los dos
-  // modos. Se re-llama al enfocar el campo de patente (además de al montar)
-  // porque el vehículo puede haberse cargado recién arriba en esta página.
+  // los propios para un visitante. En recurrentes se pide /mios para que el
+  // admin sólo elija vehículos propios. Se recarga al enfocar la patente
+  // porque el vehículo puede haberse cargado recién en otra pestaña o
+  // pantalla (el visitante los gestiona desde "Mis datos").
   const cargarCatalogos = () => {
     api
-      .get("/api/v1/vehiculos")
+      .get(recurrente ? "/api/v1/vehiculos/mios" : "/api/v1/vehiculos")
       .then((res) => setVehiculos(res.data))
       .catch(() => toast.error("No se pudieron cargar los vehículos."));
 
@@ -122,19 +178,12 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
     cargarCatalogos();
     cargarReservas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshKey]);
+  }, [refreshKey, modo]);
 
   useEffect(() => {
     setValue("cocheraId", "");
-    setCocheras([]);
-    if (!fecha || !vehiculoEncontrado) return;
-
-    api
-      .get("/api/v1/cocheras/disponibles", { params: { fecha, tipoVehiculo: vehiculoEncontrado.tipo } })
-      .then((res) => setCocheras(res.data))
-      .catch(() => toast.error("No se pudieron cargar las cocheras disponibles."));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fecha, vehiculoEncontrado]);
+    setValue("listaEspera", false);
+  }, [disponibilidad.solicitud, vehiculoEncontrado?.id, ocultarAccesibles, setValue]);
 
   const onSubmit = async (data) => {
     if (!vehiculoEncontrado) {
@@ -147,28 +196,49 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
       return;
     }
 
+    if (!cotizacion.lista || (!cocheraElegida && !enEspera) || !rangoValido || !repeticionValida) return;
+
     try {
-      await api.post("/api/v1/reservas", {
-        // Solo el admin puede reservar en nombre de otro; para un visitante el
-        // backend ignora este campo y usa su propia cuenta.
+      const res = await api.post(recurrente ? "/api/v1/reservas/recurrentes" : "/api/v1/reservas", {
+        // Sólo el modo operativo reserva en nombre de otro. Visitantes y
+        // recurrentes usan la cuenta autenticada.
         visitanteId: esAdmin ? visitanteEncontrado.id : undefined,
         vehiculoId: vehiculoEncontrado.id,
-        cocheraId: data.cocheraId,
-        fecha: data.fecha,
+        cocheraId: enEspera ? null : data.cocheraId,
+        ...(enEspera ? { listaEspera: true, tipoCochera: vehiculoEncontrado.tipo } : {}),
+        ...(recurrente ? { diasSemana, repetirHasta } : {}),
+        // Cinturón: al pasar del campo al botón se dispara el blur que ya lo
+        // acomoda, pero el valor también puede venir de un atajo o de un reset,
+        // y el backend rechaza lo que no caiga en la grilla de 15 minutos.
+        desde: redondearAlBloqueLocal(data.desde),
+        hasta: redondearAlBloqueLocal(data.hasta),
+        precioEsperado: cotizacion.datos.total,
       });
-      toast.success("Reserva creada correctamente");
-      reset({ patente: "", cocheraId: "", fecha: today() });
-      setCocheras([]);
+      toast.success(recurrente ? `${res.data.length} reservas recurrentes creadas correctamente`
+        : res.data?.estado === "LISTA_ESPERA" ? "Reserva agregada a la lista de espera"
+        : "Reserva creada correctamente");
+      // El visitante se lleva el QR en el momento: es lo que va a mostrar en
+      // la entrada.
+      if (!esAdmin && !recurrente && tieneCodigoVigente(res?.data)) {
+        setCodigoRecienCreado(true);
+        setReservaCodigo(res.data);
+      }
+      reset({ patente: "", cocheraId: "", listaEspera: false, ...franjaPorDefecto() });
+      setDiasSemana([]);
+      setRepetirHasta("");
+      disponibilidad.recargar();
       cargarReservas();
       onOcupacionCambiada?.();
     } catch (err) {
       toast.error(err.response?.data?.message || "No se pudo crear la reserva.");
+      cotizacion.recargar();
+      disponibilidad.recargar();
     }
   };
 
   const cancelarReserva = async (reserva) => {
     const confirmado = window.confirm(
-      `¿Seguro que querés cancelar la reserva de la cochera ${reserva.cochera?.numero} del ${reserva.fecha}?`
+      `¿Seguro que querés cancelar la reserva ${reserva.estado === "LISTA_ESPERA" ? "en lista de espera" : `de la cochera ${reserva.cochera?.numero}`} (${formatearRango(reserva.desde, reserva.hasta)})?`
     );
     if (!confirmado) {
       return;
@@ -177,7 +247,8 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
     try {
       await api.post(`/api/v1/reservas/${reserva.id}/cancelar`);
       toast.success("Reserva cancelada correctamente");
-      cargarReservas();
+      await cargarReservas();
+      disponibilidad.recargar();
       onOcupacionCambiada?.();
     } catch (err) {
       toast.error(err.response?.data?.message || "No se pudo cancelar la reserva.");
@@ -186,26 +257,47 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
 
   const sinVehiculos = !esAdmin && vehiculos.length === 0;
 
+  // En dos columnas el alta queda a la izquierda y el listado a la derecha; el
+  // dashboard del visitante los sigue viendo apilados, que es lo que entra en
+  // una pantalla angosta sin pelear con el resto de su panel.
+  const enColumnas = layout === "columnas";
+
   return (
-    <div className="mx-auto max-w-3xl space-y-10">
+    <div className={enColumnas ? "reservas-columnas" : "mx-auto max-w-3xl space-y-10"}>
+      <div className="space-y-10">
+      <NotificacionesReservas onActualizadas={cargarReservas} onVerCodigo={esAdmin ? undefined : (reserva) => {
+        setCodigoRecienCreado(false);
+        setReservaCodigo(reserva);
+      }} />
       <div>
-        <h1 className="text-3xl font-extrabold tracking-tight text-ink mb-2">Nueva reserva</h1>
+        {recurrente
+          ? <h2 className="text-xl font-bold text-ink mb-2">Nueva reserva recurrente</h2>
+          : <h1 className="text-3xl font-extrabold tracking-tight text-ink mb-2">Nueva reserva</h1>}
         <p className="text-sm text-ink/60">
-          {esAdmin
-            ? "Ingresá la patente del vehículo y elegí una cochera disponible para la fecha."
-            : "Elegí uno de tus vehículos y una cochera disponible para la fecha."}
+          {recurrente
+            ? "Elegí uno de tus vehículos, la primera franja y los días de la semana en que vas a reservar."
+            : esAdmin
+            ? "Ingresá la patente, elegí desde y hasta cuándo, y una cochera libre en esa franja."
+            : "Elegí uno de tus vehículos, desde y hasta cuándo, y una cochera libre en esa franja."}
         </p>
       </div>
 
       <div className="ui-card p-8">
         {sinVehiculos ? (
           <p className="text-sm text-ink/60">
-            Cargá al menos un vehículo en &quot;Mis datos&quot; para poder reservar.
+            Cargá al menos un vehículo en{" "}
+            <Link href={recurrente ? "#mis-vehiculos" : "/dashboard-user/perfil#mis-vehiculos"} className="font-semibold text-link underline-offset-2 hover:underline">
+              {recurrente ? "Mis vehículos" : '"Mis datos"'}
+            </Link>{" "}
+            para poder reservar.
           </p>
         ) : (
         <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
+            {/* La patente ocupa el ancho completo para que `Desde` y `Hasta`
+                caigan juntos en la fila siguiente: son un par, y separarlos
+                obliga a leer el formulario en zigzag. */}
+            <div className="sm:col-span-2">
               <label className={labelClasses} htmlFor="reserva-patente">Patente</label>
               {esAdmin ? (
                 <>
@@ -245,6 +337,13 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
                   No hay ningún vehículo registrado con esa patente.
                 </p>
               )}
+              {/* Un <option> no puede llevar la chapa dibujada: se muestra
+                  debajo del desplegable la del vehículo elegido. */}
+              {!esAdmin && vehiculoEncontrado && (
+                <div className="reserva-patente-elegida">
+                  <PatenteVisual patente={vehiculoEncontrado.patente} tipo={vehiculoEncontrado.tipo} tamano="sm" />
+                </div>
+              )}
               {esAdmin && vehiculoEncontrado && visitanteEncontrado && (
                 <p className="mt-1 text-sm text-link">
                   {visitanteEncontrado.nombre} — {vehiculoEncontrado.tipo}
@@ -253,15 +352,59 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
             </div>
 
             <div>
-              <label className={labelClasses} htmlFor="reserva-fecha">Fecha</label>
+              <label className={labelClasses} htmlFor="reserva-desde">Desde</label>
+              {/* step de 15 min: las flechas del campo se mueven de a un
+                  bloque. Lo que se escribe se redondea al bloque más cercano
+                  **al salir del campo**, no en cada tecla: escribir los minutos
+                  pasa por estados intermedios —tipear el "3" de ":30" deja
+                  ":03"— y acomodarlos en el momento los borraba, así que no se
+                  podía escribir ningún minuto. */}
               <input
-                id="reserva-fecha"
-                type="date"
-                min={today()}
-                {...register("fecha")}
+                id="reserva-desde"
+                type="datetime-local"
+                step={PASO_MINUTOS * 60}
+                {...register("desde", {
+                  onBlur: (e) =>
+                    setValue("desde", redondearAlBloqueLocal(e.target.value), {
+                      shouldValidate: true,
+                    }),
+                })}
                 className={inputClasses}
               />
-              {errors.fecha && <p className="mt-1 text-sm text-red-500">{errors.fecha.message}</p>}
+              {errors.desde && <p className="mt-1 text-sm text-red-500">{errors.desde.message}</p>}
+            </div>
+
+            <div>
+              <label className={labelClasses} htmlFor="reserva-hasta">Hasta</label>
+              <input
+                id="reserva-hasta"
+                type="datetime-local"
+                step={PASO_MINUTOS * 60}
+                min={desde}
+                {...register("hasta", {
+                  onBlur: (e) =>
+                    setValue("hasta", redondearAlBloqueLocal(e.target.value), {
+                      shouldValidate: true,
+                    }),
+                })}
+                className={inputClasses}
+              />
+              {errors.hasta && <p className="mt-1 text-sm text-red-500">{errors.hasta.message}</p>}
+              {/* Se avisa al instante: si se espera al submit, el error que
+                  aparece es el de la cochera (que quedó deshabilitada), y el
+                  problema real —la franja dada vuelta— queda invisible. */}
+              {desde && hasta && hasta <= desde && !errors.hasta && (
+                <p className="mt-1 text-sm text-red-500">El fin tiene que ser posterior al inicio</p>
+              )}
+            </div>
+
+            <div className="sm:col-span-2">
+              <AtajosJornada
+                idPrefijo="reserva"
+                desde={desde}
+                hasta={hasta}
+                onChange={(h) => setValue("hasta", h, { shouldValidate: true })}
+              />
             </div>
 
             <div className="sm:col-span-2">
@@ -270,84 +413,82 @@ export default function ReservasContent({ modo = "user", onOcupacionCambiada, re
                 id="reserva-cocheraId"
                 {...register("cocheraId")}
                 className={inputClasses}
-                disabled={!vehiculoEncontrado || !fecha}
+                disabled={!vehiculoEncontrado || !rangoValido || !disponibilidad.lista || cocherasOfrecidas.length === 0}
               >
                 <option value="">
-                  {vehiculoEncontrado && fecha
+                  {vehiculoEncontrado && rangoValido
                     ? "Seleccioná una cochera"
                     : esAdmin
-                    ? "Ingresá primero una patente válida y una fecha"
-                    : "Elegí primero un vehículo y una fecha"}
+                    ? "Ingresá primero una patente válida y la franja"
+                    : "Elegí primero un vehículo y la franja"}
                 </option>
-                {cocheras.map((c) => (
+                {cocherasOfrecidas.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.numero} — {c.sector} ({c.tipo})
                   </option>
                 ))}
               </select>
               {errors.cocheraId && <p className="mt-1 text-sm text-red-500">{errors.cocheraId.message}</p>}
-              {vehiculoEncontrado && fecha && cocheras.length === 0 && (
-                <p className="mt-1 text-sm text-ink/50">No hay cocheras disponibles para esa fecha.</p>
+              {disponibilidad.cargando && <p className="mt-1 text-sm text-ink/50">Consultando disponibilidad…</p>}
+              {disponibilidad.error && <div className="mt-1 text-sm text-red-500" role="alert">
+                <p>{disponibilidad.error}</p>
+                <button type="button" className="font-semibold underline" onClick={disponibilidad.recargar}>Reintentar disponibilidad</button>
+              </div>}
+              {disponibilidad.lista && cocherasOfrecidas.length === 0 && (
+                <p className="mt-1 text-sm text-ink/50">
+                  No hay cocheras libres durante toda esa franja.
+                </p>
+              )}
+              {puedeEsperar && <AvisoListaEspera id="reserva-lista-espera" registro={register("listaEspera")} tipoCochera={vehiculoEncontrado?.tipo} />}
+              {hayAccesiblesOcultas && (
+                <p className="mt-1 text-sm text-ink/50">
+                  No se muestran las cocheras accesibles: {visitanteEncontrado.nombre} no tiene
+                  declarada discapacidad en su perfil.
+                </p>
               )}
             </div>
           </div>
 
+          {recurrente && <RepeticionReserva desde={desde}
+            diasSemana={diasSemana} onDias={setDiasSemana} repetirHasta={repetirHasta} onHasta={setRepetirHasta}
+            cantidad={cantidadRepeticiones} />}
+
+          <CotizacionReserva cotizacion={cotizacion} />
+
           <div>
             <button
               type="submit"
-              disabled={isSubmitting || !cocheraId}
+              disabled={isSubmitting || (!cocheraElegida && !enEspera) || !cotizacion.lista || !rangoValido || !repeticionValida}
               className="ui-primary group relative flex w-full justify-center px-3 py-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isSubmitting ? "Reservando..." : "Confirmar reserva"}
+              {isSubmitting ? "Reservando..." : enEspera ? "Ingresar a lista de espera" : recurrente ? "Confirmar reservas recurrentes" : "Confirmar reserva"}
             </button>
           </div>
         </form>
         )}
       </div>
-
-      <div>
-        <h2 className="text-xl font-bold text-ink mb-4">
-          {esAdmin ? "Todas las reservas" : "Mis reservas"}
-        </h2>
-        <div className="ui-card overflow-hidden">
-          {loadingReservas ? (
-            <div className="flex items-center justify-center p-8">
-              <div className="h-6 w-6 animate-spin rounded-full border-4 border-accent border-t-transparent" />
-            </div>
-          ) : reservas.length === 0 ? (
-            <p className="p-6 text-sm text-ink/60">
-              {esAdmin ? "Todavía no hay reservas cargadas." : "Todavía no tenés reservas."}
-            </p>
-          ) : (
-            <ul className="reservation-list divide-y divide-ink/10">
-              {reservas.map((r) => (
-                <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 p-4">
-                  <div>
-                    <p className="text-sm font-medium text-ink">
-                      {esAdmin ? `${r.visitante?.nombre} — ${r.vehiculo?.patente}` : r.vehiculo?.patente}
-                    </p>
-                    <p className="text-xs text-ink/60">
-                      Cochera {r.cochera?.numero} ({r.cochera?.sector}) · {r.fecha}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <EstadoBadge estado={r.estado} />
-                    {r.estado === "CONFIRMADA" && (
-                      <button
-                        type="button"
-                        onClick={() => cancelarReserva(r)}
-                        className="rounded-lg border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors dark:bg-red-500/10 dark:text-red-300 dark:ring-red-400/20 dark:border-red-400/25 dark:hover:bg-red-500/20"
-                      >
-                        Cancelar
-                      </button>
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
       </div>
+
+      <ReservasListado
+        modo={esAdmin ? "admin" : "user"}
+        reservas={reservas}
+        cargando={loadingReservas}
+        error={errorReservas}
+        onReintentar={cargarReservas}
+        onCancelar={cancelarReserva}
+        onVerCodigo={esAdmin ? undefined : (reserva) => {
+          setCodigoRecienCreado(false);
+          setReservaCodigo(reserva);
+        }}
+      />
+
+      {reservaCodigo && (
+        <ModalCodigoAcceso
+          reserva={reservaCodigo}
+          titulo={codigoRecienCreado ? "Reserva confirmada: tu código de acceso" : "Tu código de acceso"}
+          onClose={() => setReservaCodigo(null)}
+        />
+      )}
     </div>
   );
 }

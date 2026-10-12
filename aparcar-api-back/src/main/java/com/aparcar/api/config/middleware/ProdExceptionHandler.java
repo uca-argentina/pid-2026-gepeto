@@ -6,6 +6,7 @@ import com.aparcar.api.exception.ValidationException;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -19,6 +20,13 @@ import static com.aparcar.api.config.ApplicationConstants.NOT_DEV_ENV;
 @ControllerAdvice
 @Profile(NOT_DEV_ENV)
 public class ProdExceptionHandler {
+    @ExceptionHandler(org.springframework.dao.OptimisticLockingFailureException.class)
+    public ResponseEntity<ErrorResponseDto> handleOptimisticLockingFailureException() {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponseDto(
+                HttpStatus.CONFLICT.value(),
+                "El registro cambio mientras operabas. Actualiza la pantalla y volve a intentarlo.", null));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponseDto> handleException(Exception e) {
         return ResponseEntity.internalServerError().body(
@@ -65,6 +73,23 @@ public class ProdExceptionHandler {
                         "Validation failed",
                         errors
                 ));
+    }
+
+    /**
+     * JSON mal formado o con un valor que no se puede convertir (por ejemplo
+     * un tipo de cochera que no existe como clave de un mapa). Es un error de
+     * quien llama, asi que va 400 y no el 500 generico. Mismo mensaje que en
+     * {@link DevExceptionHandler}.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponseDto> handleHttpMessageNotReadableException(HttpMessageNotReadableException e) {
+        return ResponseEntity.badRequest().body(
+                new ErrorResponseDto(
+                        HttpStatus.BAD_REQUEST.value(),
+                        "The request body is missing or malformed",
+                        null
+                )
+        );
     }
 
     @ExceptionHandler(AccessDeniedException.class)

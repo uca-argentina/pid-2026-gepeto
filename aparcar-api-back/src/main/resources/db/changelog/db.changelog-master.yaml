@@ -9,3 +9,19 @@ databaseChangeLog:
       file: db/changelog/004-unificar-visitante-cuenta.yaml
   - include:
       file: db/changelog/005-identidad-visitante-unica.yaml
+  - include:
+      file: db/changelog/006-reservas-por-franja-horaria.yaml
+  - include:
+      file: db/changelog/007-visitante-tiene-discapacidad.yaml
+  - include:
+      file: db/changelog/008-tarifas.yaml
+  - include:
+      file: db/changelog/009-nombre-estacionamiento.yaml
+  - include:
+      file: db/changelog/010-trazabilidad-reservas.yaml
+  - include:
+      file: db/changelog/011-acceso-reservas.yaml
+  - include:
+      file: db/changelog/012-dashboard-indices.yaml
+  - include:
+      file: db/changelog/013-reservas-recurrentes-espera.yaml

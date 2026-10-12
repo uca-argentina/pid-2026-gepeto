@@ -1,6 +1,7 @@
 package com.aparcar.api.service;
 
 import com.aparcar.api.config.UnitTests;
+import com.aparcar.api.component.IRevokedUserCache;
 import com.aparcar.api.dto.auth.ChangePasswordDto;
 import com.aparcar.api.dto.reserva.CocheraResponseDto;
 import com.aparcar.api.dto.reserva.ReservaRequestDto;
@@ -14,6 +15,7 @@ import com.aparcar.api.entity.auth.AppAuthority;
 import com.aparcar.api.entity.auth.Visitante;
 import com.aparcar.api.entity.reserva.CocheraEstado;
 import com.aparcar.api.entity.reserva.CocheraTipo;
+import com.aparcar.api.entity.reserva.ModalidadReserva;
 import com.aparcar.api.entity.reserva.ReservaEstado;
 import com.aparcar.api.entity.reserva.VehiculoTipo;
 import com.aparcar.api.exception.NotFoundException;
@@ -29,7 +31,7 @@ import org.mockito.Mock;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.time.Instant;
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -39,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -62,6 +65,9 @@ public class VisitanteServiceTests {
     @Mock
     private PasswordEncoder passwordEncoder;
 
+    @Mock
+    private IRevokedUserCache revokedUserCache;
+
     @InjectMocks
     private VisitanteService visitanteService;
 
@@ -69,6 +75,7 @@ public class VisitanteServiceTests {
 
     @BeforeEach
     void setUp() {
+        lenient().when(visitanteRepository.saveAndFlush(any())).thenAnswer(i -> i.getArgument(0));
         dto = new VisitanteAltaDto();
         dto.setNombre("Juan Perez");
         dto.setDocumento("30111222");
@@ -96,12 +103,14 @@ public class VisitanteServiceTests {
     private static ReservaResponseDto unaReserva() {
         return new ReservaResponseDto(
                 UUID.randomUUID(),
-                LocalDate.now(),
-                new VisitanteResponseDto(UUID.randomUUID(), "Juan Perez", "30111222", null, "juan@mail.com"),
+                LocalDateTime.now(),
+                LocalDateTime.now().plusHours(1),
+                new VisitanteResponseDto(UUID.randomUUID(), "Juan Perez", "30111222", null, "juan@mail.com", false),
                 new VehiculoResponseDto(VEHICULO_ID, "ABC123", VehiculoTipo.AUTO, UUID.randomUUID()),
                 new CocheraResponseDto(COCHERA_ID, "A-01", "Planta Baja", CocheraTipo.AUTO, CocheraEstado.HABILITADA, null),
                 ReservaEstado.CONFIRMADA,
-                Instant.now());
+                ModalidadReserva.FRANJA,
+                Instant.now(), new java.math.BigDecimal("1000.00"), CocheraTipo.AUTO, null, null, List.of(), null, null, null);
     }
 
     @Test
@@ -109,7 +118,7 @@ public class VisitanteServiceTests {
     void altaLanzaValidationExceptionSiDocumentoYaExiste() {
         when(visitanteRepository.existsByDocumento(dto.getDocumento())).thenReturn(true);
 
-        assertThrows(ValidationException.class, () -> visitanteService.altaConReserva(dto));
+        assertThrows(ValidationException.class, () -> visitanteService.altaConReserva(dto, "admin@test.com"));
         verify(visitanteRepository, never()).save(any());
     }
 
@@ -121,14 +130,14 @@ public class VisitanteServiceTests {
         when(visitanteRepository.existsByDocumento(dto.getDocumento())).thenReturn(false);
         when(visitanteRepository.existsByEmail(dto.getEmail())).thenReturn(true);
 
-        assertThrows(ValidationException.class, () -> visitanteService.altaConReserva(dto));
+        assertThrows(ValidationException.class, () -> visitanteService.altaConReserva(dto, "admin@test.com"));
         verify(visitanteRepository, never()).save(any());
     }
 
     @Test
     @DisplayName("altaConReserva usa el documento como contraseña inicial, hasheado")
     void altaUsaElDocumentoComoContraseñaInicial() {
-        visitanteService.altaConReserva(dto);
+        visitanteService.altaConReserva(dto, "admin@test.com");
 
         ArgumentCaptor<Visitante> captor = ArgumentCaptor.forClass(Visitante.class);
         verify(visitanteRepository).save(captor.capture());
@@ -140,7 +149,7 @@ public class VisitanteServiceTests {
     @Test
     @DisplayName("altaConReserva crea la cuenta activa y con rol USER")
     void altaCreaLaCuentaActivaYConRolUser() {
-        visitanteService.altaConReserva(dto);
+        visitanteService.altaConReserva(dto, "admin@test.com");
 
         ArgumentCaptor<Visitante> captor = ArgumentCaptor.forClass(Visitante.class);
         verify(visitanteRepository).save(captor.capture());
@@ -152,7 +161,7 @@ public class VisitanteServiceTests {
     @Test
     @DisplayName("altaConReserva carga el vehiculo a nombre del visitante recien creado")
     void altaCargaElVehiculoANombreDelVisitanteCreado() {
-        var response = visitanteService.altaConReserva(dto);
+        var response = visitanteService.altaConReserva(dto, "admin@test.com");
 
         ArgumentCaptor<VehiculoRequestDto> captor = ArgumentCaptor.forClass(VehiculoRequestDto.class);
         verify(vehiculoService).crear(captor.capture());
@@ -166,27 +175,32 @@ public class VisitanteServiceTests {
     @Test
     @DisplayName("altaConReserva reserva la cochera indicada para hoy")
     void altaReservaLaCocheraParaHoy() {
-        visitanteService.altaConReserva(dto);
+        visitanteService.altaConReserva(dto, "admin@test.com");
 
         ArgumentCaptor<ReservaRequestDto> captor = ArgumentCaptor.forClass(ReservaRequestDto.class);
-        verify(reservaService).crear(captor.capture(), any(), anyBoolean());
+        verify(reservaService).crear(captor.capture(), eq("admin@test.com"), eq(true));
 
-        assertEquals(LocalDate.now(), captor.getValue().getFecha());
+        // Sin franja explicita, el alta arranca ahora y dura una hora.
+        assertEquals(60, java.time.Duration.between(
+                captor.getValue().getDesde(), captor.getValue().getHasta()).toMinutes());
         assertEquals(COCHERA_ID, captor.getValue().getCocheraId());
         assertEquals(VEHICULO_ID, captor.getValue().getVehiculoId());
     }
 
     @Test
-    @DisplayName("altaConReserva usa la fecha elegida al crear la reserva")
-    void altaReservaParaLaFechaElegida() {
-        LocalDate fecha = LocalDate.now().plusDays(7);
-        dto.setFecha(fecha);
+    @DisplayName("altaConReserva usa la franja elegida al crear la reserva")
+    void altaReservaParaLaFranjaElegida() {
+        LocalDateTime desde = LocalDateTime.now().plusDays(7);
+        LocalDateTime hasta = desde.plusHours(3);
+        dto.setDesde(desde);
+        dto.setHasta(hasta);
 
-        visitanteService.altaConReserva(dto);
+        visitanteService.altaConReserva(dto, "admin@test.com");
 
         ArgumentCaptor<ReservaRequestDto> captor = ArgumentCaptor.forClass(ReservaRequestDto.class);
-        verify(reservaService).crear(captor.capture(), any(), anyBoolean());
-        assertEquals(fecha, captor.getValue().getFecha());
+        verify(reservaService).crear(captor.capture(), eq("admin@test.com"), eq(true));
+        assertEquals(desde, captor.getValue().getDesde());
+        assertEquals(hasta, captor.getValue().getHasta());
     }
 
     // El alta es todo o nada: si la cochera ya estaba tomada, la excepcion sale
@@ -198,7 +212,7 @@ public class VisitanteServiceTests {
         when(reservaService.crear(any(), any(), anyBoolean()))
                 .thenThrow(new ValidationException("La cochera ya tiene una reserva confirmada."));
 
-        assertThrows(ValidationException.class, () -> visitanteService.altaConReserva(dto));
+        assertThrows(ValidationException.class, () -> visitanteService.altaConReserva(dto, "admin@test.com"));
     }
 
     @Test
@@ -278,6 +292,20 @@ public class VisitanteServiceTests {
         assertEquals("30111222", result.documento());
         assertEquals("11-2222-3333", result.telefono());
         assertEquals("nuevo@mail.com", result.email());
+        verify(revokedUserCache).revokeSessions("juan@mail.com");
+    }
+
+    @Test
+    void conflictoConcurrenteNoRevocaLaSesion() {
+        Visitante visitante = unVisitante();
+        VisitanteUpdateDto update = new VisitanteUpdateDto();
+        update.setEmail("nuevo@mail.com");
+        when(visitanteRepository.findByEmail(visitante.getEmail())).thenReturn(Optional.of(visitante));
+        when(visitanteRepository.saveAndFlush(any())).thenThrow(
+                new org.springframework.dao.DataIntegrityViolationException("unique"));
+        assertThrows(ValidationException.class,
+                () -> visitanteService.actualizarPropio("juan@mail.com", update));
+        verify(revokedUserCache, never()).revokeSessions(any());
     }
 
     // Cambiar el email cambia el login, asi que no puede pisar el de otra

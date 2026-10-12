@@ -1,6 +1,8 @@
 package com.aparcar.api.security.securityConfig;
 
 import com.aparcar.api.component.IRevokedUserCache;
+import com.aparcar.api.config.AccesoProperties;
+import com.aparcar.api.filters.AccesoRateLimitFilter;
 import com.aparcar.api.filters.JWTGeneratorFilter;
 import com.aparcar.api.filters.JWTValidationFilter;
 import com.aparcar.api.filters.RateLimitFilter;
@@ -66,6 +68,8 @@ public class ProdSecurityConfig {
      *                                  context.
      * @param env                       The Spring environment for accessing
      *                                  properties.
+     * @param accesoProperties          Reglas del control de acceso (rate limit
+     *                                  de /api/v1/accesos/**).
      * @return The configured SecurityFilterChain.
      */
     @Bean
@@ -73,7 +77,8 @@ public class ProdSecurityConfig {
             HttpSecurity http,
             IRevokedUserCache revokedUserCache,
             SecurityContextRepository securityContextRepository,
-            Environment env) {
+            Environment env,
+            AccesoProperties accesoProperties) {
 
         String secret = env.getProperty(JWT_SECRET_KEY, JWT_SECRET_DEFAULT);
         boolean isDev = Arrays.asList(env.getActiveProfiles()).contains(DEV_ENV);
@@ -86,6 +91,9 @@ public class ProdSecurityConfig {
 
         RateLimitFilter rateLimitFilter =
                 new RateLimitFilter();
+
+        AccesoRateLimitFilter accesoRateLimitFilter =
+                new AccesoRateLimitFilter(accesoProperties.rateLimitPorMinuto());
 
         return http
                 .securityContext(context ->
@@ -118,6 +126,10 @@ public class ProdSecurityConfig {
 
                 .authorizeHttpRequests(requests -> requests
 
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/tarifas", "/api/v1/tarifas/cotizacion")
+                        .hasAnyAuthority("ADMIN", "USER")
+                        .requestMatchers("/api/v1/tarifas", "/api/v1/tarifas/**").hasAuthority("ADMIN")
+
                         // Endpoints públicos. Van primero para que
                         // /api/v1/cocheras/disponibles se resuelva acá y no
                         // caiga en la regla de ADMIN de /api/v1/cocheras/** de abajo.
@@ -125,7 +137,17 @@ public class ProdSecurityConfig {
                                 "/api/v1/cocheras/disponibles",
                                 "/register",
                                 "/forgot-password",
-                                "/reset-password"
+                                "/reset-password",
+                                // Docker la consulta sin credenciales para
+                                // saber si el contenedor sigue vivo, y lo
+                                // reinicia cuando no responde. Pidiendo
+                                // autenticacion, el 401 se leia como "caido" y
+                                // el contenedor se reiniciaba sin parar.
+                                //
+                                // No expone nada: devuelve solo {"status":"UP"}.
+                                // El resto de /actuator/** sigue limitado a
+                                // localhost por la regla de mas abajo.
+                                "/actuator/health"
                         ).permitAll()
                         // Los datos propios del visitante van primero: si no,
                         // caerian en la regla de ADMIN de /api/v1/visitantes/**
@@ -134,6 +156,11 @@ public class ProdSecurityConfig {
                                 "/api/v1/visitantes/me",
                                 "/api/v1/visitantes/me/**"
                         ).authenticated()
+
+                        // Validar codigos de acceso (ingreso y egreso) es
+                        // tarea del operador: solo ADMIN.
+                        .requestMatchers("/api/v1/accesos/**").hasAuthority("ADMIN")
+                        .requestMatchers("/api/v1/dashboard", "/api/v1/dashboard/**").hasAuthority("ADMIN")
 
                         // Solo ADMIN puede gestionar usuarios, dar de alta
                         // visitantes con reserva y
@@ -150,8 +177,7 @@ public class ProdSecurityConfig {
                         .requestMatchers(
                                 "/api/v1/reservas/**",
                                 "/api/v1/vehiculos/**",
-                                "/login",
-                                "/actuator/health"
+                                "/login"
                         ).authenticated()
 
                         .requestMatchers("/actuator/**")
@@ -191,6 +217,11 @@ public class ProdSecurityConfig {
 
                 .addFilterBefore(
                         rateLimitFilter,
+                        JWTValidationFilter.class)
+
+                // Despues del JWT, para contar por operador y no por IP.
+                .addFilterAfter(
+                        accesoRateLimitFilter,
                         JWTValidationFilter.class)
 
                 .httpBasic(config ->

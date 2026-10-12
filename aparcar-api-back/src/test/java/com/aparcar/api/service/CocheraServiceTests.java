@@ -1,5 +1,6 @@
 package com.aparcar.api.service;
 
+import com.aparcar.api.config.AccesoDePrueba;
 import com.aparcar.api.config.UnitTests;
 import com.aparcar.api.dto.reserva.CocheraRequestDto;
 import com.aparcar.api.entity.reserva.Cochera;
@@ -17,8 +18,10 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 
-import java.time.LocalDate;
+import java.time.Clock;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @UnitTests
@@ -37,6 +41,15 @@ public class CocheraServiceTests {
 
     @Mock
     private ReservaRepository reservaRepository;
+
+    @Mock
+    private com.aparcar.api.repository.VisitanteRepository visitanteRepository;
+
+    @Spy
+    private Clock clock = Clock.system(AccesoDePrueba.ZONA);
+
+    @Mock
+    private com.aparcar.api.service.impl.PlanificacionReservas planificacion;
 
     @InjectMocks
     private CocheraService cocheraService;
@@ -118,7 +131,7 @@ public class CocheraServiceTests {
 
         when(cocheraRepository.findById(id)).thenReturn(Optional.empty());
 
-        assertThrows(NotFoundException.class, () -> cocheraService.editar(id, dto));
+        assertThrows(NotFoundException.class, () -> cocheraService.editar(id, dto, "admin@test.com"));
     }
 
     @Test
@@ -134,7 +147,7 @@ public class CocheraServiceTests {
         when(cocheraRepository.findById(cochera.getId())).thenReturn(Optional.of(cochera));
         when(cocheraRepository.existsByNumero("A-02")).thenReturn(true);
 
-        assertThrows(ValidationException.class, () -> cocheraService.editar(cochera.getId(), dto));
+        assertThrows(ValidationException.class, () -> cocheraService.editar(cochera.getId(), dto, "admin@test.com"));
     }
 
     @Test
@@ -150,7 +163,7 @@ public class CocheraServiceTests {
         when(cocheraRepository.findById(cochera.getId())).thenReturn(Optional.of(cochera));
         when(cocheraRepository.save(any())).thenAnswer(i -> i.getArgument(0));
 
-        var response = cocheraService.editar(cochera.getId(), dto);
+        var response = cocheraService.editar(cochera.getId(), dto, "admin@test.com");
 
         assertEquals("Subsuelo", response.sector());
         assertEquals(CocheraEstado.DESHABILITADA, response.estado());
@@ -190,16 +203,42 @@ public class CocheraServiceTests {
     void listarDisponiblesExcluyeCocherasReservadas() {
         Cochera libre = cocheraAuto("A-01");
         Cochera ocupada = cocheraAuto("A-02");
-        LocalDate fecha = LocalDate.now();
+        LocalDateTime desde = LocalDateTime.now();
+        LocalDateTime hasta = desde.plusHours(2);
 
         Reserva reserva = new Reserva();
         reserva.setCochera(ocupada);
         reserva.setEstado(ReservaEstado.CONFIRMADA);
 
         when(cocheraRepository.findByEstado(CocheraEstado.HABILITADA)).thenReturn(List.of(libre, ocupada));
-        when(reservaRepository.findByFechaAndEstado(fecha, ReservaEstado.CONFIRMADA)).thenReturn(List.of(reserva));
+        when(reservaRepository.findSolapadas(ReservaEstado.CONFIRMADA, desde, hasta)).thenReturn(List.of(reserva));
 
-        var disponibles = cocheraService.listarDisponibles(fecha, null);
+        var disponibles = cocheraService.listarDisponibles(desde, hasta, null);
+
+        assertEquals(1, disponibles.size());
+        assertEquals("A-01", disponibles.get(0).numero());
+    }
+
+    // Un vehiculo adentro ocupa la cochera hasta que egresa, aunque su
+    // reserva ya haya terminado: la consulta de EN_CURSO recibe "ahora".
+    @Test
+    @DisplayName("listarDisponibles excluye cocheras con un vehiculo adentro (EN_CURSO), aunque se haya pasado de hora")
+    void listarDisponiblesExcluyeCocherasConVehiculoAdentro() {
+        Cochera libre = cocheraAuto("A-01");
+        Cochera conVehiculo = cocheraAuto("A-02");
+        LocalDateTime desde = LocalDateTime.now();
+        LocalDateTime hasta = desde.plusHours(2);
+
+        Reserva excedida = new Reserva();
+        excedida.setCochera(conVehiculo);
+        excedida.setEstado(ReservaEstado.EN_CURSO);
+        excedida.setHasta(desde.minusMinutes(30));
+
+        when(cocheraRepository.findByEstado(CocheraEstado.HABILITADA)).thenReturn(List.of(libre, conVehiculo));
+        when(reservaRepository.findEnCursoSolapadas(eq(desde), eq(hasta), any(LocalDateTime.class)))
+                .thenReturn(List.of(excedida));
+
+        var disponibles = cocheraService.listarDisponibles(desde, hasta, null);
 
         assertEquals(1, disponibles.size());
         assertEquals("A-01", disponibles.get(0).numero());
@@ -211,12 +250,13 @@ public class CocheraServiceTests {
         Cochera cocheraAuto = cocheraAuto("A-01");
         Cochera cocheraMoto = cocheraAuto("M-01");
         cocheraMoto.setTipo(CocheraTipo.MOTO);
-        LocalDate fecha = LocalDate.now();
+        LocalDateTime desde = LocalDateTime.now();
+        LocalDateTime hasta = desde.plusHours(2);
 
         when(cocheraRepository.findByEstado(CocheraEstado.HABILITADA)).thenReturn(List.of(cocheraAuto, cocheraMoto));
-        when(reservaRepository.findByFechaAndEstado(fecha, ReservaEstado.CONFIRMADA)).thenReturn(List.of());
+        when(reservaRepository.findSolapadas(ReservaEstado.CONFIRMADA, desde, hasta)).thenReturn(List.of());
 
-        var disponibles = cocheraService.listarDisponibles(fecha, VehiculoTipo.MOTO);
+        var disponibles = cocheraService.listarDisponibles(desde, hasta, VehiculoTipo.MOTO);
 
         assertEquals(1, disponibles.size());
         assertEquals("M-01", disponibles.get(0).numero());
@@ -227,12 +267,13 @@ public class CocheraServiceTests {
     void listarDisponiblesIncluyeAccesibleParaCualquierTipo() {
         Cochera accesible = cocheraAuto("AC-01");
         accesible.setTipo(CocheraTipo.ACCESIBLE);
-        LocalDate fecha = LocalDate.now();
+        LocalDateTime desde = LocalDateTime.now();
+        LocalDateTime hasta = desde.plusHours(2);
 
         when(cocheraRepository.findByEstado(CocheraEstado.HABILITADA)).thenReturn(List.of(accesible));
-        when(reservaRepository.findByFechaAndEstado(fecha, ReservaEstado.CONFIRMADA)).thenReturn(List.of());
+        when(reservaRepository.findSolapadas(ReservaEstado.CONFIRMADA, desde, hasta)).thenReturn(List.of());
 
-        var disponibles = cocheraService.listarDisponibles(fecha, VehiculoTipo.CARGA);
+        var disponibles = cocheraService.listarDisponibles(desde, hasta, VehiculoTipo.CARGA);
 
         assertEquals(1, disponibles.size());
         assertTrue(disponibles.stream().anyMatch(c -> c.numero().equals("AC-01")));
@@ -248,6 +289,12 @@ public class CocheraServiceTests {
         dto.setTipo(CocheraTipo.AUTO);
         dto.setEstado(CocheraEstado.DESHABILITADA);
 
+        var admin = new com.aparcar.api.entity.auth.Visitante();
+        admin.setId(UUID.randomUUID());
+        admin.setNombre("Administrador");
+        admin.setEmail("admin@test.com");
+        when(visitanteRepository.findByEmail(admin.getEmail())).thenReturn(Optional.of(admin));
+
         Reserva reservaConfirmada = new Reserva();
         reservaConfirmada.setEstado(ReservaEstado.CONFIRMADA);
 
@@ -256,7 +303,7 @@ public class CocheraServiceTests {
         when(reservaRepository.findByCocheraIdAndEstado(cochera.getId(), ReservaEstado.CONFIRMADA))
                 .thenReturn(List.of(reservaConfirmada));
 
-        cocheraService.editar(cochera.getId(), dto);
+        cocheraService.editar(cochera.getId(), dto, "admin@test.com");
 
         assertEquals(ReservaEstado.CANCELADA, reservaConfirmada.getEstado());
     }
@@ -267,7 +314,7 @@ public class CocheraServiceTests {
         Cochera a01 = cocheraAuto("A-01");
         when(cocheraRepository.buscar(null, null, null)).thenReturn(List.of(a01));
 
-        var resultado = cocheraService.listar(null, null, null, null);
+        var resultado = cocheraService.listar(null, null, null, null, null);
 
         assertEquals(1, resultado.size());
         assertEquals(null, resultado.get(0).disponibleEnFecha());
@@ -278,7 +325,7 @@ public class CocheraServiceTests {
     void listarTrataSectorEnBlancoComoNull() {
         when(cocheraRepository.buscar(null, CocheraTipo.AUTO, null)).thenReturn(List.of());
 
-        cocheraService.listar("   ", CocheraTipo.AUTO, null, null);
+        cocheraService.listar("   ", CocheraTipo.AUTO, null, null, null);
 
         verify(cocheraRepository).buscar(null, CocheraTipo.AUTO, null);
     }
@@ -288,16 +335,17 @@ public class CocheraServiceTests {
     void listarConFechaMarcaOcupadaCorrectamente() {
         Cochera libre = cocheraAuto("A-01");
         Cochera ocupada = cocheraAuto("A-02");
-        LocalDate fecha = LocalDate.now();
+        LocalDateTime desde = LocalDateTime.now();
+        LocalDateTime hasta = desde.plusHours(2);
 
         Reserva reserva = new Reserva();
         reserva.setCochera(ocupada);
         reserva.setEstado(ReservaEstado.CONFIRMADA);
 
         when(cocheraRepository.buscar(null, null, null)).thenReturn(List.of(libre, ocupada));
-        when(reservaRepository.findByFechaAndEstado(fecha, ReservaEstado.CONFIRMADA)).thenReturn(List.of(reserva));
+        when(reservaRepository.findSolapadas(ReservaEstado.CONFIRMADA, desde, hasta)).thenReturn(List.of(reserva));
 
-        var resultado = cocheraService.listar(null, null, null, fecha);
+        var resultado = cocheraService.listar(null, null, null, desde, hasta);
 
         var dtoLibre = resultado.stream().filter(c -> c.numero().equals("A-01")).findFirst().orElseThrow();
         var dtoOcupada = resultado.stream().filter(c -> c.numero().equals("A-02")).findFirst().orElseThrow();

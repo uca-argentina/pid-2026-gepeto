@@ -43,6 +43,9 @@ public class JWTGeneratorFilter extends OncePerRequestFilter {
                     .claim("authorities", authentication.getAuthorities().stream().map(
                             GrantedAuthority::getAuthority).collect(Collectors.joining(",")))
                     .issuedAt(now)
+                    // iat usa segundos; este valor distingue un nuevo login de
+                    // la sesión revocada por cambio de email en el mismo segundo.
+                    .claim("sessionIssuedAt", now.getTime())
                     .expiration(new Date(now.getTime() + eightHours))
                     .signWith(secretKey)
                     .compact();

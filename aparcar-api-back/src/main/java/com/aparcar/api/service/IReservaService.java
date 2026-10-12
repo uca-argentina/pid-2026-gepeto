@@ -1,6 +1,7 @@
 package com.aparcar.api.service;
 
 import com.aparcar.api.dto.reserva.ReservaRequestDto;
+import com.aparcar.api.dto.reserva.ReservaRecurrenteRequestDto;
 import com.aparcar.api.dto.reserva.ReservaResponseDto;
 import com.aparcar.api.exception.NotFoundException;
 import com.aparcar.api.exception.ValidationException;
@@ -9,6 +10,13 @@ import java.util.List;
 import java.util.UUID;
 
 public interface IReservaService {
+    List<ReservaResponseDto> crearRecurrentes(ReservaRecurrenteRequestDto dto, String email, boolean esAdmin);
+
+    List<ReservaResponseDto> listarRecurrentes(String email, boolean esAdmin);
+
+    List<ReservaResponseDto> notificaciones(String email);
+
+    ReservaResponseDto leerNotificacion(UUID id, String email);
     /**
      * Crea una reserva CONFIRMADA validando:
      * <ul>
@@ -16,6 +24,9 @@ public interface IReservaService {
      *     <li>Que el vehiculo pertenezca al visitante indicado.</li>
      *     <li>Que el tipo de la cochera sea compatible con el tipo del vehiculo
      *     (ACCESIBLE acepta cualquier tipo; el resto debe coincidir exactamente).</li>
+     *     <li>Que, si la cochera es ACCESIBLE, el visitante dueño de la reserva
+     *     tenga declarada una discapacidad (aunque la cargue un ADMIN en su
+     *     nombre: cuenta la declaracion del dueño, no la del admin).</li>
      *     <li>Que la cochera no tenga ya otra reserva CONFIRMADA en la misma fecha.</li>
      * </ul>
      *

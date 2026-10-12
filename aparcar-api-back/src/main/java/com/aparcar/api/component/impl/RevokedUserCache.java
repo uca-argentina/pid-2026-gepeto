@@ -14,6 +14,10 @@ public class RevokedUserCache implements IRevokedUserCache {
             .maximumSize(50)
             .build();
 
+    private final Cache<String, Long> sessionsRevokedBefore = Caffeine.newBuilder()
+            .expireAfterWrite(Duration.ofHours(8))
+            .build();
+
     @Override
     public void revoke(String email) {
         revoked.put(email, Boolean.TRUE);
@@ -27,7 +31,20 @@ public class RevokedUserCache implements IRevokedUserCache {
     }
 
     @Override
+    public void revokeSessions(String email) {
+        sessionsRevokedBefore.put(email, System.currentTimeMillis());
+    }
+
+    @Override
+    public boolean isRevoked(String email, long issuedAtMillis) {
+        if (isRevoked(email)) return true;
+        Long cutoff = sessionsRevokedBefore.getIfPresent(email);
+        return cutoff != null && issuedAtMillis <= cutoff;
+    }
+
+    @Override
     public void clear() {
         revoked.invalidateAll();
+        sessionsRevokedBefore.invalidateAll();
     }
 }

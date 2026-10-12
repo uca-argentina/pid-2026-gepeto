@@ -3,12 +3,368 @@
 Que prueba cada archivo de test del proyecto, caso por caso. Ver `ARCHIVOS.md` para que hace cada archivo de codigo en general, y `AparcAR-Manual-Completo.pdf` para la explicacion conceptual de por que el proyecto testea asi (caja blanca vs caja negra, la trampa de MockMvc, los tests de regresion).
 
 > Este archivo se mantiene a mano. Si agregas o borras un test, actualizalo: los totales del final tienen que seguir cerrando.
+>
+> Los conteos por archivo salen de lo que reportan los runners (Surefire y Vitest), no de contar metodos: un test parametrizado cuenta como un test por cada fila de datos.
 
 ---
 
+
 # Backend (`aparcar-api-back/src/test/java/com/aparcar/api/`)
 
+## Reservas recurrentes y lista de espera
+
+- `integration/ReservaPlanificacionTests.java` — **28 tests**: espera sin
+  asignación ni QR, confirmación FIFO conservando el precio, rechazo de esperas
+  duplicadas, cancelación, notificaciones privadas y lectura persistida,
+  recurrencia exclusiva de ADMIN, serie nocturna y rollback completo ante un
+  conflicto. Incluye carreras sobre la última cochera y entre cancelación/alta,
+  promoción por egreso, vencimiento y habilitación, espera expirada,
+  accesibilidad, categoría de tarifa y límites de la serie. También comprueba
+  altas MOTO con ambos formatos, promoción y rollback del alta inválida;
+  series/listados del ADMIN autenticado, rechazo de vehículos ajenos y de
+  cuentas inactivas o sin el rol actual, y disponibilidad personal accesible.
+  El caso del barrido prepara las franjas con el repositorio JPA y verifica su
+  lectura antes de vencer/promover: evita mezclar conversiones temporales de
+  JDBC directo y Hibernate en H2 cuando la JVM arranca en UTC. Un segundo
+  barrido y la consulta del QR comprueban la nueva tolerancia de ingreso.
+- `integration/ReservaPlanificacionMigracionTests.java` — **1 test**:
+  migración 013 sobre reservas previas, cochera nullable, restricciones de
+  asignación, fila de bloqueo e idempotencia sin perder registros.
+- Los unitarios existentes de reservas, acceso, cocheras y vencimiento
+  incorporan el coordinador transaccional; `planificacion-test.sql` inicializa
+  su fila cuando Hibernate crea el esquema H2 de pruebas.
+- `aparcar-front/test/components/ReservasRecurrentesEspera.test.jsx` —
+  **18 tests**: consentimiento en ambos roles y alta rápida, consultas fallidas
+  o desactualizadas, espera cancelable sin QR, recurrencia ADMIN y conservación
+  de la cochera elegida, avisos persistidos y lectura sin perder errores.
+  Recurrentes usa exclusivamente vehículos y series propios, conserva QR y
+  cancelación, y no aparece en las reservas normales de ninguno de los roles.
+- `aparcar-front/test/dashboard-admin/RecurrentesContent.test.jsx` — **2 tests**:
+  CRUD de vehículos propios actualiza el selector y conserva el vehículo si
+  el servidor impide eliminarlo por sus reservas activas.
+- `aparcar-front/test/browser/reservasRecurrentesEspera.ui.mjs` — **6 tests**:
+  flujo USER/ADMIN de espera y cancelación, alta MOTO en espera, vehículo propio
+  y serie semanal desde la sección exclusiva, acceso rechazado para USER,
+  notificación que sobrevive a recarga y error de disponibilidad.
+  Las respuestas están aisladas de la base real. La suite anterior del listado
+  también verifica el nuevo filtro en todos sus tamaños y temas.
+- `aparcar-front/test/browser/accountMenu.ui.mjs` — **1 test**: entrada directa
+  y recarga de Usuarios sin avisos de hidratación, menú operable y relación
+  accesible entre botón y desplegable.
+
+## Dashboard del administrador
+
+`service/DashboardServiceTests.java` — **7 tests**: predio vacío y 24 horas;
+ocupación de días anteriores y cocheras deshabilitadas; no presentados según
+tolerancia, emisión del código y fin exclusivo; gracia de egreso; movimientos
+reales del día; próximas llegadas cruzando medianoche con límite de cinco;
+ranking de sectores, incluidos los que no tuvieron actividad.
+
+`integration/DashboardControllerTests.java` — **4 tests**: rechaza anónimos y USER;
+ADMIN recibe el resumen sin caché; la consulta incluye las reservas pertinentes
+y excluye historial y futuro fuera del período.
+
+`integration/DashboardMigracionTests.java` — **1 test**: aplica los cuatro índices
+de consulta, puede volver a arrancar y conserva la reserva existente.
+
+Frontend asociado:
+
+- `test/dashboard-admin/dashboard/DashboardContent.test.jsx` — **10 tests**:
+  métricas del servidor, tabla accesible, carga sin ceros ficticios, reintento,
+  conservación de datos ante error, solicitudes sin solapamiento, estado vacío,
+  ocupación fuera de servicio, actualización solo visible y aborto al desmontar.
+- `test/dashboard-admin/dashboard/pagina.test.jsx` — **3 tests**: exige ADMIN,
+  no renderiza tras rechazo y agrega el enlace desde el panel existente.
+- `test/browser/dashboard.ui.mjs` — **8 tests**: temas claro y oscuro a
+  360/768/1440 px, tabla con teclado, ausencia de desbordes y errores de navegador,
+  reintento y lectura desactualizada, y acceso bloqueado para USER. La API se
+  intercepta: estas pruebas no modifican datos reales.
+
+## `integration/ReservaTrazabilidadTests.java`
+
+_9 tests._
+
+- Alta propia: ignora autores y destinatarios falsificados; solo ADMIN recibe historial.
+- Alta administrativa y cancelación por otro admin: conserva ambos autores,
+  ocupante, fecha e identidad histórica aunque cambien roles o se elimine una cuenta.
+- Cancelación del usuario: libera la cochera sin borrar el registro; rechaza
+  cancelaciones ajenas y repetidas sin agregar movimientos.
+- Deshabilitación de cochera: registra al admin en todas las reservas afectadas,
+  conserva las canceladas previamente y no duplica registros al editar o rehabilitar.
+- Alta operativa de visitante con vehículo y reserva: identifica al admin creador.
+- Un error al resolver al autor revierte alta, cancelación y deshabilitación completas.
+- Reservas anteriores: no reciben autores ni motivos inventados.
+- Una baja con versión desactualizada no sobrescribe el movimiento ya confirmado.
+- Una cancelación rechazada sobre una reserva finalizada no agrega movimientos.
+
+## `integration/ReservaTrazabilidadMigracionTests.java`
+
+_1 test._ La migración 010 conserva reservas previas, inicializa su versión sin
+inventar historial, admite movimientos sin FK a la cuenta del autor, exige una
+reserva existente y se puede ejecutar nuevamente sin repetir cambios.
+
+Las suites existentes que realizan altas o bajas administrativas usan
+`admin-test.sql` para que el principal autenticado tenga una cuenta persistida.
+Los tests de servicios también verifican que el alta operativa propague al admin
+y que la accesibilidad se valide sobre el ocupante, independientemente del autor.
+
+## `integration/AccesoControllerTests.java`
+
+_19 tests._ Caja negra de `/api/v1/accesos` contra la base real. Los datos se arman
+en el propio test y relativos al reloj, de modo que el barrido programado de
+vencidas no cambie el resultado si llega a correr en el medio.
+
+```
+[Caja negra] un anonimo recibe 401
+[Caja negra] un USER recibe 403 en los tres endpoints: solo el ADMIN valida
+[Caja negra] reservar, ver el QR, ingresar y egresar: la cochera se ocupa y se libera
+[Caja negra] el USER ve su codigo y nunca el de otro; el ADMIN ve todos
+[Caja negra] una reserva cancelada ya no muestra su codigo
+[Caja negra] codigo con formato invalido → 400; sin codigo o sin accion → 400
+[Caja negra] codigo inexistente → 404 en consulta y en registro
+[Caja negra] fuera de tolerancia (anticipado): la consulta lo explica y el registro da 400
+[Caja negra] vencida (no-show) → 400 y queda VENCIDA
+[Caja negra] cancelada → 400
+[Caja negra] ya usada → 400; egreso sin ingreso → 400
+[Caja negra] un vehiculo que se paso de hora egresa igual, marcado como excedido
+[Caja negra] un conflicto de concurrencia (optimistic lock) → 409
+[Caja negra] una cochera ocupada rechaza otro código hasta registrar el egreso anterior
+[Caja negra] la tolerancia anticipada no permite ingresar un vehículo que sigue adentro
+[Concurrencia] dos operadores con el mismo código registran un solo movimiento (ingreso y egreso)
+[Concurrencia] dos códigos distintos no ocupan la misma cochera ni el mismo vehículo (2 casos)
+```
+
+El flujo completo cubre además: QR con prefijo y código tipeado con guion en
+minúsculas, cochera fuera de `/disponibles` mientras el vehículo está adentro y de
+nuevo libre tras el egreso, doble clic (`yaRegistrado`), permanencia mínima, uso
+único, movimientos del día y el registro de intentos rechazados.
+
+## `integration/ReservaEnCursoOcupacionTests.java`
+
+_7 tests._ Las consultas de ocupación contra H2, con "ahora" fijo en 2030 para que el
+barrido no las toque.
+
+```
+un vehiculo adentro dentro de su horario ocupa su franja, como una CONFIRMADA
+un vehiculo que se paso de hora sigue bloqueando la cochera en el presente
+un ingreso anticipado ocupa desde la entrada real, antes del inicio de la reserva
+un vehiculo excedido ocupa también un rango que empieza exactamente ahora
+una VENCIDA (no-show) no ocupa: los chequeos de disponibilidad la ignoran
+una FINALIZADA (ya egreso) no ocupa aunque su franja siga corriendo
+el barrido encuentra como candidatas solo las CONFIRMADAS que ya empezaron
+```
+
+## `integration/ReservaAccesoMigracionTests.java`
+
+_1 test._ La migración 011 sobre una base con reservas: no toca sus datos, deja el
+código nullable y único (admite varios NULL, rechaza un duplicado), crea
+`acceso_intentos` y se puede ejecutar de nuevo sin cambios.
+
+## `service/AccesoServiceTests.java`
+
+_33 tests._ Caja blanca del control de acceso con reloj fijo. Reserva de 15:00 a
+17:00, código emitido a las 14:00: ventana de ingreso de 14:45 a 15:30.
+
+```
+consulta:
+  dentro de la ventana devuelve INGRESO valido con los datos, sin tocar la reserva
+  escanear el QR y tipear el codigo llegan a la misma reserva   (parametrizado: 3 casos)
+  antes de la ventana informa ANTICIPADO y a que hora abre
+  pasada la tolerancia la deja VENCIDA (evaluacion perezosa) y lo informa
+  con el vehiculo adentro devuelve EGRESO
+  si el vehiculo se paso de hora, la consulta muestra cuanto
+  un segundo escaneo enseguida del ingreso no habilita el egreso
+  una reserva FINALIZADA informa que el codigo ya se uso
+  una reserva CANCELADA tiene el codigo invalido
+  un formato invalido es 400 y queda registrado
+  un codigo inexistente es 404 y queda registrado
+registro de ingreso:
+  pasa a EN_CURSO, guarda la hora y deja el movimiento con el operador
+  justo en la apertura de la ventana (desde - 15) se acepta
+  justo en el limite de la tolerancia (desde + 30) se acepta
+  un segundo antes de la ventana se rechaza por ANTICIPADO, sin cambios
+  un segundo despues de la tolerancia se rechaza y la reserva queda VENCIDA
+  repetirlo dentro de 2 minutos (doble clic) devuelve lo registrado, sin registrar dos veces
+  repetirlo mas tarde se rechaza: el codigo ahora solo sirve para el egreso
+  una reserva cancelada no puede ingresar
+  una reserva VENCIDA por el barrido no puede ingresar
+  un conflicto de version (otro operador a la vez) se registra y se propaga para el 409
+registro de egreso:
+  sin ingreso previo se rechaza
+  antes de la permanencia minima (59 s) se rechaza
+  cumplida la permanencia minima pasa a FINALIZADA y libera la cochera
+  dentro de la gracia (hasta + 15) no se marca exceso
+  despues de la gracia se registra igual, marcado como excedido con los minutos
+  repetirlo dentro de 2 minutos devuelve lo registrado
+  uso unico: ingreso, egreso, y despues el codigo no sirve para nada
+  un operador sin cuenta no puede registrar
+movimientos del dia pide ingresos y egresos desde la medianoche del predio
+un rechazo no confia en una consulta previa: la regla se evalua al registrar
+```
+
+## `service/ReglasAccesoTests.java`
+
+_24 tests._ Bordes exactos de cada ventana con los valores por defecto.
+
+```
+ingreso anticipado:
+  la ventana abre 15 minutos antes de desde
+  un segundo antes de la apertura todavia es anticipado
+  justo en la apertura ya se puede ingresar
+tolerancia de ingreso tardio:
+  justo en el limite (desde + 30) todavia se puede ingresar
+  un segundo despues del limite ya vencio
+  si el codigo se emitio despues de desde, la tolerancia se cuenta desde la emision
+  sin fecha de emision, la tolerancia se cuenta desde desde
+  nunca pasa de hasta: en una franja corta la ventana cierra con la reserva
+  la ventana que se muestra cierra en la tolerancia cuando es anterior a hasta
+marcar VENCIDA:
+  pasa a VENCIDA una CONFIRMADA que vencio
+  no toca una CONFIRMADA dentro de la tolerancia
+  solo una CONFIRMADA puede vencer: un vehiculo adentro no vence nunca   (parametrizado: 4 casos)
+egreso:
+  un egreso a los 59 segundos del ingreso es prematuro
+  justo a los 60 segundos ya se puede egresar
+  justo al final de la gracia (hasta + 15) no hay exceso
+  un segundo despues de la gracia es excedido, contando desde hasta
+  un egreso antes de hasta no tiene exceso
+idempotencia:
+  repetir la accion a los 120 segundos devuelve lo registrado
+  a los 121 segundos ya no se considera el mismo pedido
+  sin registro previo no hay nada que devolver
+el reloj inyectado manda: ahora, instante e inicio del dia salen de el
+```
+
+## `service/CodigoAccesoTests.java`
+
+_29 tests._ Caja blanca del código corto.
+
+```
+el mismo id con el mismo secreto da siempre el mismo codigo
+el codigo tiene 10 caracteres del alfabeto Crockford (sin I, L, O ni U)
+ids distintos dan codigos distintos (1000 reservas, ninguna colision)
+sin el secreto no se llega al mismo codigo: otro secreto da otro valor
+el contador de intento rederiva un codigo distinto para el mismo id
+asignar guarda el codigo derivado y la fecha de emision
+si el codigo ya lo tiene otra reserva, se rederiva con el contador
+si nunca encuentra un codigo libre, falla en vez de quedar en un bucle
+normaliza prefijo, mayusculas, espacios, guiones y equivalencias   (parametrizado: 10 casos)
+rechaza lo que no es un codigo de 10 caracteres validos   (parametrizado: 7 casos)
+rechaza una entrada vacia o nula   (parametrizado: 2 casos)
+normalizar un codigo derivado lo deja igual: el QR y el tipeo llegan al mismo valor
+formatear lo muestra como XXXXX-XXXXX
+```
+
+## `component/CodigosAccesoBackfillTests.java`
+
+_3 tests._
+
+```
+asigna el codigo derivado del id a cada CONFIRMADA vigente sin codigo
+una reserva ya empezada al migrar recibe su tolerancia completa desde la migracion
+es idempotente: si no queda ninguna sin codigo, no escribe nada
+```
+
+## `filters/AccesoRateLimitFilterTests.java`
+
+_6 tests._ Caja blanca, con el filtro suelto (la suite de integración usa un límite
+alto a propósito para no depender del orden de las clases).
+
+```
+solo filtra /api/v1/accesos/**
+deja pasar 60 validaciones por minuto: un limite operativo, no el de 5 del login
+la 61ra recibe 429 con un mensaje en el formato de errores del proyecto
+cuenta por operador: otro operador desde la misma IP tiene su propio cupo
+sin usuario autenticado cuenta por IP
+no choca con RateLimitFilter: cada uno marca la request con su propio atributo
+```
+
+## `config/AccesoConfigTests.java`
+
+_4 tests._
+
+```
+en produccion, el secreto de desarrollo impide arrancar
+en desarrollo, el secreto por defecto se acepta (con una advertencia en el log)
+un secreto propio se acepta en produccion
+una variable definida pero vacia se rechaza en vez de dejar el HMAC sin clave
+```
+
+> Surefire cuenta los `@Nested` de `AccesoServiceTests` y `ReglasAccesoTests` en el
+> XML del reporte; el resumen `.txt` de esas dos clases muestra 0. Los conteos de
+> arriba salen del XML.
+
+## `integration/PerfilControllerTests.java`
+
+_12 tests._
+
+- GET y PUT del perfil requieren sesión.
+- ADMIN guarda documento, teléfono y nombre del estacionamiento normalizados;
+  GET recupera el nombre sin modificar otra cuenta ni los roles.
+- USER no puede enviar documento ni nombre del estacionamiento (2 casos).
+- USER conserva contacto y declaración de discapacidad.
+- Rechaza email y documento duplicados, incluso en cuentas inactivas (2 casos).
+- Rechaza documento vacío y email vacío o inválido (3 casos).
+- Limita el nombre a 100 caracteres y permite vaciarlo.
+- Un cliente que omite los campos nuevos conserva el documento y el nombre.
+
+## `integration/PerfilMigracionTests.java`
+
+_1 test._ La migración 009 conserva cuentas y emails existentes, deja el nombre
+inicialmente nulo y puede ejecutarse nuevamente sin repetir cambios.
+
+## `integration/PerfilSessionTests.java`
+
+_1 test._ Servidor real y JWT firmado: login, cambio de email/documento/nombre,
+persistencia del mismo ID y roles, rechazo del token anterior y login con el
+nuevo email. También vuelve al email inicial: el nuevo login funciona y el
+primer token continúa invalidado.
+
+## `service/TarifaServiceTests.java`
+
+_21 tests._
+
+- Suma de jornadas, medias jornadas, horas y fracciones con decimales exactos:
+  14 duraciones, incluyendo bordes de 15 min, 1 h, 12 h, 24 h y varios días.
+- Cotización independiente por cada categoría: Auto, Moto, Accesible y Carga
+  (4 casos), conservando tipo y moneda ARS.
+- Rechazo de tarifas sin configurar, aceptación de cero explícito y rechazo de
+  rangos nulos, invertidos, vencidos o fuera de bloques de 15 minutos.
+
+## `integration/TarifaControllerTests.java`
+
+_19 tests._
+
+- Anónimos sin acceso; USER consulta catálogo/cotización pero no modifica.
+- ADMIN guarda los 16 precios y rechaza versiones desactualizadas.
+- Importes negativos, nulos, no numéricos, fuera del máximo o con más de dos
+  decimales se rechazan sin cambios parciales (5 casos).
+- Matrices incompletas, duplicadas o con categoría inválida se rechazan (3 casos).
+- Categoría, fecha o rango inválidos devuelven 400 al cotizar (4 casos).
+- Configuración inicial vacía: no inventa precios, impide cotizar y permite
+  guardar cero explícito.
+- USER crea una reserva, cambia la tarifa, rechaza una cotización vieja y crea
+  otra con el nuevo precio. Consultar y cancelar la anterior conserva su importe.
+- ADMIN aplica la categoría Accesible según la cochera y rechaza un importe
+  manipulado por el cliente.
+- Alta operativa: el cambio de precio revierte la cuenta y reserva; un intento
+  posterior con el importe vigente crea todo y devuelve el total. Se ejecuta
+  sin transacción exterior del test para verificar el rollback real.
+
+## `integration/TarifaMigracionTests.java`
+
+_1 tests._
+
+Ejecuta la migración Liquibase `008-tarifas.yaml` sobre H2 con una reserva previa:
+conserva la fila, deja su importe y categoría nulos, no crea precios ficticios y
+permite un segundo arranque sin volver a ejecutar la migración.
+
+`src/test/resources/tarifas-test.sql` configura precios de prueba para los tests
+de tarifas, reservas, accesibilidad y alta operativa. No se usa en producción.
+
 ## `AparcarApiApplicationTests.java`
+
+_1 tests._
 
 ```
 contextLoads   (sin @DisplayName)
@@ -16,11 +372,36 @@ contextLoads   (sin @DisplayName)
 
 ## `component/OTPCleanupTests.java`
 
+_1 tests._
+
 ```
 otpCleanup deletes all expired OTPs
 ```
 
+## `component/ReservasVencidasTests.java` ✏️
+
+_6 tests._
+
+Caja blanca del barrido que pasa a VENCIDA (no-show) las CONFIRMADAS a las que se les cerró la ventana de ingreso, con reloj fijo. Ya no marca FINALIZADA: eso ahora significa que el vehículo egresó. La validación del código hace la misma evaluación al momento, así que nada depende de que la tarea corra.
+
+También verifica que la promoción ocurra después de guardar los vencimientos,
+y que se ejecute incluso cuando no hay reservas confirmadas que vencer.
+
+```
+pasa a VENCIDA (no FINALIZADA) una reserva cuya franja termino sin ingreso
+pasa a VENCIDA una reserva en curso de horario si ya paso la tolerancia de ingreso
+no toca una reserva que todavia esta dentro de la tolerancia
+solo considera las CONFIRMADAS: una EN_CURSO no vence nunca por tiempo
+no escribe en la base cuando no hay nada vencido
+marca todas las vencidas de una, no solo la primera, y deja las vigentes
+```
+
 ## `component/RevokedUserCacheTests.java`
+
+_3 tests._
+
+También verifica que la revocación por cambio de email rechace sesiones previas
+y permita nuevos logins, sin alterar la revocación administrativa ni `clear()`.
 
 ```
 RevokedUserCache revokes and checks revoked users
@@ -29,12 +410,52 @@ RevokedUserCache rejects nulls
 
 ## `component/SpringEmailSenderTests.java`
 
+_2 tests._
+
 ```
 sendPlainTextEmail should send email successfully
 sendPlainTextEmail should throw RuntimeException on error
 ```
 
+## `config/ZonaHorariaConfigTests.java`
+
+_3 tests._
+
+Caja blanca de la zona horaria. Existen por un bug concreto: el contenedor arrancaba en UTC mientras el navegador mandaba hora local, y una reserva de las 16 a las 17 llegaba a un backend que creia que eran las 19, asi que la rechazaba por "terminada en el pasado".
+
+```
+fija la zona horaria configurada como default de la JVM
+corrige un arranque en UTC para que la hora local sea la del predio
+respeta una zona distinta si el despliegue la configura
+```
+
+## `entity/ModalidadReservaTests.java`
+
+_10 tests._
+
+```
+la modalidad sale de la duracion, con los bordes en 12 h y 24 h   (parametrizado: 8 casos)
+el horario de arranque no cambia la modalidad
+una franja sin datos se considera franja horaria, sin romper
+```
+
+## `entity/ReservaSolapamientoTests.java`
+
+_20 tests._
+
+Caja blanca del predicado de solapamiento, que es donde vive toda la regla de "dos reservas no se pisan". Ataca los bordes directamente, sin servicio ni base: un `<=` de mas y dos reservas consecutivas dejarian de poder existir; uno de menos y se permitiria pisar un minuto.
+
+```
+seSolapaCon distingue superposicion real de franjas apenas contiguas   (parametrizado: 11 casos)
+dos reservas consecutivas que se tocan en un extremo pueden coexistir
+el solapamiento es simetrico: da igual cual se pregunta primero
+una franja ya terminada no se pisa con nada posterior
+estaVigenteEn incluye el inicio y excluye el fin   (parametrizado: 6 casos)
+```
+
 ## `filters/JWTGeneratorFilterTests.java`
+
+_4 tests._
 
 Caja blanca. El filtro que arma el JWT, probado en aislamiento con mocks.
 
@@ -47,6 +468,8 @@ El JWT expira 8 horas después de emitido
 
 ## `filters/RateLimitFilterTests.java`
 
+_5 tests._
+
 Caja blanca. El limitador de intentos: 5 por IP por minuto, buckets independientes.
 
 ```
@@ -57,19 +480,66 @@ la 6ta request de la misma IP en la ventana recibe 429 y no llega al resto de la
 dos IPs distintas tienen buckets independientes
 ```
 
+## `integration/AccesibilidadTests.java`
+
+_13 tests._
+
+🆕 Caja negra. Cocheras ACCESIBLE de punta a punta contra base H2 real. Cubre la declaracion de discapacidad al crear la cuenta (alta del admin y `/register`) y al editar el perfil (`PUT /me`, que sin el campo no la borra); quien puede reservar una ACCESIBLE (un USER con o sin la declaracion, y un ADMIN reservando a nombre de otro, donde cuenta la declaracion del dueño y no la del admin); y que ofrece `/disponibles` a cada uno: anonimo y ADMIN ven todas, un USER sin la declaracion no ve las ACCESIBLE.
+
+```
+[Caja negra] el alta con tieneDiscapacidad=true puede reservar una cochera ACCESIBLE
+[Caja negra] el alta sin discapacidad a una ACCESIBLE devuelve 400 y no deja nada creado
+[Caja negra] POST /register guarda la discapacidad declarada al crear la cuenta
+[Caja negra] PUT /api/v1/visitantes/me permite declarar la discapacidad y GET /me la devuelve
+[Caja negra] PUT /api/v1/visitantes/me sin el campo no borra la declaracion
+[Caja negra] un USER sin discapacidad declarada no puede reservar una ACCESIBLE
+[Caja negra] un USER con discapacidad declarada puede reservar una ACCESIBLE
+[Caja negra] un ADMIN no puede reservar una ACCESIBLE a nombre de alguien sin discapacidad declarada
+[Caja negra] un ADMIN puede reservar una ACCESIBLE a nombre de alguien con discapacidad declarada
+[Caja negra] /disponibles no le ofrece ACCESIBLE a un USER sin discapacidad declarada
+[Caja negra] /disponibles si le ofrece ACCESIBLE a un USER con discapacidad declarada
+[Caja negra] /disponibles le muestra ACCESIBLE a un ADMIN (reserva para otros)
+[Caja negra] /disponibles sigue siendo publico y le muestra ACCESIBLE a un anonimo
+```
+
 ## `integration/AuthControllerTests.java`
+
+_5 tests._
 
 ```
 /register validates input
-/register creates inactive user
+/register creates an active user with rol USER
 /login returns username
 /forgot-password sends OTP
 /reset-password resets password with valid OTP
 ```
 
+## `integration/CocheraAltaPorPlantaControllerTests.java`
+
+_12 tests._
+
+🆕 Caja negra. `POST /api/v1/cocheras/alta-por-planta`: seguridad (401/403), numeracion automatica que continua desde lo que ya hay en la base (ignorando numeros con formato viejo), dos altas seguidas que no repiten numeros, tipos en 0 que no se crean y estado inicial. Las validaciones (todo en 0, sin cantidades, cantidad negativa, sector vacio, tipo inexistente) devuelven 400 **sin crear nada**.
+
+```
+[Caja negra] POST alta-por-planta devuelve 401 para anonimos
+[Caja negra] POST alta-por-planta devuelve 403 para USER sin rol ADMIN
+[Caja negra] crea las cocheras pedidas por tipo y devuelve los numeros asignados
+[Caja negra] continua la numeracion de cada tipo desde lo que ya hay en la base
+[Caja negra] dos altas seguidas no repiten numeros: la segunda sigue donde termino la primera
+[Caja negra] los tipos en 0 no se crean
+[Caja negra] respeta el estado inicial indicado
+[Caja negra] devuelve 400 si todas las cantidades son 0
+[Caja negra] devuelve 400 si no se manda ninguna cantidad
+[Caja negra] devuelve 400 y no crea nada si alguna cantidad es negativa
+[Caja negra] devuelve 400 si el sector viene vacio
+[Caja negra] devuelve 400 (no 500) si se manda un tipo de cochera que no existe
+```
+
 ## `integration/CocheraControllerTests.java`
 
-Caja negra. CRUD completo de cocheras de punta a punta, contra base H2 real.
+_39 tests._
+
+Caja negra. CRUD completo de cocheras de punta a punta, contra base H2 real. Incluye `/sectores` y el alta en lote vieja `POST /bulk`, que sigue existiendo aunque el front ya usa `/alta-por-planta` (esa tiene su propio archivo de tests).
 
 ```
 [Caja negra] endpoints de gestión devuelven 401 para usuarios anónimos
@@ -89,15 +559,31 @@ Caja negra. CRUD completo de cocheras de punta a punta, contra base H2 real.
 [Caja negra] DELETE /api/v1/cocheras/{id} devuelve 400 si tiene reservas asociadas
 [Caja negra] /disponibles excluye cocheras deshabilitadas
 [Caja negra] /disponibles filtra por tipoVehiculo compatible
+[Regresion] lista todas las cocheras y combina filtros sin exigir sector   (parametrizado: 10 casos)
+[Caja negra] GET /api/v1/cocheras?tipo filtra por tipo exacto
+[Caja negra] GET /api/v1/cocheras?sector filtra de forma parcial e insensible a mayusculas
+[Caja negra] GET /api/v1/cocheras sin fecha devuelve disponibleEnFecha en null
+[Caja negra] GET /api/v1/cocheras?fecha marca disponibleEnFecha segun reservas confirmadas
+[Caja negra] POST /api/v1/cocheras/bulk devuelve 401 para anonimos
+[Caja negra] POST /api/v1/cocheras/bulk devuelve 403 para USER sin rol ADMIN
+[Caja negra] POST /api/v1/cocheras/bulk crea todas las cocheras del lote
+[Caja negra] POST /api/v1/cocheras/bulk no crea ninguna si una cochera del lote es invalida (todo-o-nada)
+[Caja negra] POST /api/v1/cocheras/bulk devuelve 400 y no crea nada si un numero ya existe en la base
+[Caja negra] GET /api/v1/cocheras/sectores devuelve 401 para anonimos
+[Caja negra] GET /api/v1/cocheras/sectores devuelve 403 para USER sin rol ADMIN
+[Caja negra] GET /api/v1/cocheras/sectores devuelve los sectores distintos, sin repetidos
 ```
 
 ## `integration/DashboardAccessSecurityTests.java`
+
+_9 tests._
 
 Caja negra. La matriz de permisos: que rol puede pegarle a que endpoint.
 
 ```
 GET /api/v1/visitantes, /vehiculos y /reservas devuelven 401 para anónimos
-GET /api/v1/visitantes, /vehiculos y /reservas devuelven 200 para rol USER (los necesita dashboard-user)
+GET /api/v1/vehiculos y /reservas devuelven 200 para rol USER (los necesita dashboard-user)
+GET /api/v1/visitantes devuelve 403 para rol USER: el catalogo es del ADMIN
 GET /api/v1/visitantes, /vehiculos y /reservas devuelven 200 para rol ADMIN (los necesita dashboard-admin)
 GET /api/v1/cocheras/disponibles es público
 GET /api/v1/usuarios devuelve 401 para anónimos
@@ -108,6 +594,8 @@ El 403 devuelve el mismo formato JSON que el 401 (no un 404 ni un body vacío)
 
 ## `integration/LoginFlowTests.java`
 
+_4 tests._
+
 Caja negra contra un servidor embebido real (no MockMvc). Ver la nota al pie sobre `getServletPath()`.
 
 ```
@@ -117,14 +605,40 @@ login con email inexistente devuelve 401 sin JWT
 en el perfil de test/dev, una contraseña incorrecta devuelve 401 sin JWT
 ```
 
+## `integration/RegistrationFlowTests.java`
+
+_1 tests._
+
+Caja negra del registro contra un servidor embebido real.
+
+```
+registerLoginAndAccessOwnProfileWithRealJwt   (sin @DisplayName)
+```
+
+## `integration/RegistrationTests.java`
+
+_9 tests._
+
+Caja negra del alta publica de visitantes.
+
+```
+anonymousRegistrationCreatesOnlyActiveUserVisibleToAdmin   (sin @DisplayName)
+rejectsExistingEmailRegardlessOfCaseAndSpaces   (sin @DisplayName)
+rejectsExistingDocumentEvenForInactiveAccounts   (sin @DisplayName)
+rejectsInvalidInput   (sin @DisplayName)   (parametrizado: 5 casos)
+rejectsPasswordsOverBcryptByteLimit   (sin @DisplayName)
+```
+
 ## `integration/ReservaControllerTests.java`
 
-Caja negra. Las reglas de negocio de reservas contra DB real.
+_27 tests._
+
+Caja negra. Las reglas de negocio de reservas contra DB real, incluida la **superposicion de franjas entre usuarios distintos** y la liberacion automatica de la cochera al vencer. ✏️ Reservar una cochera ACCESIBLE ahora exige que el dueño tenga declarada la discapacidad; el caso que ya existia la declara (el detalle esta en `AccesibilidadTests`).
 
 ```
 [Caja negra] endpoints de reservas devuelven 401 para anonimos
-[Caja negra] POST /api/v1/reservas devuelve 400 si falta la fecha
-[Caja negra] POST /api/v1/reservas devuelve 400 si la fecha es anterior a hoy
+[Caja negra] POST /api/v1/reservas devuelve 400 si falta la franja
+[Caja negra] POST /api/v1/reservas devuelve 400 si la franja ya termino
 [Caja negra] POST /api/v1/reservas devuelve 404 si el visitante no existe
 [Caja negra] POST /api/v1/reservas devuelve 404 si la cochera no existe
 [Caja negra] POST /api/v1/reservas devuelve 400 si el vehiculo no pertenece al visitante indicado
@@ -134,9 +648,26 @@ Caja negra. Las reglas de negocio de reservas contra DB real.
 [Caja negra] POST /api/v1/reservas permite reservar una cochera ACCESIBLE con cualquier tipo de vehiculo
 [Caja negra] GET /api/v1/reservas/{id} devuelve 404 si no existe
 [Caja negra] GET /api/v1/reservas devuelve todas las reservas cargadas
+[Caja negra] POST /api/v1/reservas ignora el visitanteId ajeno cuando quien reserva es un USER
+[Caja negra] POST /api/v1/reservas devuelve 400 si un USER intenta reservar con el vehiculo de otro
+[Caja negra] GET /api/v1/reservas devuelve solo las reservas propias a un visitante
+[Caja negra] GET /api/v1/reservas/{id} devuelve 403 si la reserva es de otro visitante
+[Caja negra] POST /api/v1/reservas/{id}/cancelar libera la cochera sin borrar la reserva
+[Caja negra] cancelar dos veces la misma reserva devuelve 400
+[Caja negra] un visitante puede cancelar su propia reserva
+[Caja negra] un visitante no puede cancelar la reserva de otro
+[Caja negra] dos visitantes no pueden pisarse la misma cochera en franjas que se solapan
+[Caja negra] dos visitantes pueden usar la misma cochera en franjas consecutivas
+[Caja negra] se puede reservar una franja de varios dias
+[Caja negra] una reserva ya terminada deja la cochera libre para una franja nueva
+[Caja negra] /disponibles excluye una cochera ocupada durante parte de la franja
+[Caja negra] el mismo vehiculo no puede reservar dos cocheras en franjas que se solapan
+[Caja negra] POST /api/v1/reservas devuelve 400 si el fin es anterior al inicio
 ```
 
 ## `integration/UserControllerTests.java`
+
+_10 tests._
 
 ```
 /users/** should return 401 Unauthorized for anonymous users
@@ -153,7 +684,10 @@ PUT /api/v1/usuarios/{id} devuelve 401 para anonimos
 
 ## `integration/VehiculoControllerTests.java`
 
+_20 tests._
+
 Caja negra. Alta, formato de patente, y la edicion/borrado con control de propietario.
+Incluye CRUD `/mios` del ADMIN y rechazo de edición/borrado de vehículos ajenos.
 
 ```
 [Caja negra] endpoints de vehiculos devuelven 401 para anonimos
@@ -161,44 +695,63 @@ Caja negra. Alta, formato de patente, y la edicion/borrado con control de propie
 [Caja negra] POST /api/v1/vehiculos devuelve 404 si el visitante no existe
 [Caja negra] POST /api/v1/vehiculos devuelve 201 y normaliza la patente a mayusculas
 [Caja negra] POST /api/v1/vehiculos devuelve 400 si la patente ya existe
-[Caja negra] GET /api/v1/vehiculos sin filtro devuelve todos los vehiculos
+[Caja negra] POST /api/v1/vehiculos ignora el visitanteId cuando quien carga es un USER
+[Caja negra] GET /api/v1/vehiculos sin filtro devuelve todos los vehiculos al ADMIN
 [Caja negra] GET /api/v1/vehiculos?visitanteId filtra solo los de ese visitante
+[Caja negra] GET /api/v1/vehiculos devuelve solo los propios a un visitante
 [Caja negra] GET /api/v1/vehiculos/{id} devuelve 404 si no existe
 [Caja negra] GET /api/v1/vehiculos/{id} devuelve 200 con el vehiculo cuando existe
 [Caja negra] PUT /api/v1/vehiculos/{id} devuelve 403 si no es el dueño
 [Caja negra] PUT /api/v1/vehiculos/{id} permite al dueño editar su vehiculo
 [Caja negra] DELETE /api/v1/vehiculos/{id} devuelve 204 cuando no tiene reservas
+[Caja negra] POST /api/v1/vehiculos acepta formato anterior de MOTO (123ABC)
+[Caja negra] POST /api/v1/vehiculos acepta formato Mercosur de MOTO (A123BCD)
+[Caja negra] POST /api/v1/vehiculos devuelve 400 si la patente tiene formato de auto para una MOTO
+[Caja negra] POST /api/v1/vehiculos devuelve 400 si la patente tiene formato de moto para un AUTO
 ```
 
 ## `integration/VisitanteControllerTests.java`
 
-Caja negra. Foco en los endpoints `/me` de autoservicio.
+_19 tests._
+
+Caja negra. Foco en el alta operativa del admin y en los endpoints `/me` de autoservicio.
 
 ```
+[Regresion] el alta reserva la franja elegida y rechaza una ya vencida sin crear datos
 [Caja negra] endpoints de visitantes devuelven 401 para anonimos
-[Caja negra] POST /api/v1/visitantes devuelve 400 si falta el nombre
-[Caja negra] POST /api/v1/visitantes devuelve 201 con datos validos
-[Caja negra] POST /api/v1/visitantes devuelve 400 si el documento ya existe
+[Caja negra] un USER no puede listar visitantes ni dar de alta
+[Caja negra] POST /api/v1/visitantes/alta devuelve 400 si falta el nombre
+[Caja negra] POST /api/v1/visitantes/alta devuelve 400 si falta el email
+[Caja negra] POST /api/v1/visitantes/alta crea cuenta, vehiculo y reserva de hoy
+[Caja negra] el alta deja la cuenta activa, con rol USER y el documento como contraseña
+[Caja negra] POST /api/v1/visitantes/alta devuelve 400 si el documento ya existe
+[Caja negra] POST /api/v1/visitantes/alta devuelve 400 si el email ya esta registrado
+[Caja negra] si la cochera ya esta ocupada, el alta no deja ninguna cuenta a medio crear
 [Caja negra] GET /api/v1/visitantes/{id} devuelve 404 si no existe
-[Caja negra] GET /api/v1/visitantes/me devuelve 404 si la cuenta todavia no cargo su perfil
-[Caja negra] GET /api/v1/visitantes/me devuelve el perfil vinculado a la cuenta autenticada
-[Caja negra] POST /api/v1/visitantes/me crea el perfil vinculado a la cuenta autenticada
-[Caja negra] POST /api/v1/visitantes/me devuelve 400 si la cuenta ya tiene un perfil cargado
-[Caja negra] POST /api/v1/visitantes/me devuelve 400 si el documento ya esta en uso por otro visitante
+[Caja negra] GET /api/v1/visitantes/me devuelve los datos de la cuenta autenticada
 [Caja negra] PUT /api/v1/visitantes/me actualiza telefono y email
+[Caja negra] PUT /api/v1/visitantes/me devuelve 400 si el email ya lo usa otra cuenta
+[Caja negra] PUT /api/v1/visitantes/me/password cambia la contraseña y deja entrar con la nueva
+[Caja negra] PUT /api/v1/visitantes/me/password devuelve 400 si la contraseña actual no coincide
+[Caja negra] PUT /api/v1/visitantes/me/password devuelve 400 si la contraseña nueva es muy corta
+[Caja negra] PUT /api/v1/visitantes/me/password devuelve 401 para anonimos
 [Caja negra] PUT /api/v1/visitantes/me devuelve 401 para anonimos
 ```
 
-## `security/AppUserDetailsServiceTests.java`
+## `security/VisitanteDetailsServiceTests.java`
 
-Caja blanca. El puente AppUser -> UserDetails.
+_2 tests._
+
+Caja blanca. El puente Visitante -> UserDetails.
 
 ```
-loadUserByUsername mapea las authorities del AppUser a GrantedAuthority
+loadUserByUsername mapea las authorities del Visitante a GrantedAuthority
 loadUserByUsername lanza UsernameNotFoundException si el email no existe
 ```
 
 ## `security/authenticationProvider/DevAuthenticationProviderTests.java`
+
+_4 tests._
 
 Caja blanca. Desde el cambio de seguridad, **dev/test tambien valida la contraseña**.
 
@@ -211,6 +764,8 @@ supports() solo acepta UsernamePasswordAuthenticationToken
 
 ## `security/authenticationProvider/ProdAuthenticationProviderTests.java`
 
+_3 tests._
+
 Caja blanca. Rechaza con `BadCredentialsException` tanto si la clave no matchea como si el email no existe, para no filtrar que emails estan registrados.
 
 ```
@@ -221,8 +776,13 @@ rechaza con BadCredentialsException (no UsernameNotFoundException) cuando el ema
 
 ## `service/AuthServiceTests.java`
 
+_11 tests._
+
 ```
+concurrentEmailConflictReturnsValidationError   (sin @DisplayName)
+concurrentDocumentConflictReturnsValidationError   (sin @DisplayName)
 register throws ValidationException when email already registered
+register throws ValidationException when documento already registered
 register successfully creates a new user
 createAndSendOTP throws NotFoundException when user not found
 createAndSendOTP successfully creates and sends OTP
@@ -232,9 +792,47 @@ resetPassword throws OTPException when OTP is expired
 resetPassword successfully resets the user's password
 ```
 
-## `service/CocheraServiceTests.java`
+## `service/CocheraAltaPorPlantaTests.java`
 
-Incluye la cancelacion automatica de reservas al deshabilitar una cochera.
+_12 tests._
+
+🆕 Caja blanca de `CocheraService.crearPorPlanta`, con mocks: armado de las cocheras por tipo en orden fijo, continuacion desde los numeros existentes, estado por defecto HABILITADA, sector sin espacios de mas y validaciones. Incluye el choque de dos altas concurrentes: la restriccion UNIQUE de `numero` hace fallar a la segunda, y eso tiene que llegar como un 400 que pide reintentar, no como un 500.
+
+```
+crea la cantidad pedida de cada tipo, numerada desde 01 si no hay cocheras
+devuelve las cocheras en orden fijo de tipo, sin importar el orden del mapa
+cada tipo continua desde el maximo existente de su propio prefijo
+los tipos con cantidad 0 o null no se crean
+sin estado, las crea HABILITADA
+respeta el estado inicial si se lo indica
+guarda el sector sin espacios de mas
+rechaza un sector vacio o en blanco sin guardar nada
+rechaza si ningun tipo tiene cantidad mayor a 0
+rechaza un mapa de cantidades vacio o ausente
+rechaza una cantidad negativa aunque otro tipo tenga cantidad valida
+si otra alta concurrente se quedo con el numero, avisa para reintentar
+```
+
+## `service/CocheraDisponiblesAccesiblesTests.java`
+
+_6 tests._
+
+🆕 Caja blanca de que cocheras ACCESIBLE ofrece `listarDisponibles` segun quien pregunta: anonimo y ADMIN ven todas; un visitante, solo si declaro discapacidad; si la cuenta del token ya no existe, se ocultan (lado conservador).
+
+```
+un anonimo ve tambien las ACCESIBLE: no hay persona contra la cual comparar
+un ADMIN ve tambien las ACCESIBLE, sin consultar su propia cuenta
+un visitante con discapacidad declarada ve las ACCESIBLE
+a un visitante sin discapacidad declarada no se le ofrecen las ACCESIBLE
+si la cuenta del token no existe, se ocultan las ACCESIBLE (lado conservador)
+la version sin datos de quien pide sigue devolviendo las ACCESIBLE
+```
+
+## `service/CocheraServiceTests.java` ✏️
+
+_23 tests._
+
+Incluye la cancelacion automatica de reservas al deshabilitar una cochera, y que un vehiculo adentro (EN_CURSO) ocupe la cochera aunque se haya pasado de hora.
 
 ```
 crear lanza ValidationException si ya existe una cochera con ese numero
@@ -251,24 +849,105 @@ listarDisponibles excluye cocheras con una reserva confirmada en esa fecha
 listarDisponibles filtra por tipo exacto de vehiculo cuando se indica
 listarDisponibles incluye cocheras ACCESIBLE sin importar el tipo de vehiculo
 editar cancela las reservas CONFIRMADA de la cochera al pasarla a DESHABILITADA
+listar sin filtros devuelve todas las cocheras con disponibleEnFecha en null
+listar trata un sector en blanco como si no se hubiera pasado filtro
+listar con fecha marca disponibleEnFecha=false para una cochera con reserva confirmada ese dia
+crearEnLote lanza ValidationException si la lista esta vacia
+crearEnLote lanza ValidationException si hay un numero repetido dentro del propio lote
+crearEnLote lanza ValidationException si un numero ya existe en la base, sin guardar nada
+crearEnLote guarda todas las cocheras del lote cuando son validas
+listarSectores delega en el repository
+listarDisponibles excluye cocheras con un vehiculo adentro (EN_CURSO), aunque se haya pasado de hora
 ```
 
-## `service/ReservaServiceTests.java`
+## `service/NumeracionCocherasTests.java`
 
-Las mismas reglas que `ReservaControllerTests`, pero con mocks y aisladas del repositorio.
+_30 tests._
+
+🆕 Caja blanca de la numeracion automatica `{PREFIJO}-{secuencial}`. Es puro calculo: sin mocks ni base. Prefijos fijos por tipo (A, M, C, AC); continuar desde el **maximo** existente (no desde la cantidad ni desde el ultimo de la lista); que los prefijos no se crucen (`AC-05` no cuenta para AUTO, ni `AC-09` para CARGA); que los numeros con formato viejo o desconocido se ignoren sin romper; y el ancho minimo de 2 digitos sin limite superior (A-99 -> A-100).
+
+```
+cada tipo tiene su prefijo fijo   (parametrizado: 4 casos)
+sin cocheras existentes, cada tipo arranca en 01
+continua desde el maximo existente, no desde el ultimo ni desde la cantidad
+el maximo de ACCESIBLE (AC-..) no se cuela en AUTO (A-..)
+el maximo de AUTO (A-..) no se cuela en ACCESIBLE (AC-..)
+el maximo de ACCESIBLE (AC-..) no se cuela en CARGA (C-..)
+con todos los tipos mezclados, cada uno sigue su propia serie
+ignora numeros con formato viejo o desconocido   (parametrizado: 14 casos)
+los formatos desconocidos conviven con los validos sin romper el calculo
+un secuencial absurdamente largo se ignora en vez de romper
+tolera un null en la lista de existentes
+rellena con cero hasta 2 digitos y despues crece sin limite
+un numero con ceros de mas cuenta por su valor
+cantidad 0 no genera ningun numero
+```
+
+## `service/ReservaAccesibilidadTests.java`
+
+_6 tests._
+
+🆕 Caja blanca de la regla que protege las cocheras ACCESIBLE al crear una reserva. Lo que cuenta es la declaracion del **dueño de la reserva**, no la de quien la carga: un ADMIN reservando para otra persona queda sujeto a lo que declaro esa persona. Las cocheras que no son ACCESIBLE no se ven afectadas.
+
+```
+un visitante sin discapacidad declarada no puede reservar una cochera ACCESIBLE
+un visitante con discapacidad declarada puede reservar una cochera ACCESIBLE
+si un ADMIN reserva para otro, cuenta la declaracion del dueño: sin ella se rechaza
+si un ADMIN reserva para otro con discapacidad declarada, se permite sin mirar la cuenta del admin
+la regla no afecta a las cocheras que no son ACCESIBLE
+un flag en null se trata como 'sin discapacidad declarada'
+```
+
+## `service/ReservaServiceTests.java` ✏️
+
+_39 tests._
+
+Las mismas reglas que `ReservaControllerTests`, pero con mocks y aisladas del repositorio. Incluye la validacion de la franja horaria: rango invertido, duracion cero, franja ya vencida, y el vehiculo comprometido en otra cochera. ✏️ El caso de cochera ACCESIBLE ahora parte de un visitante con la discapacidad declarada (la regla completa esta en `ReservaAccesibilidadTests`).
 
 ```
 crear lanza NotFoundException si el visitante no existe
 crear lanza ValidationException si el vehiculo no pertenece al visitante
 crear lanza ValidationException si el tipo de cochera no es compatible con el vehiculo
 crear permite una cochera ACCESIBLE para cualquier tipo de vehiculo
-crear lanza ValidationException si la cochera ya tiene una reserva confirmada ese dia
+crear lanza ValidationException si la cochera ya esta reservada en esa franja
 crear guarda la reserva como CONFIRMADA cuando todas las validaciones pasan
+crear ignora el visitanteId del dto cuando quien reserva no es ADMIN
+crear lanza ValidationException si un ADMIN no indica a nombre de quien va la reserva
+listar devuelve todas las reservas cuando quien pide es ADMIN
+listar devuelve solo las reservas propias cuando quien pide no es ADMIN
+obtenerPorId niega el acceso a una reserva de otro visitante
+obtenerPorId deja al ADMIN ver cualquier reserva
+cancelar pasa la reserva a CANCELADA sin borrarla
+cancelar niega el acceso si la reserva es de otro visitante
+cancelar deja al ADMIN dar de baja cualquier reserva
+cancelar lanza ValidationException si la reserva ya estaba cancelada
+cancelar lanza NotFoundException si la reserva no existe
+crear rechaza una franja con fin anterior al inicio
+crear rechaza una franja de duracion cero
+crear rechaza una franja que termina en el pasado
+crear acepta un inicio en el pasado mientras el fin siga siendo futuro
+crear rechaza si el vehiculo ya tiene otra reserva en esa franja
+crear consulta el solapamiento solo contra reservas CONFIRMADAS
+cancelar rechaza una reserva cuya franja ya termino
+crear rechaza un inicio que no cae en un bloque de 15 minutos
+crear rechaza un fin que no cae en un bloque de 15 minutos
+crear rechaza un horario con segundos, aunque los minutos sean multiplo de 15
+crear acepta los cuatro bloques de la hora   (parametrizado: 4 casos)
+crear acepta una reserva de exactamente 15 minutos
+crear asigna el codigo de acceso a la reserva guardada, en la misma operacion
+crear rechaza la franja si en la cochera hay un vehiculo adentro (EN_CURSO)
+crear rechaza un vehiculo que esta adentro de otra cochera en esa franja
+cancelar rechaza una reserva EN_CURSO: corresponde registrar el egreso
+cancelar rechaza una reserva VENCIDA
+cancelar rechaza una CONFIRMADA a la que ya se le cerro la ventana de ingreso
+el codigo solo viaja mientras sirve: no se muestra en una reserva cancelada
 ```
 
 ## `service/UserServiceTests.java`
 
-Incluye el borrado seguro: desvincula el visitante propio antes de borrar la cuenta.
+_10 tests._
+
+Incluye el borrado seguro: se bloquea si el visitante tiene reservas registradas, y se llevan sus vehiculos junto con la cuenta.
 
 ```
 activateUser throws NotFoundException when user not found
@@ -277,11 +956,15 @@ getInactiveUsers returns set of inactive user emails
 deleteUser throws RuntimeException when caller email is null
 deleteUser throws NotFoundException when user not found
 deleteUser throws ValidationException when user tries to delete themselves
-deleteUser desvincula el visitante propio antes de borrar la cuenta, para no violar la FK
-deleteUser no toca visitantes cuando la cuenta no tiene ninguno vinculado
+deleteUser lanza ValidationException si el visitante tiene reservas registradas
+deleteUser borra los vehiculos del visitante junto con su cuenta
+updateUser rechaza un documento que ya usa otro visitante
+updateUser actualiza los datos y los roles del visitante
 ```
 
 ## `service/VehiculoServiceTests.java`
+
+_16 tests._
 
 Incluye `verificarPropietario`: un USER solo toca sus propios vehiculos, un ADMIN todos.
 
@@ -294,32 +977,253 @@ listarPorVisitante devuelve solo los vehiculos de ese visitante
 editar lanza AccessDeniedException si quien pide no es ADMIN ni el dueño
 editar permite al ADMIN modificar un vehiculo que no es suyo
 eliminar lanza ValidationException si el vehiculo tiene reservas asociadas
+crear acepta ambos formatos vigentes de patente para AUTO   (parametrizado: 2 casos)
+crear acepta ambos formatos vigentes de patente para MOTO   (parametrizado: 2 casos)
+crear acepta ambos formatos vigentes de patente para CARGA (mismo esquema que AUTO)   (parametrizado: 2 casos)
+crear rechaza una patente con formato de auto para un vehiculo MOTO
+crear rechaza una patente con formato de moto para un vehiculo AUTO
+```
+
+## `service/VisitanteDiscapacidadTests.java`
+
+_6 tests._
+
+🆕 Caja blanca de como se guarda y se edita la declaracion de discapacidad: en el alta del admin (queda en false si no viene), al editar el propio perfil (marcar, desmarcar, y sin el campo no se toca) y al leerlo para precargar el formulario.
+
+```
+altaConReserva guarda la discapacidad cuando el admin la marca
+altaConReserva deja la discapacidad en false si el admin no la manda
+actualizarPropio permite al visitante declarar su discapacidad
+actualizarPropio permite al visitante quitar la declaracion
+actualizarPropio sin el campo no le borra la declaracion a nadie
+obtenerPropio devuelve la declaracion actual para precargar el formulario
 ```
 
 ## `service/VisitanteServiceTests.java`
 
-Incluye el flujo `/me`: obtener, crear y actualizar el perfil propio.
+_21 tests._
+
+El guardado de perfil invalida las sesiones del email anterior. Un conflicto de
+unicidad durante el guardado devuelve un error de validación sin revocar la sesión.
+
+Incluye el alta operativa atomica (cuenta + vehiculo + reserva) y el cambio de contraseña propio. ✏️ La respuesta del visitante suma el campo `tieneDiscapacidad`.
 
 ```
-crear lanza ValidationException si ya existe un visitante con el mismo documento
-crear guarda el visitante cuando el documento no esta repetido
+altaConReserva lanza ValidationException si ya existe un visitante con el mismo documento
+altaConReserva lanza ValidationException si ya existe una cuenta con ese email
+altaConReserva usa el documento como contraseña inicial, hasheado
+altaConReserva crea la cuenta activa y con rol USER
+altaConReserva carga el vehiculo a nombre del visitante recien creado
+altaConReserva reserva la cochera indicada para hoy
+altaConReserva usa la franja elegida al crear la reserva
+altaConReserva propaga el error de la reserva en vez de dejar la cuenta creada
 obtenerPorId lanza NotFoundException si el visitante no existe
 obtenerPorId devuelve el visitante cuando existe
 listar devuelve todos los visitantes
-obtenerPropio lanza NotFoundException si la cuenta no tiene un visitante vinculado
-obtenerPropio devuelve el visitante vinculado a la cuenta autenticada
-crearPropio lanza ValidationException si la cuenta ya tiene un visitante cargado
-crearPropio lanza ValidationException si el documento ya esta en uso por otro visitante
-crearPropio crea el visitante vinculado a la cuenta autenticada
-actualizarPropio lanza NotFoundException si la cuenta no tiene un visitante vinculado
+obtenerPropio lanza NotFoundException si no existe una cuenta con ese email
+obtenerPropio devuelve los datos de la cuenta autenticada
+actualizarPropio lanza NotFoundException si no existe una cuenta con ese email
 actualizarPropio actualiza telefono y email sin tocar nombre ni documento
+actualizarPropio rechaza un email que ya usa otra cuenta
+cambiarPasswordPropia rechaza el cambio si la contraseña actual no coincide
+cambiarPasswordPropia rechaza una contraseña nueva igual a la actual
+cambiarPasswordPropia guarda la contraseña nueva hasheada
+cambiarPasswordPropia lanza NotFoundException si no existe una cuenta con ese email
 ```
 
 ---
 
 # Frontend (`aparcar-front/test/`)
 
+## `dashboard-admin/accesos/ControlAccesoContent.test.jsx`
+
+_28 tests._ La pantalla de control de acceso con la API simulada. La cámara se
+reemplaza por un lector falso que entrega una lectura (la cámara real se prueba en
+`LectorQR.test.jsx`).
+
+```
+código escrito:
+  valida un código tipeado y muestra de quién es la reserva y qué corresponde
+  normaliza antes de consultar   (parametrizado: 4 casos: minúsculas, espacios, prefijo, O→0)
+  el campo muestra lo tipeado en mayúsculas
+  un código con formato inválido se rechaza sin consultar al backend
+  un código inexistente muestra el mensaje del backend
+  al editar el código descarta la reserva validada anteriormente
+  rechaza cochera ocupada y vehículo con otro ingreso pendiente (2 casos)
+  un código que no se puede usar muestra el motivo destacado y no ofrece registrar
+confirmación:
+  registra el ingreso, muestra el resultado y deja el campo listo para el siguiente
+  registra el egreso y avisa si el vehículo se pasó de hora
+  un doble clic en confirmar manda un solo registro
+  impide validar otro código mientras se registra el movimiento
+  si el backend ya lo tenía registrado, lo informa sin duplicarlo
+  un rechazo del backend al registrar se muestra con su mensaje
+  un conflicto de concurrencia (409) pide volver a validar
+  sin conexión con el backend lo dice en vez de quedarse cargando
+escaneo:
+  una segunda lectura no reemplaza una consulta pendiente
+  lo leído con la cámara hace la misma consulta que el código escrito
+  después de registrar, el lector vuelve a prenderse solo para el siguiente vehículo
+  un QR que no es de AparcAR se rechaza sin consultar
+  si la cámara no se puede usar, el lector puede pasar al código escrito
+movimientos:
+  lista los movimientos del día y avisa si no hay
+  marca los egresos excedidos
+  si no se pueden cargar, lo dice
+```
+
+## `dashboard-admin/accesos/pagina.test.jsx`
+
+_2 tests._
+
+```
+exige ADMIN, muestra el control de acceso y permite volver al panel
+el panel del admin incorpora el acceso a Control de acceso
+```
+
+## `components/LectorQR.test.jsx`
+
+_14 tests._ `getUserMedia`, `BarcodeDetector`, el canvas y `jsqr` simulados.
+
+```
+no pide la cámara hasta que el operador la activa, y prefiere la trasera
+con BarcodeDetector lee el QR, entrega el texto y apaga la cámara
+sin BarcodeDetector usa jsqr sobre un cuadro del video
+si el detector nativo falla al leer el video, usa jsqr
+no activa la cámara mientras se valida o registra un movimiento
+al deshabilitar se detiene la cámara y se ignoran las lecturas pendientes
+un permiso concedido después de deshabilitar el lector se libera sin reproducir video
+si el operador no da permiso, lo explica y ofrece el código escrito
+si no hay cámara, lo dice
+en HTTP sin localhost avisa de entrada que la cámara no va a funcionar, sin pedirla
+libera la cámara al salir de la pantalla
+si se sale mientras el navegador pide permiso, apaga la cámara apenas llega
+Detener cámara la apaga sin salir de la pantalla
+con autoIniciar vuelve a prender la cámara sola para el siguiente vehículo
+```
+
+## `components/ModalCodigoAcceso.test.jsx`
+
+_9 tests._
+
+```
+es un diálogo modal con el QR, el código grande, los datos y la ventana de ingreso
+con el vehículo adentro recuerda que el mismo código sirve para salir
+copia el código con guion al portapapeles y lo confirma
+si el navegador no deja copiar, lo avisa
+cierra con Escape
+cierra con el botón Cerrar y con un clic en el fondo, no con un clic adentro
+atrapa el foco: arranca en cerrar y Tab da la vuelta sin salir del diálogo
+al cerrarse devuelve el foco a quien lo abrió y libera el scroll
+muestra el título que le pasen (por ejemplo, al confirmar la reserva)
+```
+
+## `components/CodigoAccesoQR.test.jsx`
+
+_4 tests._ `qrcode` simulado.
+
+```
+dibuja el QR con el prefijo APARCAR: y colores fijos, sin depender del tema
+mientras genera muestra un indicador de carga
+si no puede dibujarlo, remite al código escrito
+al cambiar de reserva no deja el QR de la anterior
+```
+
+## `components/ReservasListadoAcceso.test.jsx`
+
+_11 tests._ Los cuatro primeros corren en modo user y en modo admin.
+
+```
+Activas incluye las reservas con el vehículo adentro, y hay un filtro de Vencidas   (x2)
+muestra una insignia para cada estado nuevo   (x2)
+muestra la hora de ingreso, la de egreso y el exceso registrados en la puerta   (x2)
+una reserva con el vehículo adentro ya no se puede cancelar   (x2)
+el visitante lo ve en las CONFIRMADA y EN_CURSO, y abre el código de esa reserva
+no aparece en reservas sin código vigente
+el admin no lo ve en su listado
+```
+
+## `components/ReservasContentCodigo.test.jsx`
+
+_4 tests._
+
+```
+al reservar, el visitante ve enseguida el QR y el código de la reserva nueva
+el admin que reserva en nombre de otro no recibe el modal
+si el backend no devolvió código, no abre un modal vacío
+Ver QR en Mis reservas abre el código de esa reserva
+```
+
+## `components/OcupacionCocherasAcceso.test.jsx`
+
+_2 tests._
+
+```
+muestra EN_CURSO como ocupada con el vehículo adentro, y avisa si se pasó de hora
+una reserva con el vehículo adentro no se puede cancelar desde el panel
+```
+
+## `utils/codigoAcceso.test.js`
+
+_30 tests._ Normalización (9 casos válidos, 10 inválidos), formato, contenido del QR,
+texto de la ventana (mismo día, cruzando la medianoche, sin datos) y qué estados
+tienen un código vigente (5 estados más los casos sin código).
+
+## `utils/ocupacionAcceso.test.js`
+
+_6 tests._
+
+```
+un vehículo que se pasó de hora ocupa hasta ahora, no hasta su horario
+dentro de su horario ocupa lo reservado y no está excedido
+solo EN_CURSO se extiende: una CONFIRMADA o FINALIZADA ocupa su franja
+un vehículo de ayer que sigue adentro ocupa también hoy
+marca la cochera como ocupada con vehículo adentro y excedida
+una reserva VENCIDA (nunca llegó) no ocupa
+```
+
+## `dashboard-admin/tarifas/TarifasManagement.test.jsx`
+
+_13 tests._
+
+- Carga las cuatro categorías y sus 16 importes; guardar queda deshabilitado
+  mientras no haya cambios.
+- Envía toda la matriz, normaliza coma decimal y conserva versiones.
+- Rechaza vacío, negativo, más de dos decimales, exceso del máximo y texto
+  (5 casos); acepta cero explícito.
+- Precios sin configurar permanecen vacíos y exige completar todos.
+- Permite reintentar la carga, conserva cambios si falla el guardado y bloquea
+  campos/botones mientras guarda.
+- Recargar con cambios pendientes requiere aceptar descartarlos.
+
+## `hooks/useCotizacion.test.jsx`
+
+_5 tests._
+
+- No consulta sin tipo o con franja inválida.
+- Ignora respuestas tardías e invalida el precio inmediatamente al cambiar la
+  selección, incluso cuando se vuelve a una categoría anterior.
+- Expone errores del backend y permite reintentar, incluyendo precio cero.
+- Rechaza respuestas sin un precio válido.
+- Cambiar la franja vuelve a consultar el importe.
+
+## `components/ReservasTarifas.test.jsx`
+
+_9 tests._
+
+- ADMIN y USER ven el precio antes de elegir cochera y envían `precioEsperado`
+  al crear (2 casos).
+- ADMIN y USER pasan a tarifa Accesible al elegir esa cochera (2 casos).
+- Impide confirmar mientras falta la cotización.
+- Si cambia el precio al confirmar, muestra el nuevo importe sin reenviar
+  automáticamente la reserva.
+- Muestra el importe histórico y distingue reservas anteriores a las tarifas.
+- El alta operativa muestra y envía el precio Accesible.
+- Sin tarifas configuradas impide crear la reserva.
+
 ## `api.test.jsx`
+
+_6 tests._
 
 Los dos interceptores de `app/api.jsx`, incluida la **regresion del bug del login doble**.
 
@@ -332,7 +1236,26 @@ ante un 401, borra la cookie JWT y redirige a /login
 ante un error que no es 401, no toca la cookie ni redirige
 ```
 
+## `components/AtajosJornada.test.jsx`
+
+_8 tests._
+
+Los atajos de media jornada y jornada completa. Lo que se verifica no es que sumen 12 o 24 horas cualesquiera, sino que caigan **justo** en los umbrales con los que el backend clasifica la modalidad: un atajo que dejara la reserva en 11 h 45 la etiquetaria como franja horaria y el boton estaria mintiendo.
+
+```
+ofrece media jornada y jornada completa con su duracion
+media jornada deja el fin doce horas despues del inicio
+jornada completa deja el fin al dia siguiente a la misma hora
+los atajos caen justo en los umbrales que usa el backend
+marca como activo el atajo que coincide con la franja actual
+ninguno queda activo con una franja que no es una jornada
+quedan deshabilitados si todavia no hay inicio
+el resultado sigue cayendo en un bloque de 15 minutos
+```
+
 ## `components/LogoutButton.test.jsx`
+
+_1 tests._
 
 El boton de cerrar sesion: limpia el store y navega a `/login`.
 
@@ -340,9 +1263,125 @@ El boton de cerrar sesion: limpia el store y navega a `/login`.
 cierra la sesión y navega a /login
 ```
 
+## `components/OcupacionCocheras.test.jsx`
+
+_29 tests._
+
+La vista de ocupacion del panel admin: dia elegido con navegacion y boton Hoy, agrupacion por tipo o por piso, contador de ocupadas sobre el total, el detalle de cada ocupacion, y las acciones de deshabilitar/habilitar una cochera y cancelar una reserva, siempre con confirmacion.
+
+```
+arranca en el día de hoy
+arma un desplegable por cada tipo que exista, sin lista fija
+la pestaña por piso agrupa los mismos datos por sector
+el contador dice cuántas están ocupadas sobre el total
+no vuelve a pedir datos al cambiar de pestaña o de día
+muestra patente, horario, modalidad y mail de cada ocupación
+las cocheras libres también figuran
+el filtro deja solo las reservadas y se puede volver atrás
+hasta que no se elige un grupo, invita a elegir uno
+un grupo sin nada ocupado muestra sus cocheras como libres
+con el filtro puesto y nada reservado, lo dice
+volver a tocar el mismo grupo lo cierra
+el día siguiente muestra sus propias reservas
+el día anterior sigue mostrando lo que ya terminó
+una reserva que cruza la medianoche aparece en los dos días
+el botón Hoy vuelve al día actual y desaparece cuando ya estás ahí
+una reserva cancelada no ocupa
+sin cocheras cargadas lo dice
+si falla la carga avisa y no rompe
+vuelve a pedir los datos cuando cambia refreshKey
+deshabilita una cochera mandando la cochera entera, no solo el estado
+una cochera fuera de servicio se vuelve a habilitar desde el mismo lugar
+al deshabilitar avisa cuántas reservas se van a cancelar
+sin reservas no amenaza con cancelar nada
+si el backend rechaza el cambio lo dice y no miente
+cancela y vuelve a pedir los datos
+si se dice que no, no cancela
+una reserva finalizada no ofrece cancelar
+el confirm nombra la patente y la cochera, para no cancelar la que no era
+```
+
+## `components/ReservasListado.test.jsx`
+
+_15 tests._ Estado inicial, información visible, filtros con contadores,
+deshabilitaciones, orden por fecha de alta, conservación del filtro al recargar,
+paginación y reinicio al cambiar de criterio, ajuste de página al cancelar,
+vacíos diferenciados, error con reintento, bloqueo de cancelaciones duplicadas
+y conservación del historial de reservas anteriores. Los seis casos de usuario
+verifican el modo predeterminado sin datos administrativos, patente gráfica,
+los cuatro mensajes de cancelación y conservación del orden/página al recargar.
+
+## `test/browser/reservas.ui.mjs` (Playwright)
+
+_21 tests de navegador, independientes de Vitest._ Cinco anchos (320, 390,
+768, 1024 y 1440 px) en claro y oscuro para ambos roles, más cancelación propia.
+Comprueban estilos calculados: filtros
+en grilla con separación, controles de al menos 44 px, padding de las reservas,
+columnas según el ancho del panel, paginación, filtros, historial abierto con
+textos largos, ausencia de desbordes y carga de estilos al recargar la ruta.
+En USER verifican patente gráfica, mensajes propios y ausencia de historial,
+autores y datos del ocupante, incluso cuando el fixture incluye esos datos.
+La cancelación comprueba la actualización de contadores sin perder el orden.
+La regresión reportada tenía los filtros con `display: block` y padding cero:
+verificar solamente que no hubiera overflow no alcanzaba para detectarla.
+
+## `test/browser/accesos.ui.mjs` (Playwright)
+
+_6 tests de navegador, independientes de Vitest._ API simulada sin modificar datos
+reales. Al confirmar una reserva, el visitante recibe el QR y puede volver a
+abrirlo; se rasteriza y decodifica el SVG real con `jsqr` en claro/escritorio y
+oscuro/celular. El administrador usa código escrito y payload QR para ingreso y
+egreso, y ve el rechazo al reutilizarlo. El lector procesa video de una cámara
+sintética con el decodificador real tanto sin detector nativo como cuando este
+falla, y libera el stream después de leer. Sin permiso de cámara sigue disponible
+la validación manual.
+
+Desde `aparcar-front`, instalar el navegador una vez y ejecutar:
+
+```sh
+npx playwright install chromium
+npm run test:ui:reservas
+```
+
+El runner inicia desarrollo en el puerto 3000 o reutiliza el servidor existente
+fuera de CI. `PLAYWRIGHT_BASE_URL` permite probar un servidor ya iniciado,
+incluido `npm run start` después de `npm run build`. `PLAYWRIGHT_CHANNEL=chrome`
+permite usar Chrome instalado en lugar del Chromium descargado. En PowerShell:
+
+```powershell
+$env:PLAYWRIGHT_CHANNEL = "chrome"
+$env:PLAYWRIGHT_BASE_URL = "http://localhost:3000"
+npm run test:ui:reservas
+```
+
+Las peticiones de API se interceptan con fixtures; no se usa ni modifica la base
+real. Capturas/trazas de fallos quedan en `test-results/` (ignorado por Git).
+
+## `utils/reservasListado.test.js`
+
+_18 tests._ Filtros y contadores; cuatro sentidos de orden; fechas de reserva
+versus fecha de alta; ausencia de mutación de los datos; fechas ausentes o
+inválidas al final; desempates estables; offsets de auditoría; listas vacías y
+estados desconocidos; horario argentino y rangos con año sin cambiar el formato
+predeterminado que usa el resto del proyecto.
+
 ## `components/ReservasContent.test.jsx`
 
-Reserva por patente, y la **regresion del bug de cache de vehiculos al hacer foco**. El componente lo comparten los dos dashboards.
+_63 tests._
+
+Los listados de ambos roles conservan los casos de alta, cancelación y
+trazabilidad; los casos de reservas canceladas seleccionan su filtro explícitamente.
+Mis reservas incorpora filtros y orden. También se verifica el reintento tras un
+error de carga y que un rechazo al cancelar conserve la reserva y habilite otro
+intento. El caso de importe histórico en `ReservasTarifas.test.jsx` selecciona
+Finalizadas antes de verificar los importes.
+
+La trazabilidad agrega 9 casos: los tres motivos de cancelación y el estado
+histórico sin motivo; privacidad del historial en modo USER; acción, autor,
+ocupante y horarios del historial admin; ausencia explícita de autor histórico;
+y actualización del mensaje después de cancelar desde Mis reservas.
+
+El formulario de reserva, que comparten los dos dashboards. Cubre la **franja horaria** (arranque por defecto en el bloque de 15 en curso, rango invertido, varios dias), los atajos de jornada llevados hasta el campo, la modalidad que muestra el listado y la **regresion del bug de cache de vehiculos al hacer foco**. ✏️ Suma las **cocheras accesibles**: en modo admin se ocultan si el dueño del vehiculo no declaro discapacidad, explicando por que (y si el dato no viene, no se oculta nada); en modo visitante se muestra lo que ya filtro el backend; y el rechazo del backend llega tal cual al usuario.
 
 ```
 muestra el mensaje de vacio cuando no hay reservas cargadas
@@ -350,59 +1389,177 @@ lista las reservas existentes con su estado
 al escribir una patente registrada, muestra el nombre del visitante y el tipo de vehiculo
 al escribir una patente que no existe, avisa que no se encontro ningun vehiculo
 la cochera queda deshabilitada hasta encontrar un vehiculo por patente
-al resolver un vehiculo (con fecha ya cargada por defecto), pide las cocheras disponibles de ese tipo
+al resolver un vehiculo (con la franja ya cargada por defecto), pide las cocheras disponibles de ese tipo
 el foco en el campo de patente vuelve a pedir vehiculos y visitantes
-confirmar la reserva envia el visitanteId/vehiculoId resueltos por patente, junto con cochera y fecha
+confirmar la reserva envia el visitanteId/vehiculoId resueltos por patente, junto con cochera y franja
 el boton de confirmar reserva esta deshabilitado hasta elegir una cochera
+cancela con POST /api/v1/reservas/{id}/cancelar
+pide confirmacion y no hace nada si se cancela el dialogo
+avisa que la ocupacion cambio
+no ofrece cancelar una reserva que ya esta cancelada
+el visitante tambien puede cancelar desde su dashboard
+si el backend rechaza la cancelacion, muestra su mensaje
+no pide el catalogo de visitantes
+ofrece sus propias patentes en un desplegable en vez de un campo libre
+si todavia no cargo ningun vehiculo, explica que hace falta uno para reservar
+no manda visitanteId al reservar
+lista solo la patente, sin el nombre del visitante
+arranca en el bloque de 15 en curso y propone una hora de duracion
+los campos declaran el paso de 15 minutos
+deja escribir cualquier minuto mientras se tipea
+al salir del campo redondea al bloque de 15 mas cercano
+redondea para abajo cuando el minuto esta mas cerca del bloque anterior
+redondear cerca de medianoche pasa al dia siguiente
+el inicio se acomoda con la misma regla
+pide las cocheras libres mandando desde y hasta
+cambiar la franja vuelve a consultar disponibilidad
+avisa al instante si la franja queda invertida
+muestra la franja de cada reserva en el listado, no una fecha suelta
+muestra los dos dias cuando la franja cruza la medianoche
+muestra la modalidad que manda el backend
+traduce las tres modalidades
+una reserva sin modalidad no rompe el listado
+media jornada deja el campo Hasta doce horas despues del inicio
+jornada completa lleva el fin al dia siguiente
+usar un atajo vuelve a consultar disponibilidad
+por defecto los apila, como venía
+en columnas agrupa el alta y el listado en dos bloques
+el alta va antes que el listado en el DOM
+en columnas se reserva igual que apilado
+el listado sigue mostrándose en columnas
+admin: oculta las ACCESIBLE si el dueño no declaró discapacidad y lo explica
+admin: ofrece las ACCESIBLE si el dueño declaró discapacidad
+admin: si el visitante no trae el campo, no oculta nada
+admin: si solo quedaban ACCESIBLE, avisa que no hay cocheras para esa persona
+visitante: muestra lo que devuelve el backend sin filtrar de nuevo
+si el backend rechaza la reserva de una ACCESIBLE, muestra su mensaje tal cual
+```
+
+## `components/ThemeToggle.test.jsx`
+
+_2 tests._
+
+El boton de cambio de tema.
+
+```
+se hidrata al montar y muestra el ícono de luna en modo claro
+al hacer click, alterna a oscuro y aplica la clase al <html>
+```
+
+## `dashboard-admin/PanelOperativo.test.jsx`
+
+_2 tests._
+
+El panel operativo del ADMIN. **Regresion del bug de la reserva que no se agregaba**: que el panel incluya el formulario de reservas, que el admin pueda crear una, y que la cuadricula de ocupacion se refresque despues.
+
+```
+abre con la ocupación de cocheras
+no trae el alta de visitante ni el formulario de reservas
+```
+
+## `dashboard-admin/VisitantesContent.test.jsx`
+
+_21 tests._
+
+Incluye los dos formatos de patente MOTO en espera, normalización de espacios y
+guiones, detalle de validación por campo y mensaje en español cuando falta detalle.
+
+El alta operativa del admin: crea cuenta, vehiculo y reserva en una sola llamada, con su franja. ✏️ Suma el checkbox opcional de **discapacidad**: desmarcado por defecto, viaja en el alta, y las cocheras ACCESIBLE no se ofrecen hasta marcarlo (si se desmarca con una elegida, se deselecciona).
+
+```
+consulta disponibilidad y reserva para la franja elegida, limpiando la cochera anterior
+ignora la respuesta de disponibilidad de una franja que ya cambio
+el horario se redondea al bloque de 15 mas cercano al salir del campo
+muestra errores si se envia el formulario vacio
+exige el email porque es con lo que el visitante inicia sesion
+rechaza una patente con formato invalido
+rechaza una patente de moto cuando el tipo elegido sigue siendo AUTO
+pide las cocheras disponibles de hoy para el tipo de vehiculo elegido
+manda cuenta, vehiculo y cochera en una sola llamada
+avisa que la contraseña inicial es el documento
+avisa al padre para que refresque ocupacion y reservas
+si el alta falla (ej. documento duplicado), muestra el error del backend
+muestra el checkbox de discapacidad desmarcado por defecto
+sin marcarlo, manda tieneDiscapacidad: false
+marcado, manda tieneDiscapacidad: true y permite reservar una ACCESIBLE
+oculta las cocheras ACCESIBLE hasta que se marca el checkbox
+si se desmarca con una ACCESIBLE elegida, la deselecciona
 ```
 
 ## `dashboard-admin/cocheras/CocherasManagement.test.jsx`
 
+_31 tests._
+
+ABM de cocheras con sus filtros. El filtro por fecha se traduce al dia completo como rango. ✏️ El **alta por planta** reemplazo al alta fila por fila: sector de la lista o nuevo, una cantidad por tipo arrancando en 0, boton deshabilitado con todo en 0, el payload que va a `/alta-por-planta` (solo los tipos con cantidad), los numeros que asigno el backend mostrados tal cual y agrupados por tipo, y el error del backend en el toast sin borrar lo cargado.
+
 ```
 muestra la navegación de regreso al panel
 carga y lista las cocheras existentes
-filtra por sector
-filtra por tipo
-crea una cochera nueva y refresca la lista
+combina tipo y estado sin sector y recupera todas las cocheras al limpiar filtros
+una respuesta anterior no reemplaza los resultados del filtro actual
+el dropdown de sector se arma con los sectores reales, sin repetidos
+filtra por sector pidiendole al backend, no en el cliente
+filtra por tipo pidiendole al backend
+sin fecha seleccionada, la columna de disponibilidad muestra un guion
+al elegir una fecha, pide al backend el dia completo como rango y muestra Libre/Ocupada
+crea una cochera nueva y refresca la lista y los sectores
 muestra errores de validacion si falta numero o sector
 al editar, precarga el formulario con los datos de la fila elegida
 al deshabilitar una cochera antes HABILITADA, pide confirmacion; si se cancela, no llama a PUT
 al deshabilitar y confirmar, llama a PUT con el nuevo estado
 eliminar pide confirmacion, y si se cancela no llama a DELETE
 eliminar, si se confirma, llama a DELETE y refresca la lista
+el alta usa un dropdown de sector con las opciones reales del backend
+elegir '+ Otro' en el alta muestra un input de texto libre para el sector nuevo
+sin ningun sector cargado todavia, el alta (y el alta por planta) arrancan directo en modo texto libre
+las cuatro cantidades arrancan en 0
+con todas las cantidades en 0, el boton de crear queda deshabilitado
+al cargar alguna cantidad se habilita y muestra el total a crear
+el sector del alta por planta usa el mismo dropdown de sectores reales, con opcion de uno nuevo
+envia sector y cantidades por tipo (sin los que quedaron en 0) a POST alta-por-planta
+permite crear la planta en un sector nuevo con '+ Otro'
+muestra los numeros que asigno el backend, agrupados por tipo
+despues de crear, vuelve las cantidades a 0 y refresca la lista
+si el backend rechaza el pedido, muestra su mensaje y no borra lo cargado
+exige elegir un sector antes de enviar
+no envia una cantidad negativa
+ya no ofrece la carga fila por fila ni llama al endpoint /bulk
 ```
 
-## `dashboard-admin/EstadoCocherasGrid.test.jsx`
+## `dashboard-admin/paginas.test.jsx`
+
+_13 tests._
+
+Las paginas `/dashboard-admin/reservas` y `/dashboard-admin/visitantes`: que exijan el rol ADMIN, que secciones arma cada una y la navegacion de regreso.
+La ruta de recurrentes exige ADMIN, no renderiza contenido al fallar la
+autorización y tiene acceso separado en el panel.
 
 ```
-muestra el estado de carga mientras llegan los datos
-muestra el mensaje de vacio cuando no hay cocheras cargadas
-agrupa las cocheras por tipo y solo muestra columnas con al menos una
-marca como ocupada una cochera habilitada que no aparece en /disponibles
-una cochera DESHABILITADA se muestra como tal y no cuenta como ocupada
-si falla la carga, muestra un toast de error
+/dashboard-admin/reservas > exige el rol ADMIN
+/dashboard-admin/reservas > trae el alta y el listado, sin el panel de ocupación
+/dashboard-admin/reservas > los muestra en dos columnas
+/dashboard-admin/visitantes > exige el rol ADMIN
+/dashboard-admin/visitantes > trae el alta de visitante
+/dashboard-admin/visitantes > deja volver al panel
+/dashboard-admin/tarifas > exige ADMIN y permite volver al panel
+/dashboard-admin > incorpora el acceso a Gestionar tarifas
 ```
 
-## `dashboard-admin/PanelOperativo.test.jsx`
-
-El panel operativo del ADMIN. **Regresion del bug de la reserva que no se agregaba**: que el panel incluya el formulario de reservas, que el admin pueda crear una, y que la cuadricula de ocupacion se refresque despues.
-
-```
-incluye el formulario de nueva reserva, no solo el alta de visitante
-el admin crea una reserva resolviendo el visitante por patente
-al crear la reserva refresca la cuadricula de ocupacion
-```
+Las dos rutas de perfil exigen el rol correspondiente (ADMIN/USER) y permiten volver a su panel.
 
 ## `dashboard-admin/usuarios/UserManagement.test.jsx`
+
+_13 tests._
 
 ```
 muestra la navegación de regreso al panel
 carga y lista los usuarios existentes
-un usuario inactivo muestra el badge Inactivo y el boton Activar
+conserva el boton Activar para usuarios inactivos sin mostrar la columna Estado
 un usuario activo no muestra el boton Activar
 activar un usuario llama a POST /users/activate con su email
 muestra errores de validacion al crear un usuario con datos invalidos
 crea un usuario con datos validos
+no deja crear una cuenta sin documento
 al editar, precarga nombre, telefono y los roles marcados
 editar sin ningun rol marcado muestra el error de validacion
 guarda los cambios de edicion con PUT /api/v1/usuarios/{id}
@@ -410,38 +1567,83 @@ eliminar pide confirmacion y llama a DELETE /users con el email
 eliminar cancelado no llama a DELETE
 ```
 
-## `dashboard-admin/VisitantesContent.test.jsx`
-
-```
-muestra errores si se envia el formulario vacio
-rechaza una patente con formato invalido
-crea el visitante y despues el vehiculo con el visitanteId devuelto
-si falla la creacion del visitante (ej. documento duplicado), no intenta crear el vehiculo
-si falla la creacion del vehiculo (ej. patente duplicada), muestra el error del backend
-```
-
 ## `dashboard-user/MiPerfilContent.test.jsx`
 
-Autoregistro del visitante y la **gestion completa de sus datos y vehiculos** (editar perfil, editar y eliminar vehiculos).
+_11 tests._
+
+Gestión de vehículos en el panel, sin resumen personal ni consulta al perfil.
+El acceso a la información personal permanece en **Mi cuenta → Mis datos**.
 
 ```
 muestra el estado de carga inicialmente
-si la cuenta todavia no tiene perfil (404), muestra el formulario de autoregistro
-si ya tiene perfil, muestra sus datos y sus vehiculos
-si ya tiene perfil pero ningun vehiculo, avisa que todavia no cargo ninguno
-un error que no es 404 al cargar el perfil muestra un toast de error
-muestra errores de validacion al enviar el formulario de autoregistro vacio
-crea el perfil propio y pasa a mostrar la vista de datos guardados
-si falla la creacion del perfil (ej. cuenta ya tiene uno), muestra el error del backend
+carga los vehículos sin consultar el perfil personal
+muestra solo los vehículos, sin datos personales ni acceso duplicado al perfil
+pide sus vehiculos sin mandar visitanteId
+si todavia no tiene ningun vehiculo, avisa que no cargo ninguno
+un error al cargar vehículos muestra un aviso y no habilita el formulario
 agregar un vehiculo con patente invalida muestra el error de formato
-agrega un vehiculo propio y refresca la lista
-el boton 'Editar mis datos' precarga telefono y email actuales
-guarda los cambios de telefono/email con PUT /api/v1/visitantes/me
+agregar un vehiculo con patente de auto para un tipo MOTO muestra el error especifico de moto
+agrega un vehiculo propio sin mandar visitanteId y refresca la lista
 edita un vehiculo existente con PUT /api/v1/vehiculos/{id}
 elimina un vehiculo con confirmacion
 ```
 
+## `components/ProfileSettings.test.jsx`
+
+_18 tests._
+
+Contacto, declaración de discapacidad y cambio de contraseña, trasladados al componente compartido. Conserva las validaciones y endpoints existentes.
+
+```
+precarga telefono y email actuales
+guarda los cambios de telefono/email con PUT /api/v1/visitantes/me
+no deja vaciar el email, porque es con lo que se inicia sesion
+el formulario de edicion muestra el checkbox de discapacidad
+precarga el checkbox marcado si el perfil lo tiene declarado
+precarga el checkbox desmarcado si el perfil no lo tiene declarado
+si el perfil no trae el campo, el checkbox arranca desmarcado
+al marcarlo manda tieneDiscapacidad: true en el PUT
+al desmarcarlo manda tieneDiscapacidad: false en el PUT
+si guarda sin tocar el checkbox, conserva la discapacidad
+muestra la insignia en sus datos cuando lo tiene declarado
+no muestra la insignia cuando no lo tiene declarado
+el formulario esta oculto hasta tocar 'Cambiar contraseña'
+manda la actual y la nueva a PUT /api/v1/visitantes/me/password
+exige la contraseña actual
+rechaza una contraseña nueva de menos de 8 caracteres
+avisa si la repeticion no coincide
+si el backend rechaza el cambio, muestra su mensaje
+```
+
+## `components/PerfilAdmin.test.jsx`
+
+_8 tests._
+
+Campos exclusivos del admin, sesión tras cambiar email, errores y bloqueo durante guardado;
+título limitado al nombre persistido o predeterminado, sin iconos, textos ni enlaces adicionales.
+
+```
+guarda documento, teléfono y nombre normalizados sin consultar vehículos
+un error conserva la edición y permite descartar los cambios
+bloquea los controles durante el guardado y evita envíos dobles
+al cambiar el email termina la sesión e invita a entrar con el nuevo
+reintenta una carga fallida sin dejar un formulario vacío
+el usuario conserva sus permisos y no envía campos exclusivos del admin
+muestra únicamente el nombre persistido como título
+muestra solo el título predeterminado si aún no se configuró el nombre
+```
+
+## `components/AccountMenu.test.jsx`
+
+_7 tests._
+
+Destino del perfil según rol (2 casos), apertura por teclado y Escape, cierre al hacer clic fuera o salir con Tab, y cierre de sesión con borrado de cookie y estado.
+Incluye hidratación de HTML del servidor y múltiples menús con identificadores
+independientes; `aria-controls` se publica únicamente mientras existe el desplegable.
+
 ## `login/page.test.jsx`
+
+_10 tests._
 
 ```
 muestra los campos de email y contraseña y el boton de ingresar
@@ -449,6 +1651,7 @@ muestra errores de validacion y no llama a la API si el email esta vacio
 muestra error de validacion si la contraseña tiene menos de 6 caracteres
 envia el login con Basic Auth (email:password en base64) y no como body JSON
 con rol ADMIN en el JWT, redirige a /dashboard-admin
+codifica las contraseñas Unicode en UTF-8 para HTTP Basic
 con solo rol USER en el JWT, redirige a /dashboard-user
 si la respuesta no trae header Authorization, muestra error y no redirige
 ante un 401 del backend, muestra 'Email o contraseña incorrectos.'
@@ -456,6 +1659,8 @@ ante otro error del backend, muestra el mensaje que devuelve el servidor
 ```
 
 ## `page.test.jsx`
+
+_4 tests._
 
 La landing publica: redireccion por rol si ya hay sesion, y el menu hamburguesa mobile.
 
@@ -466,7 +1671,32 @@ con rol USER autenticado, redirige a /dashboard-user
 el menu hamburguesa se abre y cierra en mobile
 ```
 
+## `register/page.test.jsx`
+
+_14 tests._
+
+El registro publico de visitantes desde la pantalla de login.
+
+```
+crea solo la cuenta con datos normalizados y permite iniciar sesión
+rechaza datos inválidos: {"nombre":"   "}
+rechaza datos inválidos: {"documento":"   "}
+rechaza datos inválidos: {"email":"invalido"}
+rechaza datos inválidos: {"password":"123"}
+rechaza datos inválidos: {"password":"        ","confirmPassword":"        "}
+rechaza datos inválidos: {"password":"ááááááááááááááááááááááááááááááááááááá"}
+rechaza datos inválidos: {"confirmPassword":"otra-clave"}
+muestra el error 400 sin redirigir ni perder datos
+muestra el error 400 sin redirigir ni perder datos
+muestra el error 429 sin redirigir ni perder datos
+muestra el error undefined sin redirigir ni perder datos
+bloquea envíos repetidos mientras se crea la cuenta
+permite mostrar y ocultar las contraseñas
+```
+
 ## `store/authStore.test.js`
+
+_8 tests._
 
 ```
 setAuth decodifica las authorities del JWT (string separado por comas) a un array de roles
@@ -479,7 +1709,22 @@ checkAuth cierra la sesion si el token de la cookie ya expiro
 checkAuth sin cookie deja la sesion como no autenticada pero hidratada
 ```
 
+## `store/themeStore.test.js`
+
+_4 tests._
+
+El store de tema claro/oscuro.
+
+```
+hidratar arranca en light si no hay nada guardado
+hidratar restaura el tema guardado en localStorage
+alternar cambia de light a dark y persiste la preferencia
+alternar dos veces vuelve a light
+```
+
 ## `utils/env.test.js`
+
+_3 tests._
 
 ```
 devuelve el valor de window.__ENV cuando está presente (runtime)
@@ -487,15 +1732,177 @@ ignora window.__ENV si la clave pedida no está definida ahí
 no revienta si window.__ENV no existe
 ```
 
----
+## `utils/ocupacion.test.js`
 
+_27 tests._
+
+La logica pura detras de la vista de ocupacion: que reservas ocupan cada dia (medianoche, varios dias, canceladas y finalizadas), la agrupacion por tipo y por piso, el orden natural de los numeros, y el formato de dias y horarios en hora local.
+
+```
+no se corre de dia por la zona horaria
+cruza fin de mes y fin de año
+respeta los años bisiestos
+una reserva dentro del día lo ocupa
+una reserva de otro día no lo ocupa
+una reserva que termina a medianoche no ocupa el día siguiente
+una reserva que arranca a medianoche ocupa ese día y no el anterior
+una reserva a caballo de la medianoche ocupa los dos días
+una reserva de varios días ocupa también los del medio
+una reserva sin franja no rompe
+un grupo sin reservas aparece igual, con su cochera libre
+ordena las cocheras por numero de forma natural
+cuenta aparte las cocheras fuera de servicio
+agrupa por tipo y por piso sobre los mismos datos
+un tipo o piso nuevo aparece sin tocar nada
+una reserva cancelada no ocupa
+una reserva finalizada sigue contando en su día
+dos turnos en la misma cochera son una cochera ocupada y dos reservas
+cada ocupación trae los cuatro datos que el admin necesita
+una reserva finalizada no es cancelable
+una reserva de una cochera que ya no está en el catálogo se muestra igual
+aguanta listas vacías o ausentes
+marca con flechas lo que viene de antes o sigue después
+una reserva contenida en el día muestra las dos horas
+hoy sale del reloj local, no de UTC
+nombra hoy, ayer y mañana, y nada más
+escribe el día en castellano
+```
+
+## `utils/patenteValidation.test.js`
+
+_9 tests._
+
+Los formatos de patente aceptados segun el tipo de vehiculo.
+
+```
+acepta ABC123 para AUTO
+acepta AB123CD para AUTO
+acepta ABC123 para CARGA
+acepta AB123CD para CARGA
+acepta 123ABC para MOTO
+acepta A123BCD para MOTO
+rechaza una patente con formato de auto para una MOTO
+rechaza una patente con formato de moto para un AUTO
+es case-insensitive
+```
+
+---
 # Totales
 
 | | Archivos | Tests |
 |---|---|---|
-| Backend | 23 | 160 |
-| Frontend | 13 | 91 |
-| **Total** | **36** | **251** |
+| Backend | 58 | 644 |
+| Frontend (Vitest) | 45 | 570 |
+| Frontend UI (Playwright) | 5 | 42 |
+| **Total** | **108** | **1256** |
+
+Corrección del test de barrido en CI: `mvn -B -Duser.timezone=UTC clean install`
+completo (644 tests, sin fallos). Se reprodujo primero el fallo original al
+arrancar en UTC y se corrigió la preparación de fechas, conservando el orden
+de vencimiento/promoción y las comprobaciones de tolerancia y QR.
+El conteo usa el resumen de Maven: incluye los 57 casos de clases anidadas
+que no figuran en el atributo `tests` de sus dos XML contenedores.
+
+Última verificación del frontend, durante la corrección de alta MOTO y la
+separación de recurrentes ADMIN: Vitest completo
+(570 tests), Playwright completo en Chrome (42 tests), build de producción y
+lint sin errores. Se conserva la advertencia previa de React Hook Form.
+
+Prueba adicional contra PostgreSQL local con el backend reconstruido: alta de
+visitante MOTO en espera, promoción con precio/QR/aviso privado, vehículos del
+administrador, serie propia de dos fechas y rechazo de terceros y USER.
+Se cancelaron y eliminaron exclusivamente los registros desechables de esta
+prueba (5 reservas, 4 vehículos, 1 cuenta); no quedaron datos de prueba.
+También se verificó en Chrome con login y API reales la nueva sección, su estado
+sin vehículos y la entrada/recarga de Usuarios con el menú de cuenta, sin
+errores de consola ni de hidratación.
+
+Reservas recurrentes y lista de espera: `mvn verify` completo (631 tests),
+Vitest completo (556 tests), Playwright completo en Chrome (40 tests), build
+de producción y lint sin errores. Se conserva la advertencia previa de React
+Hook Form en el alta de visitantes. La primera ejecución del backend expuso
+una carrera previa de `local.server.port` en dos tests de sesión: ambos pasaron
+aislados y la repetición completa terminó sin fallos; no se modificó la
+configuración asíncrona de la aplicación.
+
+Prueba adicional contra PostgreSQL local con migración 013 aplicada: reserva
+normal, espera desde USER/ADMIN y alta rápida, prioridad de llegada, precio y
+QR al confirmar, privacidad/lectura del aviso y una serie para un vehículo del
+administrador. Se cancelaron y eliminaron únicamente los registros desechables
+creados por la prueba (7 reservas, 5 vehículos, 2 cuentas).
+
+Dashboard del administrador: `mvn verify` completo (613 tests), Vitest completo
+(541 tests), Playwright completo en Chrome (35 tests), build de producción y
+lint sin errores. Se conserva la advertencia previa de React Hook Form en el
+alta de visitantes. Las pruebas del dashboard cubren ambos temas a
+360/768/1440 px y las suites anteriores de reservas y control de acceso siguen
+aprobadas.
+
+Prueba adicional en vivo: login con la cuenta de administrador, navegación desde
+el panel, respuesta del dashboard y actualización contra PostgreSQL real con
+el backend actualizado en un puerto temporal. Los indicadores coinciden con la
+API; vuelta al panel y vistas de 1440/320 px sin desbordes ni errores de navegador.
+Solo se hizo login y consultas GET, sin crear ni modificar reservas o accesos.
+Se cerró la instancia temporal y se conservaron los servidores originales.
+
+Corrección de QR y acceso: dependencias locales sincronizadas, margen del QR de
+4 módulos, lector con fallback cuando falla el detector nativo y liberación de
+cámara durante operaciones, controles contra consultas/confirmaciones mezcladas,
+ingreso protegido por ocupación y concurrencia entre reservas distintas, y
+ocupación desde un ingreso anticipado y durante un egreso pendiente. Agrega 8
+casos de backend, 9 de Vitest y 6 de Playwright. Frontend verificado con 528 tests
+Vitest, 27 pruebas Chrome, build de producción y lint sin errores (una advertencia
+previa de React Hook Form). Navegación real de admin en localhost: login, reservas
+y control de acceso, sin modificar reservas existentes. Backend: `mvn test`
+completo, 601 aprobados sin fallos ni errores, incluidos los cuatro escenarios
+concurrentes. En la primera corrida hubo un fallo intermitente de arranque en
+`PerfilSessionTests` (`local.server.port`); pasó aislado y en la corrida completa
+final sin modificar código de perfiles.
+
+Control de acceso por código QR: agrega 128 casos de backend (9 archivos nuevos;
+`ReservaServiceTests`, `CocheraServiceTests` y `ReservasVencidasTests` suman casos) y
+101 de Vitest (10 archivos nuevos; `utils/reservasListado.test.js` ajusta su
+expectativa de contadores por el filtro Vencidas). Verificación: `mvn clean install`
+(593 tests, sin fallos), `npm test` (519 tests, sin fallos), `npm run lint` (sin
+errores; conserva la advertencia previa de React Hook Form) y `npm run build`. La
+regresión de Playwright no se volvió a correr en esta tanda.
+
+Refactors de Ver reservas y Mis reservas (solo frontend): agregan 36 tests de Vitest.
+`npm test -- --maxWorkers=2` pasa los 418 casos y `npm run build` compila.
+`npm run lint` no tiene errores y conserva la advertencia previa de React Hook
+Form. Revisión de ambas rutas en Chrome
+sobre el build de producción, con API simulada: 320, 390, 768, 1024 y 1440 px,
+en claro y oscuro, recorriendo los cuatro filtros y abriendo historial en ADMIN
+(80 combinaciones), sin desbordes horizontales ni errores de navegador.
+
+Corrección de carga de CSS: el listado importa `ReservasListado.module.css`
+en forma directa. La regresión de Playwright valida
+estilos efectivos y geometría en desarrollo y producción, además del overflow.
+
+Trazabilidad agrega 10 casos de backend y 9 de frontend. Los totales incluyen
+los tests que ya estaban en la branch y se actualizaron desde los runners.
+Verificación final de trazabilidad: `mvn verify` (465 tests, sin fallos),
+`npm test` (382 tests, sin fallos), `npm run build` y `npm run lint` (sin errores;
+conserva la advertencia previa de React Hook Form en `VisitantesContent.jsx`).
+
+Verificación de tarifas: `mvn verify`, `npm test`, `npm run lint` y
+`npm run build`. La suite agrega 41 casos de backend y 29 de frontend. El
+conteo previo de `UserServiceTests` estaba desactualizado (10 casos, no 6);
+los totales de esta tabla reflejan los reportes reales de Surefire y Vitest.
+Verificación de perfiles: `mvn verify` (455 tests). Para el ajuste final de los
+dashboards se ejecutó la suite completa de frontend (312 tests), además del build
+de producción. No hubo cambios de backend en este último ajuste.
+El lint conserva una advertencia previa de React Hook Form en el alta de
+visitantes, sin errores.
+
+Revisión visual final con Chrome/Playwright sobre el build de producción, usando
+respuestas de API simuladas: dashboards de ambos roles a 320, 390, 768 y 1440 px,
+en temas claro y oscuro (16 combinaciones), sin desbordes. USER muestra vehículos
+y reservas, sin información personal ni consultas al perfil en el dashboard.
+ADMIN muestra solamente el nombre del parking con tipografía más pequeña y fina;
+también se verificó un nombre largo a 320 px. El acceso a **Mi cuenta → Mis datos**
+y la vuelta al panel siguen funcionando. Las pruebas de backend de la feature
+verifican por separado persistencia real, permisos y sesión JWT.
 
 Correr todo:
 

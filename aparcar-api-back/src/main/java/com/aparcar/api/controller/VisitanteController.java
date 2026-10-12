@@ -33,8 +33,10 @@ public class VisitanteController {
      * Solo ADMIN (ver la configuracion de seguridad).
      */
     @PostMapping("/alta")
-    public ResponseEntity<VisitanteAltaResponseDto> alta(@Valid @RequestBody VisitanteAltaDto dto) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(visitanteService.altaConReserva(dto));
+    public ResponseEntity<VisitanteAltaResponseDto> alta(@Valid @RequestBody VisitanteAltaDto dto,
+                                                      Authentication authentication) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(visitanteService.altaConReserva(dto, authentication.getName()));
     }
 
     @GetMapping
