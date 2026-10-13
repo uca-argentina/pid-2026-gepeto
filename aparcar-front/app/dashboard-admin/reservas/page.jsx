@@ -4,7 +4,7 @@ import ReservasContent from "@/components/ReservasContent";
 import DashboardHeader from "@/components/DashboardHeader";
 
 export default async function ReservasAdminPage() {
-  await requireAuth(["ADMIN"]);
+  await requireAuth(["ADMIN", "EMPLEADO"]);
 
   return (
     <div className="dashboard-shell">

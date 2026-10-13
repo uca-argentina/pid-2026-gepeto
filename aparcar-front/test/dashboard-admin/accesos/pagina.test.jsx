@@ -30,15 +30,17 @@ const renderPagina = async (Pagina) => render(await Pagina());
 
 beforeEach(() => {
   vi.clearAllMocks();
-  requireAuthMock.mockResolvedValue(undefined);
+  // requireAuth devuelve el usuario decodificado; las pantallas leen `roles`
+  // para decidir qué accesos mostrar.
+  requireAuthMock.mockResolvedValue({ roles: ["ADMIN"] });
   getMock.mockResolvedValue({ data: [] });
 });
 
 describe("/dashboard-admin/accesos", () => {
-  it("exige ADMIN, muestra el control de acceso y permite volver al panel", async () => {
+  it("la abren el admin y el empleado, muestra el control de acceso y permite volver al panel", async () => {
     await renderPagina(AccesosPage);
 
-    expect(requireAuthMock).toHaveBeenCalledWith(["ADMIN"]);
+    expect(requireAuthMock).toHaveBeenCalledWith(["ADMIN", "EMPLEADO"]);
     expect(screen.getByRole("heading", { name: "Control de acceso" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /volver al panel/i })).toHaveAttribute("href", "/dashboard-admin");
   });

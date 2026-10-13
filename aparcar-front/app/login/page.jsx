@@ -65,7 +65,10 @@ export default function LoginPage() {
         ?.split(",")
         .map((r) => r.trim())
         .filter(Boolean) || [];
-      router.push(roles.includes("ADMIN") ? "/dashboard-admin" : "/dashboard-user");
+      // El empleado comparte el panel con el admin: ve las mismas pantallas
+      // de operación, con el menú recortado a lo que puede hacer.
+      const esPersonal = roles.includes("ADMIN") || roles.includes("EMPLEADO");
+      router.push(esPersonal ? "/dashboard-admin" : "/dashboard-user");
     } catch (err) {
       toast.error(
         err.response?.status === 401

@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import com.aparcar.api.security.Roles;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -53,16 +54,12 @@ public class VehiculoController {
         return ResponseEntity.noContent().build();
     }
 
-    private static boolean esAdmin(Authentication authentication) {
-        return authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ADMIN"));
-    }
 
     @PostMapping
     public ResponseEntity<VehiculoResponseDto> crear(
             @Valid @RequestBody VehiculoRequestDto dto, Authentication authentication) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(vehiculoService.crear(dto, authentication.getName(), esAdmin(authentication)));
+                .body(vehiculoService.crear(dto, authentication.getName(), Roles.esPersonal(authentication)));
     }
 
     /**
@@ -73,7 +70,7 @@ public class VehiculoController {
     @GetMapping
     public ResponseEntity<List<VehiculoResponseDto>> listar(
             @RequestParam(required = false) UUID visitanteId, Authentication authentication) {
-        if (!esAdmin(authentication)) {
+        if (!Roles.esPersonal(authentication)) {
             return ResponseEntity.ok(vehiculoService.listarPropios(authentication.getName()));
         }
         if (visitanteId != null) {
@@ -91,12 +88,12 @@ public class VehiculoController {
     public ResponseEntity<VehiculoResponseDto> editar(
             @PathVariable UUID id, @Valid @RequestBody VehiculoUpdateDto dto, Authentication authentication) {
         return ResponseEntity.ok(
-                vehiculoService.editar(id, dto, authentication.getName(), esAdmin(authentication)));
+                vehiculoService.editar(id, dto, authentication.getName(), Roles.esPersonal(authentication)));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminar(@PathVariable UUID id, Authentication authentication) {
-        vehiculoService.eliminar(id, authentication.getName(), esAdmin(authentication));
+        vehiculoService.eliminar(id, authentication.getName(), Roles.esPersonal(authentication));
         return ResponseEntity.noContent().build();
     }
 }

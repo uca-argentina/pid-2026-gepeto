@@ -28,6 +28,7 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const { default: DashboardUserPage } = await import("@/app/dashboard-user/page");
 const { default: PerfilUserPage } = await import("@/app/dashboard-user/perfil/page");
+const { default: ReservasUserPage } = await import("@/app/dashboard-user/reservas/page");
 
 const renderPagina = async (Pagina) => render(await Pagina());
 
@@ -55,12 +56,15 @@ describe("/dashboard-user", () => {
     expect(requireAuthMock).toHaveBeenCalledWith(["USER"]);
   });
 
-  it("lo primero que muestra es la seccion para reservar", async () => {
+  it("el panel es para reservar: el listado ya no cuelga debajo del formulario", async () => {
     await renderPagina(DashboardUserPage);
 
     const primerTitulo = (await screen.findAllByRole("heading"))[0];
     expect(primerTitulo).toHaveTextContent("Nueva reserva");
-    expect(estaAntes(primerTitulo, screen.getByRole("heading", { name: "Mis reservas" }))).toBe(true);
+    // El listado se mudó a /dashboard-user/reservas. Si volviera a aparecer
+    // acá, se repetiría en dos pantallas y habría que bajar para verlo, que es
+    // justo lo que se quiso sacar.
+    expect(screen.queryByRole("heading", { name: "Mis reservas" })).not.toBeInTheDocument();
   });
 
   it("ya no gestiona vehiculos en el panel: deja un acceso directo a Mis datos", async () => {
@@ -95,5 +99,45 @@ describe("/dashboard-user/perfil", () => {
     const seguridad = screen.getByRole("heading", { name: "Seguridad" });
     expect(estaAntes(datos, vehiculos)).toBe(true);
     expect(estaAntes(vehiculos, seguridad)).toBe(true);
+  });
+});
+/**
+ * El atajo a las reservas.
+ *
+ * El listado queda debajo del formulario de alta, así que sin un acceso en el
+ * encabezado hay que desplazarse hasta el final para ver las reservas propias.
+ */
+describe("atajo a Mis reservas", () => {
+  it("el encabezado lleva a la pantalla del listado", async () => {
+    await renderPagina(DashboardUserPage);
+
+    const enlace = screen.getByRole("link", { name: /mis reservas/i });
+
+    expect(enlace).toHaveAttribute("href", "/dashboard-user/reservas");
+  });
+
+  it("esa pantalla muestra el listado y vuelve al panel", async () => {
+    await renderPagina(ReservasUserPage);
+
+    expect(requireAuthMock).toHaveBeenCalledWith(["USER"]);
+    expect(await screen.findByRole("heading", { name: "Mis reservas" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /volver al panel/i }))
+      .toHaveAttribute("href", "/dashboard-user");
+  });
+
+  it("esa pantalla no repite el formulario de alta", async () => {
+    await renderPagina(ReservasUserPage);
+    await screen.findByRole("heading", { name: "Mis reservas" });
+
+    expect(screen.queryByRole("heading", { name: "Nueva reserva" })).not.toBeInTheDocument();
+  });
+
+  it("queda antes que el atajo a vehículos, por ser el contenido de esta pantalla", async () => {
+    await renderPagina(DashboardUserPage);
+
+    const reservas = screen.getByRole("link", { name: /mis reservas/i });
+    const vehiculos = screen.getByRole("link", { name: /mis vehículos/i });
+
+    expect(estaAntes(reservas, vehiculos)).toBe(true);
   });
 });

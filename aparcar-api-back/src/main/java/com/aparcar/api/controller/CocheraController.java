@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import com.aparcar.api.security.Roles;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -105,11 +106,7 @@ public class CocheraController {
             Authentication authentication) {
         String requesterEmail = authentication == null ? null : authentication.getName();
         return ResponseEntity.ok(cocheraService.listarDisponibles(
-                desde, hasta, tipoVehiculo, requesterEmail, esAdmin(authentication) && !propia));
+                desde, hasta, tipoVehiculo, requesterEmail, Roles.esPersonal(authentication) && !propia));
     }
 
-    private static boolean esAdmin(Authentication authentication) {
-        return authentication != null && authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ADMIN"));
-    }
 }

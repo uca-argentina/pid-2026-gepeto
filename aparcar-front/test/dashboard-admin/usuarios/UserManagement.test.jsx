@@ -155,6 +155,37 @@ describe("UserManagement", () => {
     expect(within(editForm).getByRole("checkbox", { name: "ADMIN" })).toBeChecked();
   });
 
+  // El administrador designa el rol de empleado desde esta misma pantalla: es
+  // la única forma de crear uno, porque nadie puede asignárselo a sí mismo.
+  it("ofrece EMPLEADO entre los roles asignables", async () => {
+    getMock.mockResolvedValue({ data: [usuario({ authorities: ["USER"] })] });
+    const user = userEvent.setup();
+    render(<UserManagement />);
+    await screen.findByText("Juan Perez");
+
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
+
+    const editForm = screen.getByRole("button", { name: /guardar cambios/i }).closest("form");
+    expect(within(editForm).getByRole("checkbox", { name: "EMPLEADO" })).toBeInTheDocument();
+  });
+
+  it("guarda el rol EMPLEADO cuando el administrador lo marca", async () => {
+    getMock.mockResolvedValue({ data: [usuario({ authorities: ["USER"] })] });
+    putMock.mockResolvedValue({ data: {} });
+    const user = userEvent.setup();
+    render(<UserManagement />);
+    await screen.findByText("Juan Perez");
+
+    await user.click(screen.getByRole("button", { name: /^editar$/i }));
+    const editForm = screen.getByRole("button", { name: /guardar cambios/i }).closest("form");
+    await user.click(within(editForm).getByRole("checkbox", { name: "EMPLEADO" }));
+    await user.click(within(editForm).getByRole("button", { name: /guardar cambios/i }));
+
+    await waitFor(() => expect(putMock).toHaveBeenCalled());
+    const enviado = putMock.mock.calls.at(-1)[1];
+    expect(enviado.authorities).toContain("EMPLEADO");
+  });
+
   it("editar sin ningun rol marcado muestra el error de validacion", async () => {
     getMock.mockResolvedValue({ data: [usuario({ authorities: ["USER"] })] });
     const user = userEvent.setup();

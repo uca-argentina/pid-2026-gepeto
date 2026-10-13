@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import api from "@/app/api";
+import { useAutoRefresco } from "@/hooks/useAutoRefresco";
 import {
   agruparOcupacion,
   diaEnPalabras,
@@ -32,7 +33,16 @@ const PESTANAS = [
   { clave: "sector", etiqueta: "Por piso" },
 ];
 
-export default function OcupacionCocheras({ refreshKey = 0 }) {
+/**
+ * @param {object} props
+ * @param {number} [props.refreshKey] Cambia para forzar una recarga.
+ * @param {boolean} [props.esAdmin] Si puede cambiar el estado de una cochera.
+ *        El empleado ve la misma pantalla y puede cancelar reservas, pero
+ *        habilitar o deshabilitar una cochera es configuración y queda para el
+ *        administrador. Ocultar el botón es comodidad: quien lo pida igual se
+ *        lleva un 403, porque la regla real está en el backend.
+ */
+export default function OcupacionCocheras({ refreshKey = 0, esAdmin = true }) {
   const [dia, setDia] = useState(hoy);
   const [agrupadoPor, setAgrupadoPor] = useState("tipo");
   const [abierto, setAbierto] = useState(null);
@@ -46,29 +56,63 @@ export default function OcupacionCocheras({ refreshKey = 0 }) {
   // Se usa para volver a pedir los datos después de una acción propia.
   const [recarga, setRecarga] = useState(0);
 
+  // Guarda lo último que llegó para poder comparar antes de guardar. Es una
+  // referencia y no estado: solo se usa para decidir, no se dibuja.
+  const ultimo = useRef("");
+  const montado = useRef(true);
+
+  useEffect(() => {
+    montado.current = true;
+    return () => {
+      montado.current = false;
+    };
+  }, []);
+
+  /**
+   * Trae cocheras y reservas.
+   *
+   * El refresco automático pasa `silencioso`, y eso cambia tres cosas que son
+   * justamente las que lo harían visible: no prende el esqueleto de carga, no
+   * avisa de errores (un microcorte deja lo que ya estaba, que es más útil que
+   * vaciar la pantalla), y no toca el estado si lo que llegó es idéntico a lo
+   * que ya se está mostrando. Sin esa última comparación, React rearma la lista
+   * cada veinte segundos aunque no haya cambiado nada, y eso se nota: se cierra
+   * el desplegable abierto y parpadea lo que estabas leyendo.
+   */
+  const cargar = useCallback(async ({ silencioso = false } = {}) => {
+    if (!silencioso) setCargando(true);
+
+    try {
+      const [c, r] = await Promise.all([
+        api.get("/api/v1/cocheras"),
+        api.get("/api/v1/reservas"),
+      ]);
+      if (!montado.current) return;
+
+      const huella = JSON.stringify([c.data, r.data]);
+      if (huella !== ultimo.current) {
+        ultimo.current = huella;
+        setCocheras(c.data);
+        setReservas(r.data);
+      }
+    } catch (error) {
+      if (!montado.current) return;
+      if (!silencioso) toast.error("No se pudo cargar la ocupación de cocheras.");
+      else throw error;
+    } finally {
+      if (montado.current && !silencioso) setCargando(false);
+    }
+  }, []);
+
   // Las dos pestañas y todos los días se calculan sobre los mismos datos, así
   // que se piden una sola vez: cambiar de pestaña o de día no vuelve a la red.
   useEffect(() => {
-    let vigente = true;
-    setCargando(true);
+    cargar();
+  }, [refreshKey, recarga, cargar]);
 
-    Promise.all([api.get("/api/v1/cocheras"), api.get("/api/v1/reservas")])
-      .then(([c, r]) => {
-        if (!vigente) return;
-        setCocheras(c.data);
-        setReservas(r.data);
-      })
-      .catch(() => {
-        if (vigente) toast.error("No se pudo cargar la ocupación de cocheras.");
-      })
-      .finally(() => {
-        if (vigente) setCargando(false);
-      });
-
-    return () => {
-      vigente = false;
-    };
-  }, [refreshKey, recarga]);
+  // Lo que se ve acá cambia por fuera: mientras el admin mira la ocupación,
+  // alguien reserva desde su teléfono. Sin esto habría que recargar a mano.
+  useAutoRefresco(() => cargar({ silencioso: true }));
 
   const grupos = useMemo(
     () => agruparOcupacion(cocheras, reservas, dia, agrupadoPor),
@@ -310,14 +354,16 @@ export default function OcupacionCocheras({ refreshKey = 0 }) {
                                   : "Libre"}
                           </span>
 
-                          <button
-                            type="button"
-                            className="ocupacion-accion"
-                            onClick={() => cambiarEstado(c)}
-                            disabled={trabajando}
-                          >
-                            {deshabilitada ? "Habilitar" : "Deshabilitar"}
-                          </button>
+                          {esAdmin && (
+                            <button
+                              type="button"
+                              className="ocupacion-accion"
+                              onClick={() => cambiarEstado(c)}
+                              disabled={trabajando}
+                            >
+                              {deshabilitada ? "Habilitar" : "Deshabilitar"}
+                            </button>
+                          )}
                         </div>
 
                         {c.reservas.length > 0 && (

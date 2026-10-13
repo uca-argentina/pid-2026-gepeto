@@ -99,11 +99,8 @@ export default function Home() {
 
   useEffect(() => {
     if (isHydrated && isAuthenticated && user) {
-      router.replace(
-        user.roles?.includes("ADMIN")
-          ? "/dashboard-admin"
-          : "/dashboard-user"
-      );
+      const esPersonal = user.roles?.includes("ADMIN") || user.roles?.includes("EMPLEADO");
+      router.replace(esPersonal ? "/dashboard-admin" : "/dashboard-user");
     }
   }, [isHydrated, isAuthenticated, user, router]);
 
