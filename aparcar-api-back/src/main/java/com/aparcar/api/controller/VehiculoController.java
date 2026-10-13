@@ -70,7 +70,7 @@ public class VehiculoController {
     @GetMapping
     public ResponseEntity<List<VehiculoResponseDto>> listar(
             @RequestParam(required = false) UUID visitanteId, Authentication authentication) {
-        if (!esAdmin(authentication)) {
+        if (!Roles.esPersonal(authentication)) {
             return ResponseEntity.ok(vehiculoService.listarPropios(authentication.getName()));
         }
         if (visitanteId != null) {
@@ -88,12 +88,12 @@ public class VehiculoController {
     public ResponseEntity<VehiculoResponseDto> editar(
             @PathVariable UUID id, @Valid @RequestBody VehiculoUpdateDto dto, Authentication authentication) {
         return ResponseEntity.ok(
-                vehiculoService.editar(id, dto, authentication.getName(), esAdmin(authentication)));
+                vehiculoService.editar(id, dto, authentication.getName(), Roles.esPersonal(authentication)));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> eliminar(@PathVariable UUID id, Authentication authentication) {
-        vehiculoService.eliminar(id, authentication.getName(), esAdmin(authentication));
+        vehiculoService.eliminar(id, authentication.getName(), Roles.esPersonal(authentication));
         return ResponseEntity.noContent().build();
     }
 }
