@@ -192,7 +192,7 @@ export default function ReservasContent({
   // reservas de otros mientras mira. Solo se refresca el listado, nunca los
   // catálogos que alimentan el formulario, para no tocar nada de lo que la
   // persona pueda estar completando.
-  useAutoRefresco(() => cargarReservas({ silencioso: true }));
+  useAutoRefresco(() => cargarReservas({ silencioso: true }), { activo: muestraListado });
 
   // GET /api/v1/vehiculos devuelve el catálogo completo para el ADMIN y solo
   // los propios para un visitante. En recurrentes se pide /mios para que el
@@ -308,6 +308,7 @@ export default function ReservasContent({
         setCodigoRecienCreado(false);
         setReservaCodigo(reserva);
       }} />
+      {muestraFormulario && (<>
       <div>
         {recurrente
           ? <h2 className="text-xl font-bold text-ink mb-2">Nueva reserva recurrente</h2>
@@ -506,11 +507,12 @@ export default function ReservasContent({
         </form>
         )}
       </div>
+      </>)}
       </div>
 
+      {muestraListado && (
       <ReservasListado
         modo={esAdmin ? "admin" : "user"}
-        ancla={esAdmin ? undefined : "mis-reservas"}
         reservas={reservas}
         cargando={loadingReservas}
         error={errorReservas}

@@ -56,12 +56,15 @@ describe("/dashboard-user", () => {
     expect(requireAuthMock).toHaveBeenCalledWith(["USER"]);
   });
 
-  it("lo primero que muestra es la seccion para reservar", async () => {
+  it("el panel es para reservar: el listado ya no cuelga debajo del formulario", async () => {
     await renderPagina(DashboardUserPage);
 
     const primerTitulo = (await screen.findAllByRole("heading"))[0];
     expect(primerTitulo).toHaveTextContent("Nueva reserva");
-    expect(estaAntes(primerTitulo, screen.getByRole("heading", { name: "Mis reservas" }))).toBe(true);
+    // El listado se mudó a /dashboard-user/reservas. Si volviera a aparecer
+    // acá, se repetiría en dos pantallas y habría que bajar para verlo, que es
+    // justo lo que se quiso sacar.
+    expect(screen.queryByRole("heading", { name: "Mis reservas" })).not.toBeInTheDocument();
   });
 
   it("ya no gestiona vehiculos en el panel: deja un acceso directo a Mis datos", async () => {
@@ -105,20 +108,28 @@ describe("/dashboard-user/perfil", () => {
  * encabezado hay que desplazarse hasta el final para ver las reservas propias.
  */
 describe("atajo a Mis reservas", () => {
-  it("el encabezado tiene un enlace que apunta al listado", async () => {
+  it("el encabezado lleva a la pantalla del listado", async () => {
     await renderPagina(DashboardUserPage);
 
     const enlace = screen.getByRole("link", { name: /mis reservas/i });
 
-    expect(enlace).toHaveAttribute("href", "#mis-reservas");
+    expect(enlace).toHaveAttribute("href", "/dashboard-user/reservas");
   });
 
-  it("el destino del enlace existe en la página", async () => {
-    const { container } = await renderPagina(DashboardUserPage);
+  it("esa pantalla muestra el listado y vuelve al panel", async () => {
+    await renderPagina(ReservasUserPage);
 
-    // Sin esto el enlace no lleva a ningún lado: el id del listado lo generaba
-    // `useId()`, que cambia en cada montaje y no sirve como destino.
-    expect(container.querySelector("#mis-reservas")).not.toBeNull();
+    expect(requireAuthMock).toHaveBeenCalledWith(["USER"]);
+    expect(await screen.findByRole("heading", { name: "Mis reservas" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /volver al panel/i }))
+      .toHaveAttribute("href", "/dashboard-user");
+  });
+
+  it("esa pantalla no repite el formulario de alta", async () => {
+    await renderPagina(ReservasUserPage);
+    await screen.findByRole("heading", { name: "Mis reservas" });
+
+    expect(screen.queryByRole("heading", { name: "Nueva reserva" })).not.toBeInTheDocument();
   });
 
   it("queda antes que el atajo a vehículos, por ser el contenido de esta pantalla", async () => {
