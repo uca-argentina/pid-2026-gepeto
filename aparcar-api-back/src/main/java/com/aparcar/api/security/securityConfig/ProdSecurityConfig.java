@@ -124,8 +124,11 @@ public class ProdSecurityConfig {
 
                 .authorizeHttpRequests(requests -> requests
 
+                        // Leer precios y cotizar lo necesita cualquiera que
+                        // arme una reserva; cambiarlos es configuracion y
+                        // queda solo para ADMIN.
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/tarifas", "/api/v1/tarifas/cotizacion")
-                        .hasAnyAuthority("ADMIN", "USER")
+                        .hasAnyAuthority("ADMIN", "EMPLEADO", "USER")
                         .requestMatchers("/api/v1/tarifas", "/api/v1/tarifas/**").hasAuthority("ADMIN")
 
                         // Endpoints públicos. Van primero para que
@@ -155,15 +158,29 @@ public class ProdSecurityConfig {
                                 "/api/v1/visitantes/me/**"
                         ).authenticated()
 
-                        // Validar codigos de acceso (ingreso y egreso) es
-                        // tarea del operador: solo ADMIN.
-                        .requestMatchers("/api/v1/accesos/**").hasAuthority("ADMIN")
+                        // Validar codigos de acceso (ingreso y egreso) es la
+                        // tarea central del personal en la puerta.
+                        .requestMatchers("/api/v1/accesos/**").hasAnyAuthority("ADMIN", "EMPLEADO")
                         .requestMatchers("/api/v1/dashboard", "/api/v1/dashboard/**").hasAuthority("ADMIN")
 
-                        // Solo ADMIN puede gestionar usuarios, dar de alta
-                        // visitantes con reserva y
-                        // administrar cocheras.
+                        // Las series recurrentes las arma solo el ADMIN:
+                        // va antes que la regla general de /api/v1/reservas/**.
+                        .requestMatchers("/api/v1/reservas/recurrentes", "/api/v1/reservas/recurrentes/**")
+                        .hasAuthority("ADMIN")
 
+                        // Consultar la grilla de cocheras y la lista de
+                        // visitantes es parte de operar: el personal lo
+                        // necesita para la pantalla de ocupacion y para
+                        // reservar a nombre de otro. Cambiar el estado de una
+                        // cochera, en cambio, es configuracion.
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/api/v1/cocheras", "/api/v1/visitantes")
+                        .hasAnyAuthority("ADMIN", "EMPLEADO")
+                        .requestMatchers("/api/v1/visitantes/alta").hasAnyAuthority("ADMIN", "EMPLEADO")
+
+                        // Solo ADMIN: las cuentas, los precios y el estado de
+                        // las cocheras. Todo lo que configura el sistema en vez
+                        // de operarlo.
                         .requestMatchers(
                                 "/users/**",
                                 "/api/v1/usuarios/**",

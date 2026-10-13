@@ -8,6 +8,13 @@ const ACCION_ETIQUETA = {
   EGRESO: "Egreso registrado",
 };
 
+/** Cómo se nombra a quien hizo el movimiento. */
+const ROL_ETIQUETA = {
+  ADMIN: "Administrador",
+  EMPLEADO: "Empleado",
+  USER: "Usuario",
+};
+
 /** El backend solo incluye este historial en respuestas para administradores. */
 export default function HistorialReserva({ historial = [] }) {
   const tieneAlta = historial.some((movimiento) => movimiento.accion === "ALTA");
@@ -24,7 +31,7 @@ export default function HistorialReserva({ historial = [] }) {
             <li key={movimiento.id}>
               <p className="font-medium text-ink">{ACCION_ETIQUETA[movimiento.accion] ?? movimiento.accion}</p>
               <p className="break-words">
-                {movimiento.actorNombre} ({movimiento.actorRol === "ADMIN" ? "Administrador" : "Usuario"})
+                {movimiento.actorNombre} ({ROL_ETIQUETA[movimiento.actorRol] ?? "Usuario"})
                 {" · "}{movimiento.actorEmail}
               </p>
               <time dateTime={movimiento.fecha}>{formatearFechaRegistro(movimiento.fecha)}</time>

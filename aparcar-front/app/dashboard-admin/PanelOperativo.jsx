@@ -12,6 +12,6 @@ import OcupacionCocheras from "@/components/OcupacionCocheras";
  * mira primero al llegar. El alta de visitante pasó a `/dashboard-admin/visitantes`,
  * a un clic del encabezado.
  */
-export default function PanelOperativo() {
-  return <OcupacionCocheras />;
+export default function PanelOperativo({ esAdmin = true }) {
+  return <OcupacionCocheras esAdmin={esAdmin} />;
 }

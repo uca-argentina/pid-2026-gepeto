@@ -11,7 +11,7 @@ import DashboardHeader from "@/components/DashboardHeader";
  * desde el botón "Nuevo visitante" del encabezado.
  */
 export default async function VisitantesAdminPage() {
-  await requireAuth(["ADMIN"]);
+  await requireAuth(["ADMIN", "EMPLEADO"]);
 
   return (
     <div className="dashboard-shell">

@@ -4,7 +4,7 @@ import DashboardHeader from "@/components/DashboardHeader";
 import ProfileSettings from "@/components/ProfileSettings";
 
 export default async function PerfilAdminPage() {
-  await requireAuth(["ADMIN"]);
+  await requireAuth(["ADMIN", "EMPLEADO"]);
   return (
     <div className="dashboard-shell">
       <div className="dashboard-container">

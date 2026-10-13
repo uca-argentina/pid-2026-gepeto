@@ -45,7 +45,7 @@ const editUserSchema = z.object({
   telefono: z.string().optional(),
 
   authorities: z
-    .array(z.enum(["USER", "ADMIN"]))
+    .array(z.enum(["USER", "EMPLEADO", "ADMIN"]))
     .min(1, "El usuario debe tener al menos un rol"),
 });
 
@@ -497,6 +497,17 @@ export default function UserManagement() {
                         />
 
                         USER
+                      </label>
+
+                      <label className="flex cursor-pointer items-center gap-2 text-sm text-ink/70">
+                        <input
+                          type="checkbox"
+                          value="EMPLEADO"
+                          {...registerEdit("authorities")}
+                          className="h-4 w-4 rounded border-ink/20 bg-surface accent-accent"
+                        />
+
+                        EMPLEADO
                       </label>
 
                       <label className="flex cursor-pointer items-center gap-2 text-sm text-ink/70">
