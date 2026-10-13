@@ -5,9 +5,9 @@ import DashboardIcon from "@/components/DashboardIcon";
 import ReservasContent from "@/components/ReservasContent";
 
 /**
- * Pantalla de entrada del visitante: lo primero que ve es el alta de reservas
- * (con su listado). Los vehículos se gestionan desde "Mis datos"; el acceso
- * directo del encabezado lleva a esa sección sin pasar por el menú de cuenta.
+ * Pantalla de entrada del visitante: el alta de reservas. El listado de lo ya
+ * reservado vive en /dashboard-user/reservas y los vehículos en "Mis datos";
+ * a las dos se llega desde el encabezado, sin pasar por el menú de cuenta.
  */
 export default async function DashboardUserPage() {
   await requireAuth(["USER"]);
@@ -17,13 +17,12 @@ export default async function DashboardUserPage() {
       <div className="dashboard-container">
         <DashboardHeader visitor>
           {/*
-            Va primero porque el listado es lo que más se consulta de esta
-            pantalla y queda debajo del formulario: sin este atajo hay que
-            desplazarse hasta el final para ver las reservas propias.
-            El desplazamiento suave y el margen bajo el encabezado ya salen de
-            `scroll-behavior` y `scroll-padding-top`, definidos en globals.css.
+            Va primero porque consultar lo ya reservado es lo más frecuente.
+            Lleva a su propia pantalla en vez de bajar dentro de esta: el panel
+            quedó para reservar y el listado tiene su lugar, así cada una hace
+            una sola cosa.
           */}
-          <Link href="#mis-reservas" className="dashboard-nav-link">
+          <Link href="/dashboard-user/reservas" className="dashboard-nav-link">
             <DashboardIcon name="calendar" />
             <span>Mis reservas</span>
           </Link>
@@ -32,7 +31,7 @@ export default async function DashboardUserPage() {
             <span>Mis vehículos</span>
           </Link>
         </DashboardHeader>
-        <ReservasContent modo="user" />
+        <ReservasContent modo="user" mostrar="formulario" />
       </div>
     </div>
   );

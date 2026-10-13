@@ -28,6 +28,7 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const { default: DashboardUserPage } = await import("@/app/dashboard-user/page");
 const { default: PerfilUserPage } = await import("@/app/dashboard-user/perfil/page");
+const { default: ReservasUserPage } = await import("@/app/dashboard-user/reservas/page");
 
 const renderPagina = async (Pagina) => render(await Pagina());
 

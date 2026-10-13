@@ -29,10 +29,6 @@ const textoAcceso = (acceso) => {
  */
 export default function ReservasListado({
   modo = "user", reservas, cargando, error, onReintentar, onCancelar, onVerCodigo,
-  // Identificador fijo para poder enlazar a esta sección desde el encabezado.
-  // Es aparte del `useId()` de abajo, que React genera distinto en cada
-  // montaje y por eso no sirve como destino de un enlace.
-  ancla,
 }) {
   const esAdmin = modo === "admin";
   const id = useId();
@@ -76,7 +72,7 @@ export default function ReservasListado({
   };
 
   return (
-    <section id={ancla} className={styles.listado} aria-labelledby={`${id}-titulo`}>
+    <section className={styles.listado} aria-labelledby={`${id}-titulo`}>
       <div className={styles.encabezado}>
         <h2 id={`${id}-titulo`} className="text-xl font-bold text-ink">{esAdmin ? "Todas las reservas" : "Mis reservas"}</h2>
         <p>{esAdmin ? "Consultá los próximos ingresos y el historial de cada reserva."

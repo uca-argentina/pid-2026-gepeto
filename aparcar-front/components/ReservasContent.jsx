@@ -68,7 +68,13 @@ export default function ReservasContent({
   onOcupacionCambiada,
   refreshKey = 0,
   layout = "apilado",
+  // Qué mitad del componente se dibuja. El panel del visitante muestra solo el
+  // alta y el listado vive en su propia pantalla, para que ver las reservas no
+  // obligue a pasar de largo el formulario.
+  mostrar = "todo",
 }) {
+  const muestraFormulario = mostrar !== "listado";
+  const muestraListado = mostrar !== "formulario";
   const esAdmin = modo === "admin";
   const recurrente = modo === "recurrentes";
 
@@ -153,6 +159,11 @@ export default function ReservasContent({
    * segundos), y reescribir el estado cuando no cambió nada.
    */
   const cargarReservas = async ({ silencioso = false } = {}) => {
+    // Sin listado en pantalla no hay nada que traer. Corta acá y no en cada
+    // llamador, que son varios: la carga inicial, el alta, la cancelación y el
+    // refresco automático.
+    if (!muestraListado) return;
+
     if (!silencioso) {
       setLoadingReservas(true);
       setErrorReservas(false);
@@ -510,6 +521,7 @@ export default function ReservasContent({
           setReservaCodigo(reserva);
         }}
       />
+      )}
 
       {reservaCodigo && (
         <ModalCodigoAcceso
