@@ -8,6 +8,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import com.aparcar.api.security.Roles;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -53,16 +54,12 @@ public class VehiculoController {
         return ResponseEntity.noContent().build();
     }
 
-    private static boolean esAdmin(Authentication authentication) {
-        return authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals("ADMIN"));
-    }
 
     @PostMapping
     public ResponseEntity<VehiculoResponseDto> crear(
             @Valid @RequestBody VehiculoRequestDto dto, Authentication authentication) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(vehiculoService.crear(dto, authentication.getName(), esAdmin(authentication)));
+                .body(vehiculoService.crear(dto, authentication.getName(), Roles.esPersonal(authentication)));
     }
 
     /**

@@ -24,7 +24,7 @@ export default function HistorialReserva({ historial = [] }) {
             <li key={movimiento.id}>
               <p className="font-medium text-ink">{ACCION_ETIQUETA[movimiento.accion] ?? movimiento.accion}</p>
               <p className="break-words">
-                {movimiento.actorNombre} ({movimiento.actorRol === "ADMIN" ? "Administrador" : "Usuario"})
+                {movimiento.actorNombre} ({ROL_ETIQUETA[movimiento.actorRol] ?? "Usuario"})
                 {" · "}{movimiento.actorEmail}
               </p>
               <time dateTime={movimiento.fecha}>{formatearFechaRegistro(movimiento.fecha)}</time>

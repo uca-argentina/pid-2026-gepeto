@@ -47,10 +47,13 @@ const { default: PerfilUserPage } = await import("@/app/dashboard-user/perfil/pa
 const renderPagina = async (Pagina) => render(await Pagina());
 
 describe("Rutas de perfil", () => {
-  it.each([[PerfilAdminPage, "ADMIN", "/dashboard-admin"], [PerfilUserPage, "USER", "/dashboard-user"]])(
-    "protege la pantalla con su rol y permite volver al panel (%s, %s)", async (Pagina, role, href) => {
+  it.each([
+    [PerfilAdminPage, ["ADMIN", "EMPLEADO"], "/dashboard-admin"],
+    [PerfilUserPage, ["USER"], "/dashboard-user"],
+  ])(
+    "protege la pantalla con su rol y permite volver al panel (%s, %s)", async (Pagina, roles, href) => {
       await renderPagina(Pagina);
-      expect(requireAuthMock).toHaveBeenCalledWith([role]);
+      expect(requireAuthMock).toHaveBeenCalledWith(roles);
       expect(screen.getByRole("link", { name: /volver al panel/i })).toHaveAttribute("href", href);
     }
   );
@@ -72,7 +75,9 @@ describe("/dashboard-admin/tarifas", () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  requireAuthMock.mockResolvedValue(undefined);
+  // requireAuth devuelve el usuario decodificado; las pantallas leen `roles`
+  // para decidir qué accesos mostrar.
+  requireAuthMock.mockResolvedValue({ roles: ["ADMIN"] });
   getMock.mockImplementation((url) => {
     if (url === "/api/v1/cocheras/disponibles") return Promise.resolve({ data: [] });
     if (url === "/api/v1/cocheras") return Promise.resolve({ data: [] });
@@ -81,10 +86,10 @@ beforeEach(() => {
 });
 
 describe("/dashboard-admin/reservas", () => {
-  it("exige el rol ADMIN", async () => {
+  it("la abren el admin y el empleado", async () => {
     await renderPagina(ReservasPage);
 
-    expect(requireAuthMock).toHaveBeenCalledWith(["ADMIN"]);
+    expect(requireAuthMock).toHaveBeenCalledWith(["ADMIN", "EMPLEADO"]);
   });
 
   // La ocupación se mudó a la pantalla de entrada: tenerla también acá era
@@ -130,10 +135,10 @@ describe("/dashboard-admin/recurrentes", () => {
 });
 
 describe("/dashboard-admin/visitantes", () => {
-  it("exige el rol ADMIN", async () => {
+  it("la abren el admin y el empleado", async () => {
     await renderPagina(VisitantesPage);
 
-    expect(requireAuthMock).toHaveBeenCalledWith(["ADMIN"]);
+    expect(requireAuthMock).toHaveBeenCalledWith(["ADMIN", "EMPLEADO"]);
   });
 
   // El alta dejó de ser la pantalla de entrada y pasó acá, detrás del botón
@@ -150,5 +155,61 @@ describe("/dashboard-admin/visitantes", () => {
 
     const volver = screen.getByRole("link", { name: /volver al panel/i });
     expect(volver).toHaveAttribute("href", "/dashboard-admin");
+  });
+});
+
+/**
+ * El rol EMPLEADO comparte el panel con el administrador.
+ *
+ * La diferencia es qué ofrece el menú: el empleado opera (reservas, accesos,
+ * alta de visitantes) pero no configura. Ocultar los accesos es comodidad —
+ * cada pantalla valida su rol y el backend rechaza igual—, pero si el menú le
+ * ofreciera algo que no puede usar, el error aparecería recién al hacer clic.
+ */
+describe("el panel según el rol", () => {
+  /** Lo que solo tiene que ver un administrador. */
+  const soloAdmin = ["Dashboard", "Gestionar cocheras", "Gestionar usuarios", "Gestionar tarifas"];
+  /** Lo que forma parte de operar y ve también el empleado. */
+  const operacion = ["Control de acceso", "Nuevo visitante", "Ver reservas"];
+
+  it("el administrador ve todos los accesos", async () => {
+    requireAuthMock.mockResolvedValue({ roles: ["ADMIN"] });
+
+    await renderPagina(DashboardPage);
+
+    for (const nombre of [...soloAdmin, ...operacion]) {
+      expect(screen.getByRole("link", { name: nombre })).toBeInTheDocument();
+    }
+  });
+
+  it("el empleado ve los accesos de operación", async () => {
+    requireAuthMock.mockResolvedValue({ roles: ["EMPLEADO"] });
+
+    await renderPagina(DashboardPage);
+
+    for (const nombre of operacion) {
+      expect(screen.getByRole("link", { name: nombre })).toBeInTheDocument();
+    }
+  });
+
+  it("al empleado no se le ofrece nada de configuración", async () => {
+    requireAuthMock.mockResolvedValue({ roles: ["EMPLEADO"] });
+
+    await renderPagina(DashboardPage);
+
+    for (const nombre of soloAdmin) {
+      expect(screen.queryByRole("link", { name: nombre })).not.toBeInTheDocument();
+    }
+    // Las recurrentes también son del admin, y su enlace no tiene el prefijo
+    // "Gestionar", así que se chequea aparte.
+    expect(screen.queryByRole("link", { name: /recurrentes/i })).not.toBeInTheDocument();
+  });
+
+  it("la pantalla la pueden abrir los dos roles", async () => {
+    requireAuthMock.mockResolvedValue({ roles: ["EMPLEADO"] });
+
+    await renderPagina(DashboardPage);
+
+    expect(requireAuthMock).toHaveBeenCalledWith(["ADMIN", "EMPLEADO"]);
   });
 });

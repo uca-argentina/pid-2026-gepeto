@@ -33,7 +33,16 @@ const PESTANAS = [
   { clave: "sector", etiqueta: "Por piso" },
 ];
 
-export default function OcupacionCocheras({ refreshKey = 0 }) {
+/**
+ * @param {object} props
+ * @param {number} [props.refreshKey] Cambia para forzar una recarga.
+ * @param {boolean} [props.esAdmin] Si puede cambiar el estado de una cochera.
+ *        El empleado ve la misma pantalla y puede cancelar reservas, pero
+ *        habilitar o deshabilitar una cochera es configuración y queda para el
+ *        administrador. Ocultar el botón es comodidad: quien lo pida igual se
+ *        lleva un 403, porque la regla real está en el backend.
+ */
+export default function OcupacionCocheras({ refreshKey = 0, esAdmin = true }) {
   const [dia, setDia] = useState(hoy);
   const [agrupadoPor, setAgrupadoPor] = useState("tipo");
   const [abierto, setAbierto] = useState(null);

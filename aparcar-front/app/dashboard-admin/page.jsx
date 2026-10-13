@@ -52,14 +52,17 @@ export default async function DashboardAdminPage() {
             <DashboardIcon name="users" />
             <span>Gestionar usuarios</span>
           </Link>
+          )}
+          {esAdmin && (
           <Link href="/dashboard-admin/tarifas" className="dashboard-nav-link">
             <DashboardIcon name="tarifas" />
             <span>Gestionar tarifas</span>
           </Link>
+          )}
         </DashboardHeader>
 
         <ParkingHeading />
-        <PanelOperativo />
+        <PanelOperativo esAdmin={esAdmin} />
       </div>
     </div>
   );

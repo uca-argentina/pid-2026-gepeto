@@ -16,7 +16,9 @@ const { default: PanelPage } = await import("@/app/dashboard-admin/page");
 
 beforeEach(() => {
   vi.clearAllMocks();
-  requireAuthMock.mockResolvedValue(undefined);
+  // requireAuth devuelve el usuario decodificado; las pantallas leen `roles`
+  // para decidir qué accesos mostrar.
+  requireAuthMock.mockResolvedValue({ roles: ["ADMIN"] });
 });
 
 describe("Ruta del Dashboard administrativo", () => {
