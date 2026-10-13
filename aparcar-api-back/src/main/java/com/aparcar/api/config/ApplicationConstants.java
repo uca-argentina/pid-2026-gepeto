@@ -11,4 +11,8 @@ public final class ApplicationConstants {
     public static final String NOT_DEV_ENV = "!" + DEV_ENV;
     public static final String TEST_ENV = "test";
     public static final String NOT_TEST_ENV = "!" + TEST_ENV;
+
+    /** Origenes del navegador habilitados contra la API, separados por coma. */
+    public static final String CORS_ALLOWED_ORIGINS_KEY = "CORS_ALLOWED_ORIGINS";
+    public static final String CORS_ALLOWED_ORIGINS_DEFAULT = "https://*.aparcar.com.ar";
 }

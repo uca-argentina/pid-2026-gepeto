@@ -104,9 +104,7 @@ public class ProdSecurityConfig {
                         corsCustomizer.configurationSource(request -> {
                             CorsConfiguration config = new CorsConfiguration();
 
-                            // TODO: reemplazar por el dominio real del frontend una vez desplegado
-                            config.setAllowedOriginPatterns(
-                                    List.of("https://*.aparcar.com.ar"));
+                            config.setAllowedOriginPatterns(origenesPermitidos(env));
 
                             config.setAllowedMethods(
                                     List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
@@ -240,5 +238,31 @@ public class ProdSecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder(12);
+    }
+
+    /**
+     * Los origenes que el navegador tiene permitido usar contra esta API.
+     *
+     * <p>Salen de la variable {@code CORS_ALLOWED_ORIGINS}, separados por coma,
+     * porque el dominio del frontend lo decide el despliegue y no se conoce al
+     * compilar. Antes estaba escrito en el codigo apuntando a un dominio que
+     * nunca existio, y eso devolvia 403 en todo pedido con cabecera Origin.
+     *
+     * <p>Se aceptan patrones con {@code *} (de ahi
+     * {@code setAllowedOriginPatterns}). Nunca devuelve {@code *} a secas: con
+     * {@code allowCredentials} activo el navegador lo rechaza, asi que un
+     * descuido se nota enseguida en vez de abrir la API a cualquiera.
+     */
+    private static List<String> origenesPermitidos(Environment env) {
+        String configurados = env.getProperty(CORS_ALLOWED_ORIGINS_KEY);
+
+        if (configurados == null || configurados.isBlank()) {
+            return List.of(CORS_ALLOWED_ORIGINS_DEFAULT);
+        }
+
+        return Arrays.stream(configurados.split(","))
+                .map(String::trim)
+                .filter(origen -> !origen.isEmpty())
+                .toList();
     }
 }

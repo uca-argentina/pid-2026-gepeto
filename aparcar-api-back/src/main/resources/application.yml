@@ -1,3 +1,21 @@
+# Detras de un proxy (Caddy), la aplicacion recibe la conexion en texto plano
+# por el puerto 8080: el HTTPS lo termina el proxy. Sin esta linea, Tomcat cree
+# que el pedido llego por http al 8080 y eso rompe dos cosas:
+#
+#   - CORS. El navegador manda "Origin: https://dominio" tambien en los POST
+#     del mismo origen. Spring compara ese origen con lo que la aplicacion cree
+#     ser (http, 8080), no coincide, y lo trata como pedido cruzado: el login
+#     devolvia 403 antes de mirar las credenciales.
+#   - El limite de intentos, que agrupaba por getRemoteAddr(). Esa era siempre
+#     la IP del contenedor de Caddy, asi que los 5 intentos por minuto se
+#     repartian entre todos los visitantes en vez de ser uno por persona.
+#
+# `native` activa la valvula de Tomcat que reescribe esquema, puerto e IP de
+# origen a partir de X-Forwarded-*. Solo confia en esas cabeceras cuando vienen
+# de un proxy en rango privado, que es el caso de Caddy dentro de Docker.
+server:
+  forward-headers-strategy: native
+
 api:
   title: AparcAR API
   version: 0.0.1 # Reminder: change it in the pom.xml too!
