@@ -499,6 +499,7 @@ export default function ReservasContent({
 
       <ReservasListado
         modo={esAdmin ? "admin" : "user"}
+        ancla={esAdmin ? undefined : "mis-reservas"}
         reservas={reservas}
         cargando={loadingReservas}
         error={errorReservas}

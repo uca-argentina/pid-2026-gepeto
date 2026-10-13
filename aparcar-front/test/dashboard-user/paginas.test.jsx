@@ -97,3 +97,35 @@ describe("/dashboard-user/perfil", () => {
     expect(estaAntes(vehiculos, seguridad)).toBe(true);
   });
 });
+/**
+ * El atajo a las reservas.
+ *
+ * El listado queda debajo del formulario de alta, así que sin un acceso en el
+ * encabezado hay que desplazarse hasta el final para ver las reservas propias.
+ */
+describe("atajo a Mis reservas", () => {
+  it("el encabezado tiene un enlace que apunta al listado", async () => {
+    await renderPagina(DashboardUserPage);
+
+    const enlace = screen.getByRole("link", { name: /mis reservas/i });
+
+    expect(enlace).toHaveAttribute("href", "#mis-reservas");
+  });
+
+  it("el destino del enlace existe en la página", async () => {
+    const { container } = await renderPagina(DashboardUserPage);
+
+    // Sin esto el enlace no lleva a ningún lado: el id del listado lo generaba
+    // `useId()`, que cambia en cada montaje y no sirve como destino.
+    expect(container.querySelector("#mis-reservas")).not.toBeNull();
+  });
+
+  it("queda antes que el atajo a vehículos, por ser el contenido de esta pantalla", async () => {
+    await renderPagina(DashboardUserPage);
+
+    const reservas = screen.getByRole("link", { name: /mis reservas/i });
+    const vehiculos = screen.getByRole("link", { name: /mis vehículos/i });
+
+    expect(estaAntes(reservas, vehiculos)).toBe(true);
+  });
+});
