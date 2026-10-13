@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,6 +17,7 @@ import NotificacionesReservas from "@/components/NotificacionesReservas";
 import RepeticionReserva, { contarRepeticiones, limiteRepeticion } from "@/components/RepeticionReserva";
 import useCotizacion from "@/hooks/useCotizacion";
 import useDisponibilidad from "@/hooks/useDisponibilidad";
+import { useAutoRefresco } from "@/hooks/useAutoRefresco";
 import { tieneCodigoVigente } from "@/utils/codigoAcceso";
 import {
   PASO_MINUTOS,
@@ -139,21 +140,48 @@ export default function ReservasContent({
     && repetirHasta <= limiteRepeticion(desde) && diasSemana.includes(diaInicial));
   const cotizacion = useCotizacion(cocheraElegida?.tipo ?? vehiculoEncontrado?.tipo, desde, hasta);
 
-  const cargarReservas = async () => {
-    setLoadingReservas(true);
-    setErrorReservas(false);
+  // Lo último que llegó, para no reescribir el estado con datos idénticos. Es
+  // una referencia porque solo sirve para comparar, no se dibuja.
+  const ultimasReservas = useRef("");
+
+  /**
+   * Trae el listado de reservas.
+   *
+   * El refresco automático pasa `silencioso`, y eso evita las tres cosas que lo
+   * harían visible: prender el estado de carga (que reemplaza la lista por un
+   * esqueleto), avisar de errores (un microcorte dejaría un cartel cada veinte
+   * segundos), y reescribir el estado cuando no cambió nada.
+   */
+  const cargarReservas = async ({ silencioso = false } = {}) => {
+    if (!silencioso) {
+      setLoadingReservas(true);
+      setErrorReservas(false);
+    }
     try {
       // El endpoint de recurrentes limita el listado a las series del admin
       // autenticado; la pantalla operativa conserva el listado general.
       const res = await api.get(recurrente ? "/api/v1/reservas/recurrentes" : "/api/v1/reservas");
-      setReservas(res.data);
-    } catch {
+      const huella = JSON.stringify(res.data);
+      if (huella !== ultimasReservas.current) {
+        ultimasReservas.current = huella;
+        setReservas(res.data);
+      }
+      if (!silencioso) setErrorReservas(false);
+    } catch (error) {
+      if (silencioso) throw error;
       setErrorReservas(true);
       toast.error("No se pudieron cargar las reservas.");
     } finally {
-      setLoadingReservas(false);
+      if (!silencioso) setLoadingReservas(false);
     }
   };
+
+  // El listado cambia por fuera de esta pantalla: a un visitante se le puede
+  // confirmar una reserva que estaba en lista de espera, y el admin ve entrar
+  // reservas de otros mientras mira. Solo se refresca el listado, nunca los
+  // catálogos que alimentan el formulario, para no tocar nada de lo que la
+  // persona pueda estar completando.
+  useAutoRefresco(() => cargarReservas({ silencioso: true }));
 
   // GET /api/v1/vehiculos devuelve el catálogo completo para el ADMIN y solo
   // los propios para un visitante. En recurrentes se pide /mios para que el

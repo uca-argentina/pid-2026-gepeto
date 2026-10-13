@@ -552,3 +552,66 @@ describe("OcupacionCocheras: cancelar una reserva", () => {
     expect(texto).toContain("A-01");
   });
 });
+
+/**
+ * El refresco automático.
+ *
+ * Lo que se pide es que no se note: la foto del predio tiene que mantenerse al
+ * día sin que nada parpadee ni se cierre mientras alguien está mirando.
+ */
+describe("refresco automático", () => {
+  it("vuelve a pedir los datos sola, sin que nadie toque nada", async () => {
+    mockData({ cocheras: [cochera("A-01")], reservas: [] });
+    render(<OcupacionCocheras />);
+    await waitFor(() => expect(grupos().length).toBeGreaterThan(0));
+
+    const pedidosIniciales = getMock.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(20000);
+
+    expect(getMock.mock.calls.length).toBeGreaterThan(pedidosIniciales);
+  });
+
+  it("no muestra el estado de carga al refrescar: la lista nunca desaparece", async () => {
+    mockData({ cocheras: [cochera("A-01")], reservas: [] });
+    render(<OcupacionCocheras />);
+    await waitFor(() => expect(grupos().length).toBeGreaterThan(0));
+
+    await vi.advanceTimersByTimeAsync(20000);
+
+    // Si el refresco prendiera el esqueleto, acá no habría grupos que mostrar.
+    expect(grupos().length).toBeGreaterThan(0);
+    expect(screen.queryByText(/cargando/i)).not.toBeInTheDocument();
+  });
+
+  it("deja abierto el desplegable que la persona estaba mirando", async () => {
+    const usuario = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    mockData({
+      cocheras: [cochera("A-01")],
+      reservas: [reserva()],
+    });
+    render(<OcupacionCocheras />);
+    await waitFor(() => expect(grupos().length).toBeGreaterThan(0));
+
+    await usuario.click(grupo("auto"));
+    expect(await screen.findByText(/ABC123/)).toBeInTheDocument();
+
+    await vi.advanceTimersByTimeAsync(20000);
+
+    // Sin la comparación previa a guardar, el refresco reescribiría el estado
+    // con datos idénticos y cerraría lo que estaba desplegado.
+    expect(screen.getByText(/ABC123/)).toBeInTheDocument();
+  });
+
+  it("no avisa de errores al refrescar: un microcorte deja lo que ya estaba", async () => {
+    mockData({ cocheras: [cochera("A-01")], reservas: [] });
+    render(<OcupacionCocheras />);
+    await waitFor(() => expect(grupos().length).toBeGreaterThan(0));
+    toastErrorMock.mockClear();
+
+    getMock.mockRejectedValue(new Error("se cayó la red"));
+    await vi.advanceTimersByTimeAsync(20000);
+
+    expect(toastErrorMock).not.toHaveBeenCalled();
+    expect(grupos().length).toBeGreaterThan(0);
+  });
+});
