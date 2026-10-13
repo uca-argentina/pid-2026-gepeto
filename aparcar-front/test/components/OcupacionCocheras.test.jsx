@@ -615,3 +615,45 @@ describe("refresco automático", () => {
     expect(grupos().length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * La pantalla es la misma para el admin y para el empleado; lo que cambia es
+ * qué puede hacer cada uno sobre lo que ve.
+ */
+describe("según el rol", () => {
+  it("el empleado puede cancelar una reserva: es parte de operar", async () => {
+    const usuario = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    mockData({ cocheras: [cochera("A-01")], reservas: [reserva()] });
+    render(<OcupacionCocheras esAdmin={false} />);
+    await waitFor(() => expect(grupos().length).toBeGreaterThan(0));
+
+    await usuario.click(grupo("auto"));
+
+    expect(await screen.findByRole("button", { name: /cancelar/i })).toBeInTheDocument();
+  });
+
+  it("al empleado no se le ofrece habilitar ni deshabilitar cocheras", async () => {
+    const usuario = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    mockData({ cocheras: [cochera("A-01")], reservas: [reserva()] });
+    render(<OcupacionCocheras esAdmin={false} />);
+    await waitFor(() => expect(grupos().length).toBeGreaterThan(0));
+
+    await usuario.click(grupo("auto"));
+
+    // Cambiar el estado de una cochera es configuración, no operación. El
+    // backend lo rechaza igual con un 403; esto evita ofrecer un botón que
+    // sólo serviría para producir un error.
+    expect(screen.queryByRole("button", { name: /deshabilitar|habilitar/i })).not.toBeInTheDocument();
+  });
+
+  it("el administrador sí puede cambiar el estado de una cochera", async () => {
+    const usuario = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    mockData({ cocheras: [cochera("A-01")], reservas: [reserva()] });
+    render(<OcupacionCocheras esAdmin />);
+    await waitFor(() => expect(grupos().length).toBeGreaterThan(0));
+
+    await usuario.click(grupo("auto"));
+
+    expect(screen.getByRole("button", { name: /deshabilitar/i })).toBeInTheDocument();
+  });
+});

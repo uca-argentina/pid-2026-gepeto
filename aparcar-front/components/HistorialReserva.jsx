@@ -8,6 +8,13 @@ const ACCION_ETIQUETA = {
   EGRESO: "Egreso registrado",
 };
 
+/** Cómo se nombra a quien hizo el movimiento. */
+const ROL_ETIQUETA = {
+  ADMIN: "Administrador",
+  EMPLEADO: "Empleado",
+  USER: "Usuario",
+};
+
 /** El backend solo incluye este historial en respuestas para administradores. */
 export default function HistorialReserva({ historial = [] }) {
   const tieneAlta = historial.some((movimiento) => movimiento.accion === "ALTA");

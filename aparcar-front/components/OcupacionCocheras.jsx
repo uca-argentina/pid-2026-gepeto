@@ -354,14 +354,16 @@ export default function OcupacionCocheras({ refreshKey = 0, esAdmin = true }) {
                                   : "Libre"}
                           </span>
 
-                          <button
-                            type="button"
-                            className="ocupacion-accion"
-                            onClick={() => cambiarEstado(c)}
-                            disabled={trabajando}
-                          >
-                            {deshabilitada ? "Habilitar" : "Deshabilitar"}
-                          </button>
+                          {esAdmin && (
+                            <button
+                              type="button"
+                              className="ocupacion-accion"
+                              onClick={() => cambiarEstado(c)}
+                              disabled={trabajando}
+                            >
+                              {deshabilitada ? "Habilitar" : "Deshabilitar"}
+                            </button>
+                          )}
                         </div>
 
                         {c.reservas.length > 0 && (

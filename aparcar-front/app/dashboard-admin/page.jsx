@@ -41,6 +41,7 @@ export default async function DashboardAdminPage() {
             <DashboardIcon name="user-plus" />
             <span>Nuevo visitante</span>
           </Link>
+          {esAdmin && (
           <Link
             href="/dashboard-admin/cocheras"
             className="dashboard-nav-link"
@@ -48,6 +49,7 @@ export default async function DashboardAdminPage() {
             <DashboardIcon name="parking" />
             <span>Gestionar cocheras</span>
           </Link>
+          )}
           <Link
             href="/dashboard-admin/reservas"
             className="dashboard-nav-link"
@@ -55,10 +57,13 @@ export default async function DashboardAdminPage() {
             <DashboardIcon name="calendar" />
             <span>Ver reservas</span>
           </Link>
+          {esAdmin && (
           <Link href="/dashboard-admin/recurrentes" className="dashboard-nav-link">
             <DashboardIcon name="calendar" />
             <span>Mis reservas recurrentes</span>
           </Link>
+          )}
+          {esAdmin && (
           <Link
             href="/dashboard-admin/usuarios"
             className="dashboard-nav-link"
