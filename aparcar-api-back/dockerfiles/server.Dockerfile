@@ -20,6 +20,14 @@ WORKDIR /app
 # permisos sobre el contenedor.
 RUN addgroup -S aparcar && adduser -S aparcar -G aparcar
 
+# Certificados de discapacidad (datos de salud): un directorio privado, fuera
+# de /app y propiedad del usuario del proceso, que es el unico que lo lee. En
+# produccion se monta un volumen aca para que sobreviva a los redespliegues.
+RUN mkdir -p /var/lib/aparcar/discapacidad \
+    && chown aparcar:aparcar /var/lib/aparcar/discapacidad \
+    && chmod 700 /var/lib/aparcar/discapacidad
+ENV DISCAPACIDAD_DOCS_DIR=/var/lib/aparcar/discapacidad
+
 COPY --from=build /app/target/*.jar server.jar
 
 USER aparcar
