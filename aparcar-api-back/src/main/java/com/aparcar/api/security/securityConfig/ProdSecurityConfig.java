@@ -2,7 +2,9 @@ package com.aparcar.api.security.securityConfig;
 
 import com.aparcar.api.component.IRevokedUserCache;
 import com.aparcar.api.config.AccesoProperties;
+import com.aparcar.api.config.DiscapacidadProperties;
 import com.aparcar.api.filters.AccesoRateLimitFilter;
+import com.aparcar.api.filters.VerificacionRateLimitFilter;
 import com.aparcar.api.filters.JWTGeneratorFilter;
 import com.aparcar.api.filters.JWTValidationFilter;
 import com.aparcar.api.filters.RateLimitFilter;
@@ -68,6 +70,7 @@ public class ProdSecurityConfig {
      *                                  context.
      * @param env                       The Spring environment for accessing
      *                                  properties.
+     * @param discapacidadProperties    Limite de subidas de certificados.
      * @param accesoProperties          Reglas del control de acceso (rate limit
      *                                  de /api/v1/accesos/**).
      * @return The configured SecurityFilterChain.
@@ -78,7 +81,8 @@ public class ProdSecurityConfig {
             IRevokedUserCache revokedUserCache,
             SecurityContextRepository securityContextRepository,
             Environment env,
-            AccesoProperties accesoProperties) {
+            AccesoProperties accesoProperties,
+            DiscapacidadProperties discapacidadProperties) {
 
         String secret = env.getProperty(JWT_SECRET_KEY, JWT_SECRET_DEFAULT);
         boolean isDev = Arrays.asList(env.getActiveProfiles()).contains(DEV_ENV);
@@ -94,6 +98,9 @@ public class ProdSecurityConfig {
 
         AccesoRateLimitFilter accesoRateLimitFilter =
                 new AccesoRateLimitFilter(accesoProperties.rateLimitPorMinuto());
+
+        VerificacionRateLimitFilter verificacionRateLimitFilter =
+                new VerificacionRateLimitFilter(discapacidadProperties.subidasPorHora());
 
         return http
                 .securityContext(context ->
@@ -157,6 +164,22 @@ public class ProdSecurityConfig {
                                 "/api/v1/visitantes/me",
                                 "/api/v1/visitantes/me/**"
                         ).authenticated()
+
+                        // Verificacion de discapacidad: cada cuenta sube su
+                        // certificado y ve lo suyo; revisar la cola y abrir
+                        // certificados ajenos es solo del ADMIN (un dato de
+                        // salud: el EMPLEADO no lo necesita para operar).
+                        .requestMatchers(
+                                "/api/v1/verificaciones-discapacidad/mia",
+                                "/api/v1/verificaciones-discapacidad/mia/**"
+                        ).authenticated()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST,
+                                "/api/v1/verificaciones-discapacidad"
+                        ).authenticated()
+                        .requestMatchers(
+                                "/api/v1/verificaciones-discapacidad",
+                                "/api/v1/verificaciones-discapacidad/**"
+                        ).hasAuthority("ADMIN")
 
                         // Validar codigos de acceso (ingreso y egreso) es la
                         // tarea central del personal en la puerta.
@@ -238,6 +261,11 @@ public class ProdSecurityConfig {
                 .addFilterAfter(
                         accesoRateLimitFilter,
                         JWTValidationFilter.class)
+
+                // Tambien cuenta por cuenta: despues del JWT.
+                .addFilterAfter(
+                        verificacionRateLimitFilter,
+                        AccesoRateLimitFilter.class)
 
                 .httpBasic(config ->
                         config.authenticationEntryPoint(
