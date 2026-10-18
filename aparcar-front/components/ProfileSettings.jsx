@@ -9,11 +9,11 @@ import { toast } from "sonner";
 import api from "@/app/api";
 import { useAuthStore } from "@/store/authStore";
 import DashboardIcon from "@/components/DashboardIcon";
+import VerificacionDiscapacidad from "@/components/VerificacionDiscapacidad";
 
 const perfilSchema = z.object({
   email: z.string().trim().min(1, "El email es obligatorio").email("Ingresá un correo válido").max(255),
   telefono: z.string().trim().max(255, "El teléfono es demasiado largo"),
-  tieneDiscapacidad: z.boolean(),
 });
 const adminSchema = perfilSchema.extend({
   documento: z.string().trim().min(1, "El documento es obligatorio").max(255, "El documento es demasiado largo"),
@@ -31,7 +31,6 @@ const emptyPassword = { passwordActual: "", passwordNueva: "", passwordRepetida:
 const valuesFrom = (perfil) => ({
   email: perfil.email || "", telefono: perfil.telefono || "",
   documento: perfil.documento || "", nombreEstacionamiento: perfil.nombreEstacionamiento || "",
-  tieneDiscapacidad: Boolean(perfil.tieneDiscapacidad),
 });
 
 function Field({ form, name, label, hint, ...props }) {
@@ -127,7 +126,7 @@ export default function ProfileSettings({ admin = false, children }) {
           <p>{perfil.email}</p>
           <div className="profile-identity-detail"><DashboardIcon name="profile" /><span>Documento {perfil.documento}</span></div>
           {admin && perfil.nombreEstacionamiento && <div className="profile-identity-detail"><DashboardIcon name="parking" /><span>{perfil.nombreEstacionamiento}</span></div>}
-          {!admin && perfil.tieneDiscapacidad && <p className="profile-accessibility-badge">Persona con discapacidad · puede usar cocheras accesibles</p>}
+          {!admin && perfil.tieneDiscapacidad && <p className="profile-accessibility-badge">Puede usar cocheras accesibles</p>}
         </aside>
 
         <div className="profile-sections">
@@ -145,15 +144,6 @@ export default function ProfileSettings({ admin = false, children }) {
                     hint="Si cambiás tu email, te pediremos iniciar sesión con el nuevo." />
                 </div>
               </div>
-              {!admin && (
-                <div className="profile-accessibility">
-                  <label htmlFor="perfil-discapacidad">
-                    <input id="perfil-discapacidad" type="checkbox" {...form.register("tieneDiscapacidad")} />
-                    <span>Soy una persona con discapacidad</span>
-                  </label>
-                  <p>Te habilita a reservar cocheras accesibles. Podés cambiar esta declaración cuando quieras.</p>
-                </div>
-              )}
               {admin && (
                 <section className="profile-parking">
                   <div className="profile-section-heading">
@@ -170,6 +160,11 @@ export default function ProfileSettings({ admin = false, children }) {
               </div>
             </fieldset>
           </form>
+
+          {/* El acceso a las accesibles ya no se autodeclara: se verifica con el
+              certificado. También para el admin, que reserva para sí sus series
+              recurrentes. */}
+          <VerificacionDiscapacidad />
 
           {children}
 

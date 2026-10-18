@@ -930,7 +930,7 @@ describe("ReservasContent: cocheras accesibles", () => {
 
     expect(screen.queryByRole("option", { name: /A-09/ })).not.toBeInTheDocument();
     expect(
-      screen.getByText(/No se muestran las cocheras accesibles: Juan Perez no tiene declarada discapacidad/)
+      screen.getByText(/No se muestran las cocheras accesibles: Juan Perez no tiene verificado su certificado/)
     ).toBeInTheDocument();
   });
 

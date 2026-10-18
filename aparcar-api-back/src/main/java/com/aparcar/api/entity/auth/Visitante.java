@@ -5,6 +5,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.Instant;
 import java.util.Set;
 import java.util.UUID;
 
@@ -60,20 +61,28 @@ public class Visitante {
     private Boolean isActive;
 
     /**
-     * Si la persona tiene una discapacidad que la habilita a usar las cocheras
-     * de tipo ACCESIBLE.
+     * Si la persona puede usar las cocheras de tipo ACCESIBLE.
      *
-     * <p>Es un dato autodeclarado: lo marca el propio visitante desde su
-     * perfil (o el admin al darlo de alta, si ya lo sabe). No hay flujo de
-     * aprobacion: el sistema confia en la declaracion, igual que un permiso
-     * de estacionamiento en la calle.
+     * <p>Es un valor DERIVADO de la verificacion con certificado: lo pone en
+     * true solo la aprobacion de un ADMIN (o el plazo de gracia de una cuenta
+     * que se habia autodeclarado antes de la verificacion), y lo vuelven a
+     * false el rechazo, la revocacion, el vencimiento o el fin de la gracia.
+     * Ningun endpoint de perfil, alta ni registro lo recibe. Lo mantiene
+     * {@code VerificacionDiscapacidadService}; reservas y cocheras solo lo leen.
      *
      * <p>Arranca en false para cualquier cuenta nueva, se cree por el
-     * constructor que se cree, asi ninguna alta existente tiene que acordarse
-     * de setearlo.
+     * constructor que se cree.
      */
     @Column(name = "tiene_discapacidad", nullable = false)
     private Boolean tieneDiscapacidad = false;
+
+    /**
+     * Hasta cuando conserva el acceso a las ACCESIBLE una cuenta que se habia
+     * autodeclarado antes de la verificacion con certificado. Null para el
+     * resto. Al resolverse su primera solicitud, o al vencer, vuelve a null.
+     */
+    @Column(name = "discapacidad_acceso_provisorio_hasta")
+    private Instant discapacidadAccesoProvisorioHasta;
 
     public Visitante(String nombre, String documento, String email, String password, String telefono,
                      Set<AppAuthority> authorities, Boolean isActive) {

@@ -3,6 +3,7 @@ import { requireAuth } from "@/utils/serverAuth";
 import PanelOperativo from "./PanelOperativo";
 import DashboardHeader from "@/components/DashboardHeader";
 import DashboardIcon from "@/components/DashboardIcon";
+import ContadorVerificaciones from "@/components/ContadorVerificaciones";
 import ParkingHeading from "@/components/ParkingHeading";
 
 /**
@@ -63,6 +64,8 @@ export default async function DashboardAdminPage() {
             <span>Mis reservas recurrentes</span>
           </Link>
           )}
+          {/* Revisar certificados de discapacidad es un dato de salud: solo ADMIN. */}
+          {esAdmin && <ContadorVerificaciones />}
           {esAdmin && (
           <Link
             href="/dashboard-admin/usuarios"

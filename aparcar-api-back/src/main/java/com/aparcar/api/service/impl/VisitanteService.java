@@ -61,10 +61,8 @@ public class VisitanteService implements IVisitanteService {
                 dto.getTelefono(),
                 Set.of(AppAuthority.USER),
                 true);
-        // Se setea antes de guardar y antes de crear la reserva: si el admin
-        // marca que la persona tiene discapacidad, la reserva del alta ya puede
-        // ser en una cochera ACCESIBLE.
-        nuevo.setTieneDiscapacidad(Boolean.TRUE.equals(dto.getTieneDiscapacidad()));
+        // La cuenta nace sin acceso a las cocheras ACCESIBLE: eso solo lo da la
+        // verificacion del certificado, que la persona pide desde su perfil.
         Visitante visitante = visitanteRepository.save(nuevo);
 
         VehiculoRequestDto vehiculoDto = new VehiculoRequestDto();
@@ -145,12 +143,6 @@ public class VisitanteService implements IVisitanteService {
         }
         visitante.setTelefono(dto.getTelefono() == null ? null : dto.getTelefono().trim());
         visitante.setEmail(dto.getEmail());
-
-        // null = "no lo mandaron": se respeta lo que ya estaba. Solo un valor
-        // explicito (true o false) cambia la declaracion.
-        if (dto.getTieneDiscapacidad() != null) {
-            visitante.setTieneDiscapacidad(dto.getTieneDiscapacidad());
-        }
 
         Visitante guardado;
         try {

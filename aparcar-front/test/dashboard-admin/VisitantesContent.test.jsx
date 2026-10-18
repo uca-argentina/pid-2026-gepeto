@@ -306,22 +306,22 @@ describe("VisitantesContent (alta de visitante con reserva)", () => {
 });
 
 describe("VisitantesContent: discapacidad", () => {
-  const LABEL = "Persona con discapacidad (opcional)";
-
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("muestra el checkbox de discapacidad desmarcado por defecto", () => {
+  // Antes el admin podía marcarla en el alta. Ahora el acceso a las
+  // accesibles lo da la verificación del certificado, que la persona pide
+  // desde su perfil: el alta no puede autodeclararla.
+  it("ya no tiene el checkbox y explica que la verificación se pide desde el perfil", () => {
     mockCocheras();
     render(<VisitantesContent />);
 
-    expect(screen.getByLabelText(LABEL)).toBeInTheDocument();
-    expect(screen.getByLabelText(LABEL)).not.toBeChecked();
+    expect(screen.queryByLabelText(/Persona con discapacidad/)).not.toBeInTheDocument();
+    expect(screen.getByText(/puede pedir la verificación desde su perfil/)).toBeInTheDocument();
   });
 
-  // Es opcional: si el admin no lo toca, el alta sale igual y con false.
-  it("sin marcarlo, manda tieneDiscapacidad: false", async () => {
+  it("el alta nunca manda tieneDiscapacidad", async () => {
     mockCocheras([cochera()]);
     postMock.mockResolvedValue({ data: {} });
     const user = userEvent.setup();
@@ -333,52 +333,17 @@ describe("VisitantesContent: discapacidad", () => {
     await user.click(screen.getByRole("button", { name: /dar de alta y reservar/i }));
 
     await waitFor(() => expect(postMock).toHaveBeenCalledTimes(1));
-    expect(postMock.mock.calls[0][1]).toMatchObject({ tieneDiscapacidad: false });
+    expect(postMock.mock.calls[0][1]).not.toHaveProperty("tieneDiscapacidad");
   });
 
-  it("marcado, manda tieneDiscapacidad: true y permite reservar una ACCESIBLE", async () => {
+  // Una cuenta que se está creando nunca tiene el certificado verificado:
+  // ofrecerle una ACCESIBLE solo termina en un rechazo del backend.
+  it("no ofrece cocheras ACCESIBLE y lo explica", async () => {
     mockCocheras([cochera(), cochera({ id: "c9", numero: "A-09", tipo: "ACCESIBLE" })]);
-    postMock.mockResolvedValue({ data: {} });
-    const user = userEvent.setup();
-    render(<VisitantesContent />);
-
-    await completarFormulario(user);
-    await user.click(screen.getByLabelText(LABEL));
-    await screen.findByRole("option", { name: /A-09/ });
-    await user.selectOptions(screen.getByLabelText("Cochera"), "c9");
-    await user.click(screen.getByRole("button", { name: /dar de alta y reservar/i }));
-
-    await waitFor(() => expect(postMock).toHaveBeenCalledTimes(1));
-    expect(postMock.mock.calls[0][1]).toMatchObject({ tieneDiscapacidad: true, cocheraId: "c9" });
-  });
-
-  // Ofrecerle una ACCESIBLE a alguien sin la marca solo termina en un rechazo
-  // del backend después de completar todo el formulario.
-  it("oculta las cocheras ACCESIBLE hasta que se marca el checkbox", async () => {
-    mockCocheras([cochera(), cochera({ id: "c9", numero: "A-09", tipo: "ACCESIBLE" })]);
-    const user = userEvent.setup();
     render(<VisitantesContent />);
 
     await screen.findByRole("option", { name: /A-01/ });
     expect(screen.queryByRole("option", { name: /A-09/ })).not.toBeInTheDocument();
-    expect(screen.getByText(/Las cocheras accesibles aparecen al marcar/)).toBeInTheDocument();
-
-    await user.click(screen.getByLabelText(LABEL));
-
-    expect(await screen.findByRole("option", { name: /A-09/ })).toBeInTheDocument();
-    expect(screen.queryByText(/Las cocheras accesibles aparecen al marcar/)).not.toBeInTheDocument();
-  });
-
-  it("si se desmarca con una ACCESIBLE elegida, la deselecciona", async () => {
-    mockCocheras([cochera(), cochera({ id: "c9", numero: "A-09", tipo: "ACCESIBLE" })]);
-    const user = userEvent.setup();
-    render(<VisitantesContent />);
-
-    await user.click(screen.getByLabelText(LABEL));
-    await screen.findByRole("option", { name: /A-09/ });
-    await user.selectOptions(screen.getByLabelText("Cochera"), "c9");
-    await user.click(screen.getByLabelText(LABEL));
-
-    await waitFor(() => expect(screen.getByLabelText("Cochera")).toHaveValue(""));
+    expect(screen.getByText(/requieren el certificado verificado/)).toBeInTheDocument();
   });
 });

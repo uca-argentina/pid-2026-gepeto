@@ -26,10 +26,16 @@ const PERFIL = {
   email: "juan@test.com",
 };
 
-function mockPerfil({ perfil = PERFIL, vehiculos = [] } = {}) {
+const SIN_SOLICITUD = {
+  estado: "SIN_SOLICITUD", puedeUsarCocherasAccesibles: false, accesoProvisorioHasta: null,
+  puedeEnviar: true, documentoMaxMb: 5, solicitud: null,
+};
+
+function mockPerfil({ perfil = PERFIL, vehiculos = [], verificacion = SIN_SOLICITUD } = {}) {
   getMock.mockImplementation((url) => {
     if (url === "/api/v1/visitantes/me") return Promise.resolve({ data: perfil });
     if (url === "/api/v1/vehiculos") return Promise.resolve({ data: vehiculos });
+    if (url === "/api/v1/verificaciones-discapacidad/mia") return Promise.resolve({ data: verificacion });
     return Promise.reject(new Error(`URL no mockeada: ${url}`));
   });
 }
@@ -65,7 +71,6 @@ describe("ProfileSettings: datos", () => {
       expect(putMock).toHaveBeenCalledWith("/api/v1/visitantes/me", {
         telefono: "222",
         email: "b@b.com",
-        tieneDiscapacidad: false,
       })
     );
     expect(toastSuccessMock).toHaveBeenCalledWith("Tus datos se actualizaron correctamente");
@@ -94,105 +99,60 @@ describe("ProfileSettings: discapacidad", () => {
     vi.clearAllMocks();
   });
 
-  async function abrirEdicion(perfil) {
-    mockPerfil({ perfil });
-    const user = userEvent.setup();
-    render(<ProfileSettings />);
-    await screen.findByText("Juan Perez");
-    return { user };
-  }
-
-  it("el formulario de edicion muestra el checkbox de discapacidad", async () => {
-    await abrirEdicion({ ...PERFIL, tieneDiscapacidad: false });
-
-    expect(screen.getByLabelText("Soy una persona con discapacidad")).toBeInTheDocument();
-  });
-
-  it("precarga el checkbox marcado si el perfil lo tiene declarado", async () => {
-    await abrirEdicion({ ...PERFIL, tieneDiscapacidad: true });
-
-    expect(screen.getByLabelText("Soy una persona con discapacidad")).toBeChecked();
-  });
-
-  it("precarga el checkbox desmarcado si el perfil no lo tiene declarado", async () => {
-    await abrirEdicion({ ...PERFIL, tieneDiscapacidad: false });
-
-    expect(screen.getByLabelText("Soy una persona con discapacidad")).not.toBeChecked();
-  });
-
-  // Un backend anterior al campo no lo manda: se trata como "no declarado".
-  it("si el perfil no trae el campo, el checkbox arranca desmarcado", async () => {
-    await abrirEdicion(PERFIL);
-
-    expect(screen.getByLabelText("Soy una persona con discapacidad")).not.toBeChecked();
-  });
-
-  it("al marcarlo manda tieneDiscapacidad: true en el PUT", async () => {
-    const putMock = vi.fn().mockResolvedValue({
-      data: { ...PERFIL, tieneDiscapacidad: true },
-    });
-    api.put = putMock;
-    const { user } = await abrirEdicion({ ...PERFIL, tieneDiscapacidad: false });
-
-    await user.click(screen.getByLabelText("Soy una persona con discapacidad"));
-    await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
-
-    await waitFor(() =>
-      expect(putMock).toHaveBeenCalledWith(
-        "/api/v1/visitantes/me",
-        expect.objectContaining({ tieneDiscapacidad: true })
-      )
-    );
-  });
-
-  it("al desmarcarlo manda tieneDiscapacidad: false en el PUT", async () => {
-    const putMock = vi.fn().mockResolvedValue({
-      data: { ...PERFIL, tieneDiscapacidad: false },
-    });
-    api.put = putMock;
-    const { user } = await abrirEdicion({ ...PERFIL, tieneDiscapacidad: true });
-
-    await user.click(screen.getByLabelText("Soy una persona con discapacidad"));
-    await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
-
-    await waitFor(() =>
-      expect(putMock).toHaveBeenCalledWith(
-        "/api/v1/visitantes/me",
-        expect.objectContaining({ tieneDiscapacidad: false })
-      )
-    );
-  });
-
-  // Refrescar las cocheras del formulario de reserva sin que nada haya cambiado
-  // solo produce un parpadeo.
-  it("si guarda sin tocar el checkbox, conserva la discapacidad", async () => {
-    const putMock = vi.fn().mockResolvedValue({
-      data: { ...PERFIL, tieneDiscapacidad: true },
-    });
-    api.put = putMock;
-    const { user } = await abrirEdicion({ ...PERFIL, tieneDiscapacidad: true });
-
-    await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
-
-    await waitFor(() => expect(putMock).toHaveBeenCalled());
-    expect(putMock.mock.calls[0][1].tieneDiscapacidad).toBe(true);
-  });
-
-  it("muestra la insignia en sus datos cuando lo tiene declarado", async () => {
-    mockPerfil({ perfil: { ...PERFIL, tieneDiscapacidad: true } });
-    render(<ProfileSettings />);
-
-    expect(
-      await screen.findByText(/Persona con discapacidad · puede usar cocheras accesibles/)
-    ).toBeInTheDocument();
-  });
-
-  it("no muestra la insignia cuando no lo tiene declarado", async () => {
+  // Antes era un checkbox autodeclarado. Ahora el acceso lo da un admin al
+  // verificar el certificado: el perfil no puede cambiarlo.
+  it("ya no tiene el checkbox para autodeclararse", async () => {
     mockPerfil({ perfil: { ...PERFIL, tieneDiscapacidad: false } });
     render(<ProfileSettings />);
     await screen.findByText("Juan Perez");
 
-    expect(screen.queryByText(/puede usar cocheras accesibles/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Soy una persona con discapacidad")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  });
+
+  it("el PUT del perfil nunca manda tieneDiscapacidad", async () => {
+    const putMock = vi.fn().mockResolvedValue({ data: { ...PERFIL, tieneDiscapacidad: true } });
+    api.put = putMock;
+    mockPerfil({ perfil: { ...PERFIL, tieneDiscapacidad: true } });
+    const user = userEvent.setup();
+    render(<ProfileSettings />);
+    await screen.findByText("Juan Perez");
+
+    await user.click(screen.getByRole("button", { name: /guardar cambios/i }));
+
+    await waitFor(() => expect(putMock).toHaveBeenCalled());
+    expect(putMock.mock.calls[0][1]).not.toHaveProperty("tieneDiscapacidad");
+  });
+
+  it("muestra el bloque de cocheras accesibles con el estado de la verificación", async () => {
+    mockPerfil();
+    render(<ProfileSettings />);
+
+    expect(await screen.findByRole("heading", { name: "Cocheras accesibles" })).toBeInTheDocument();
+    expect(await screen.findByLabelText(/Subí tu certificado/)).toBeInTheDocument();
+  });
+
+  // El admin reserva para sí sus series recurrentes: también se verifica.
+  it("el administrador también ve el bloque para verificarse", async () => {
+    mockPerfil();
+    render(<ProfileSettings admin />);
+
+    expect(await screen.findByRole("heading", { name: "Cocheras accesibles" })).toBeInTheDocument();
+  });
+
+  it("muestra la insignia en sus datos cuando puede usar cocheras accesibles", async () => {
+    mockPerfil({ perfil: { ...PERFIL, tieneDiscapacidad: true } });
+    render(<ProfileSettings />);
+
+    expect(await screen.findByText("Puede usar cocheras accesibles")).toBeInTheDocument();
+  });
+
+  it("no muestra la insignia cuando no puede", async () => {
+    mockPerfil({ perfil: { ...PERFIL, tieneDiscapacidad: false } });
+    render(<ProfileSettings />);
+    await screen.findByText("Juan Perez");
+
+    expect(screen.queryByText("Puede usar cocheras accesibles")).not.toBeInTheDocument();
   });
 });
 
