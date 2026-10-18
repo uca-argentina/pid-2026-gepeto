@@ -320,7 +320,7 @@ public class ReservaService implements IReservaService {
      *
      * <p>{@code visitante} es siempre el dueño de la reserva (ya resuelto por
      * {@link #resolverVisitante}). Cuando un ADMIN reserva en nombre de otro,
-     * lo que cuenta es la declaracion de esa otra persona, no la del admin que
+     * lo que cuenta es la verificacion de esa otra persona, no la del admin que
      * esta cargando la reserva.
      */
     private void validarAccesibilidad(Cochera cochera, Visitante visitante) {
@@ -329,8 +329,8 @@ public class ReservaService implements IReservaService {
         }
         if (!visitante.puedeUsarCocheraAccesible()) {
             throw new ValidationException(
-                    ("La cochera %s es de uso exclusivo para personas con discapacidad, y %s no lo tiene "
-                            + "declarado en su perfil.").formatted(cochera.getNumero(), visitante.getNombre()));
+                    ("La cochera %s es de uso exclusivo para personas con discapacidad, y %s no tiene "
+                            + "verificado su certificado.").formatted(cochera.getNumero(), visitante.getNombre()));
         }
     }
 

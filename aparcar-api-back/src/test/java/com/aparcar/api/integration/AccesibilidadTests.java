@@ -37,10 +37,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Caja negra de las cocheras ACCESIBLE: solo las reserva quien declaro una
- * discapacidad. Cubre como entra la declaracion (alta del admin, registro,
- * editar mi perfil), la regla al reservar y el filtro de /disponibles, todo
- * desde el contrato HTTP y contra una base real.
+ * Caja negra de las cocheras ACCESIBLE: solo las reserva quien tiene la
+ * discapacidad verificada con certificado. Cubre que ninguna via de entrada
+ * (alta del admin, registro, editar mi perfil) permita autodeclararla, la regla
+ * al reservar y el filtro de /disponibles, todo desde el contrato HTTP y contra
+ * una base real. El flujo de verificacion esta en VerificacionDiscapacidadControllerTests.
  */
 @IntegrationTests
 @org.springframework.test.context.jdbc.Sql({"/tarifas-test.sql", "/admin-test.sql"})
@@ -122,10 +123,12 @@ public class AccesibilidadTests {
 
     // ---- Alta del admin ----
 
+    // Antes el admin podia marcarla en el alta. El campo ya no existe: si un
+    // cliente viejo lo manda, se ignora y la reserva ACCESIBLE se rechaza.
     @Test
     @WithMockUser(authorities = "ADMIN")
-    @DisplayName("[Caja negra] el alta con tieneDiscapacidad=true puede reservar una cochera ACCESIBLE")
-    void altaConDiscapacidadReservaAccesible() throws Exception {
+    @DisplayName("[Caja negra] el alta con tieneDiscapacidad=true no habilita: la ACCESIBLE devuelve 400 y no crea nada")
+    void altaConDiscapacidadNoHabilita() throws Exception {
         Cochera cochera = crearCochera("AC-01", CocheraTipo.ACCESIBLE);
         var context = getContext();
 
@@ -133,11 +136,10 @@ public class AccesibilidadTests {
                         .with(securityContext(context))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(altaJson(cochera.getId(), "true")))
-                .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.visitante.tieneDiscapacidad").value(true))
-                .andExpect(jsonPath("$.reserva.cochera.numero").value("AC-01"));
+                .andExpect(status().isBadRequest());
 
-        assertTrue(visitanteRepository.findByEmail("juan@test.com").orElseThrow().getTieneDiscapacidad());
+        assertTrue(visitanteRepository.findByEmail("juan@test.com").isEmpty());
+        assertEquals(0, reservaRepository.count());
     }
 
     @Test
@@ -163,8 +165,8 @@ public class AccesibilidadTests {
 
     @Test
     @WithAnonymousUser
-    @DisplayName("[Caja negra] POST /register guarda la discapacidad declarada al crear la cuenta")
-    void registroGuardaLaDiscapacidad() throws Exception {
+    @DisplayName("[Caja negra] POST /register crea la cuenta pero ignora tieneDiscapacidad: no se autodeclara")
+    void registroIgnoraLaDiscapacidad() throws Exception {
         // Sin servletPath a proposito: con "/register" entraria al rate limit
         // (5 pedidos por minuto compartidos con los otros tests de registro).
         mockMvc.perform(post("/register")
@@ -175,15 +177,15 @@ public class AccesibilidadTests {
                                 """))
                 .andExpect(status().isCreated());
 
-        assertTrue(visitanteRepository.findByEmail("ana@test.com").orElseThrow().getTieneDiscapacidad());
+        assertFalse(visitanteRepository.findByEmail("ana@test.com").orElseThrow().getTieneDiscapacidad());
     }
 
     // ---- Editar mi perfil ----
 
     @Test
     @WithMockUser(username = VISITANTE, authorities = "USER")
-    @DisplayName("[Caja negra] PUT /api/v1/visitantes/me permite declarar la discapacidad y GET /me la devuelve")
-    void editarPerfilDeclaraLaDiscapacidad() throws Exception {
+    @DisplayName("[Caja negra] PUT /api/v1/visitantes/me ignora tieneDiscapacidad=true: el perfil no habilita")
+    void editarPerfilNoAutodeclara() throws Exception {
         crearVisitante("30111222", VISITANTE, false);
         var context = getContext();
 
@@ -192,16 +194,16 @@ public class AccesibilidadTests {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"email\":\"" + VISITANTE + "\",\"tieneDiscapacidad\":true}"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tieneDiscapacidad").value(true));
+                .andExpect(jsonPath("$.tieneDiscapacidad").value(false));
 
         mockMvc.perform(get("/api/v1/visitantes/me").with(securityContext(context)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.tieneDiscapacidad").value(true));
+                .andExpect(jsonPath("$.tieneDiscapacidad").value(false));
     }
 
     @Test
     @WithMockUser(username = VISITANTE, authorities = "USER")
-    @DisplayName("[Caja negra] PUT /api/v1/visitantes/me sin el campo no borra la declaracion")
+    @DisplayName("[Caja negra] PUT /api/v1/visitantes/me no le quita el acceso a quien esta verificado")
     void editarPerfilSinElCampoNoLaBorra() throws Exception {
         crearVisitante("30111222", VISITANTE, true);
         var context = getContext();
@@ -218,7 +220,7 @@ public class AccesibilidadTests {
 
     @Test
     @WithMockUser(username = VISITANTE, authorities = "USER")
-    @DisplayName("[Caja negra] un USER sin discapacidad declarada no puede reservar una ACCESIBLE")
+    @DisplayName("[Caja negra] un USER sin discapacidad verificada no puede reservar una ACCESIBLE")
     void userSinDiscapacidadNoReservaAccesible() throws Exception {
         Visitante visitante = crearVisitante("30111222", VISITANTE, false);
         Vehiculo vehiculo = crearVehiculo("ABC123", visitante);
@@ -236,7 +238,7 @@ public class AccesibilidadTests {
 
     @Test
     @WithMockUser(username = VISITANTE, authorities = "USER")
-    @DisplayName("[Caja negra] un USER con discapacidad declarada puede reservar una ACCESIBLE")
+    @DisplayName("[Caja negra] un USER con discapacidad verificada puede reservar una ACCESIBLE")
     void userConDiscapacidadReservaAccesible() throws Exception {
         Visitante visitante = crearVisitante("30111222", VISITANTE, true);
         Vehiculo vehiculo = crearVehiculo("ABC123", visitante);
@@ -253,7 +255,7 @@ public class AccesibilidadTests {
 
     @Test
     @WithMockUser(authorities = "ADMIN")
-    @DisplayName("[Caja negra] un ADMIN no puede reservar una ACCESIBLE a nombre de alguien sin discapacidad declarada")
+    @DisplayName("[Caja negra] un ADMIN no puede reservar una ACCESIBLE a nombre de alguien sin discapacidad verificada")
     void adminParaOtroSinDiscapacidadSeRechaza() throws Exception {
         Visitante visitante = crearVisitante("30111222", VISITANTE, false);
         Vehiculo vehiculo = crearVehiculo("ABC123", visitante);
@@ -271,7 +273,7 @@ public class AccesibilidadTests {
 
     @Test
     @WithMockUser(authorities = "ADMIN")
-    @DisplayName("[Caja negra] un ADMIN puede reservar una ACCESIBLE a nombre de alguien con discapacidad declarada")
+    @DisplayName("[Caja negra] un ADMIN puede reservar una ACCESIBLE a nombre de alguien con discapacidad verificada")
     void adminParaOtroConDiscapacidadSePermite() throws Exception {
         Visitante visitante = crearVisitante("30111222", VISITANTE, true);
         Vehiculo vehiculo = crearVehiculo("ABC123", visitante);
@@ -290,7 +292,7 @@ public class AccesibilidadTests {
 
     @Test
     @WithMockUser(username = VISITANTE, authorities = "USER")
-    @DisplayName("[Caja negra] /disponibles no le ofrece ACCESIBLE a un USER sin discapacidad declarada")
+    @DisplayName("[Caja negra] /disponibles no le ofrece ACCESIBLE a un USER sin discapacidad verificada")
     void disponiblesOcultaAccesiblesAUserSinDiscapacidad() throws Exception {
         crearVisitante("30111222", VISITANTE, false);
         crearCochera("A-01", CocheraTipo.AUTO);
@@ -308,7 +310,7 @@ public class AccesibilidadTests {
 
     @Test
     @WithMockUser(username = VISITANTE, authorities = "USER")
-    @DisplayName("[Caja negra] /disponibles si le ofrece ACCESIBLE a un USER con discapacidad declarada")
+    @DisplayName("[Caja negra] /disponibles si le ofrece ACCESIBLE a un USER con discapacidad verificada")
     void disponiblesMuestraAccesiblesAUserConDiscapacidad() throws Exception {
         crearVisitante("30111222", VISITANTE, true);
         crearCochera("A-01", CocheraTipo.AUTO);

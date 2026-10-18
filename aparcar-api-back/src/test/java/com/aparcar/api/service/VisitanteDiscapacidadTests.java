@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -40,8 +41,9 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * Caja blanca de como entra y se edita la declaracion de discapacidad del
- * visitante: en el alta que hace el admin y en "editar mi perfil".
+ * Caja blanca de que ni el alta que hace el admin ni "editar mi perfil" pueden
+ * cambiar el acceso a las cocheras ACCESIBLE: ese dato solo lo cambia la
+ * verificacion con certificado ({@code VerificacionDiscapacidadServiceTests}).
  */
 @UnitTests
 public class VisitanteDiscapacidadTests {
@@ -98,7 +100,7 @@ public class VisitanteDiscapacidadTests {
                 Instant.now(), new java.math.BigDecimal("1000.00"), CocheraTipo.AUTO, null, null, List.of(), null, null, null);
     }
 
-    private static VisitanteAltaDto alta(Boolean tieneDiscapacidad) {
+    private static VisitanteAltaDto alta() {
         VisitanteAltaDto dto = new VisitanteAltaDto();
         dto.setNombre("Juan Perez");
         dto.setDocumento("30111222");
@@ -106,7 +108,6 @@ public class VisitanteDiscapacidadTests {
         dto.setPatente("ABC123");
         dto.setTipoVehiculo(VehiculoTipo.AUTO);
         dto.setCocheraId(UUID.randomUUID());
-        dto.setTieneDiscapacidad(tieneDiscapacidad);
         return dto;
     }
 
@@ -123,21 +124,12 @@ public class VisitanteDiscapacidadTests {
 
     // ---- Alta del admin ----
 
+    // Antes el admin podia marcarla en el alta. Ahora el acceso solo lo da la
+    // verificacion del certificado: el alta no tiene el campo.
     @Test
-    @DisplayName("altaConReserva guarda la discapacidad cuando el admin la marca")
-    void altaGuardaLaDiscapacidadMarcada() {
-        var response = visitanteService.altaConReserva(alta(true), "admin@test.com");
-
-        ArgumentCaptor<Visitante> captor = ArgumentCaptor.forClass(Visitante.class);
-        verify(visitanteRepository).save(captor.capture());
-        assertTrue(captor.getValue().getTieneDiscapacidad());
-        assertTrue(response.visitante().tieneDiscapacidad());
-    }
-
-    @Test
-    @DisplayName("altaConReserva deja la discapacidad en false si el admin no la manda")
-    void altaSinElCampoQuedaEnFalse() {
-        var response = visitanteService.altaConReserva(alta(null), "admin@test.com");
+    @DisplayName("altaConReserva crea la cuenta sin acceso a cocheras accesibles: eso lo da la verificacion")
+    void altaNaceSinAcceso() {
+        var response = visitanteService.altaConReserva(alta(), "admin@test.com");
 
         ArgumentCaptor<Visitante> captor = ArgumentCaptor.forClass(Visitante.class);
         verify(visitanteRepository).save(captor.capture());
@@ -145,39 +137,33 @@ public class VisitanteDiscapacidadTests {
         assertFalse(response.visitante().tieneDiscapacidad());
     }
 
+    @Test
+    @DisplayName("el alta del admin ya no acepta declarar la discapacidad")
+    void altaNoTieneElCampo() {
+        assertThrows(NoSuchMethodException.class,
+                () -> VisitanteAltaDto.class.getMethod("setTieneDiscapacidad", Boolean.class));
+    }
+
     // ---- Editar mi perfil ----
 
     @Test
-    @DisplayName("actualizarPropio permite al visitante declarar su discapacidad")
-    void actualizarPropioDeclaraLaDiscapacidad() {
+    @DisplayName("actualizarPropio no le da acceso a quien no esta verificado")
+    void actualizarPropioNoHabilita() {
         Visitante visitante = cuentaGuardada(false);
         VisitanteUpdateDto update = new VisitanteUpdateDto();
         update.setEmail(EMAIL);
-        update.setTieneDiscapacidad(true);
-
-        var response = visitanteService.actualizarPropio(EMAIL, update);
-
-        assertTrue(visitante.getTieneDiscapacidad());
-        assertTrue(response.tieneDiscapacidad());
-    }
-
-    @Test
-    @DisplayName("actualizarPropio permite al visitante quitar la declaracion")
-    void actualizarPropioQuitaLaDiscapacidad() {
-        Visitante visitante = cuentaGuardada(true);
-        VisitanteUpdateDto update = new VisitanteUpdateDto();
-        update.setEmail(EMAIL);
-        update.setTieneDiscapacidad(false);
 
         var response = visitanteService.actualizarPropio(EMAIL, update);
 
         assertFalse(visitante.getTieneDiscapacidad());
         assertFalse(response.tieneDiscapacidad());
+        assertThrows(NoSuchMethodException.class,
+                () -> VisitanteUpdateDto.class.getMethod("setTieneDiscapacidad", Boolean.class));
     }
 
     @Test
-    @DisplayName("actualizarPropio sin el campo no le borra la declaracion a nadie")
-    void actualizarPropioSinElCampoNoLaToca() {
+    @DisplayName("actualizarPropio no le quita el acceso a quien esta verificado")
+    void actualizarPropioNoDeshabilita() {
         Visitante visitante = cuentaGuardada(true);
         VisitanteUpdateDto update = new VisitanteUpdateDto();
         update.setEmail(EMAIL);
@@ -190,8 +176,8 @@ public class VisitanteDiscapacidadTests {
     }
 
     @Test
-    @DisplayName("obtenerPropio devuelve la declaracion actual para precargar el formulario")
-    void obtenerPropioDevuelveLaDeclaracion() {
+    @DisplayName("obtenerPropio informa el acceso actual (derivado de la verificacion)")
+    void obtenerPropioDevuelveElAcceso() {
         cuentaGuardada(true);
 
         assertTrue(visitanteService.obtenerPropio(EMAIL).tieneDiscapacidad());
