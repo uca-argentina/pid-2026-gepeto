@@ -16,6 +16,8 @@ import jakarta.persistence.Version;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcType;
+import org.hibernate.type.descriptor.jdbc.LocalDateJdbcType;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -104,8 +106,17 @@ public class VerificacionDiscapacidad {
     @Column(length = 500)
     private String motivo;
 
-    /** Vigencia del certificado, opcional: la verificacion vale hasta ese dia inclusive. */
+    /**
+     * Vigencia del certificado, opcional: la verificacion vale hasta ese dia inclusive.
+     *
+     * <p>Se enlaza como LocalDate directo, sin pasar por java.sql.Date: esa
+     * conversion usa la zona por defecto de la JVM, que ZonaHorariaConfig cambia
+     * despues de arrancar. Si el driver se quedo con la zona del arranque (UTC
+     * en el CI), un dia guardado a medianoche del predio volvia como el dia
+     * anterior.
+     */
     @Column(name = "vence_el")
+    @JdbcType(LocalDateJdbcType.class)
     private LocalDate venceEl;
 
     /** Si dos administradores resuelven a la vez, el segundo choca con esta version. */
