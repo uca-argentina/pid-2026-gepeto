@@ -12,3 +12,7 @@ target/
 
 # macOS
 .DS_Store
+
+# Certificados de discapacidad subidos en desarrollo (DISCAPACIDAD_DOCS_DIR):
+# datos de salud, nunca al repo.
+data/

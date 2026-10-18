@@ -42,6 +42,15 @@ spring:
       hibernate:
         dialect: ${DB_DIALECT}
 
+  # La subida de certificados de discapacidad. El limite de Spring queda un poco
+  # por encima de aparcar.discapacidad.documento-max-mb, asi el servicio es el
+  # que contesta "supera los 5 MB" con un mensaje claro, y Spring corta antes de
+  # leer algo mucho mas grande. Si se sube documento-max-mb, subir esto tambien.
+  servlet:
+    multipart:
+      max-file-size: 6MB
+      max-request-size: 7MB
+
   mail:
     host: smtp.gmail.com
     port: 587
@@ -70,6 +79,23 @@ aparcar:
     # Secreto del HMAC de los codigos. El valor por defecto es solo para
     # desarrollo: con el perfil prod la aplicacion no arranca sin la variable.
     codigo-secret: ${ACCESO_CODIGO_SECRET:solo-desarrollo-cambiar-en-produccion}
+
+  discapacidad:
+    # Certificado de discapacidad (por ejemplo el CUD): PDF, JPG o PNG.
+    documento-max-mb: 5
+    # Dias que se guarda el archivo despues de resolver la solicitud (los
+    # rechazados y cancelados se borran en el siguiente barrido). La decision
+    # (quien, cuando, resultado) se conserva siempre.
+    documento-retencion-dias: 30
+    # Las cuentas que se habian autodeclarado antes de la verificacion
+    # conservan el acceso estos dias para subir su certificado.
+    gracia-migracion-dias: 30
+    # Directorio PRIVADO de los certificados: nunca dentro de src/ ni servido
+    # como estatico. El valor por defecto es solo para desarrollo.
+    documentos-dir: ${DISCAPACIDAD_DOCS_DIR:data/discapacidad-docs}
+    subidas-por-hora: 5
+    # Avisos por mail (sin datos de salud) a los admins y al visitante.
+    notificar-por-mail: true
 
 springdoc:
   swagger-ui:
