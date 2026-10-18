@@ -28,6 +28,7 @@ Oficinas, universidades, sanatorios y organizadores de eventos administran sus c
 - 📅 **Reservas por fecha**, con asignación de una cochera compatible
 - 🚫 **Cero sobreocupación** — el sistema jamás asigna dos reservas al mismo lugar
 - 🎫 **Código QR de acceso** — cada reserva tiene su QR y un código corto; el operador registra ingreso y egreso en la puerta
+- ♿ **Cocheras accesibles con certificado verificado** — el visitante sube su certificado de discapacidad y un administrador lo revisa
 
 ## Cómo está armado
 
@@ -221,6 +222,120 @@ El backend actualizado aplica automáticamente la migración Liquibase
 `013-reservas-recurrentes-espera.yaml`. Las asignaciones y promociones se
 serializan con un bloqueo transaccional en la base para proteger la última
 cochera disponible ante solicitudes simultáneas.
+
+### Verificación de discapacidad con certificado
+
+Las cocheras **ACCESIBLE** solo las reserva quien tiene su discapacidad
+**verificada**. Antes era un check autodeclarado en el perfil; ahora:
+
+1. El visitante entra a **Mis datos → Cocheras accesibles** y sube su certificado
+   (por ejemplo el CUD): PDF, JPG o PNG, hasta 5 MB.
+2. La solicitud queda **en revisión**. Los administradores ven el contador en
+   **Verificaciones**, en la navegación del panel, y además reciben un mail si el
+   correo está configurado.
+3. Un administrador abre el certificado y lo **aprueba**, con una fecha de
+   vencimiento opcional, o lo **rechaza** con un motivo, que el visitante lee en su
+   perfil y por mail. Una verificación vigente también se puede **revocar**, con motivo.
+
+| Estado | Qué significa | ¿Reserva ACCESIBLE? |
+|---|---|---|
+| `SIN_SOLICITUD` | Nunca envió un certificado (o retiró su solicitud) | No (salvo el plazo de gracia, abajo) |
+| `EN_REVISION` | Esperando la revisión. Una sola a la vez | No (salvo el plazo de gracia) |
+| `VERIFICADA` | Aprobada; vale hasta `venceEl`, si tiene | **Sí** |
+| `RECHAZADA` | Rechazada con motivo; puede reenviar | No |
+| `REVOCADA` | Un admin quitó una verificación vigente, con motivo | No |
+| `VENCIDA` | Pasó el vencimiento del certificado; puede reenviar | No |
+
+`tieneDiscapacidad` sigue existiendo, pero es un valor **derivado**: solo lo cambia
+esta verificación. Ni el registro, ni el alta del admin, ni editar el perfil lo
+aceptan. Si un cliente viejo lo manda, se ignora. Las reservas, la lista de espera
+y `/disponibles` siguen leyendo ese mismo dato, así que todas respetan el estado
+verificado.
+
+**Reservas ya hechas:** al rechazar, revocar o vencer una verificación, las reservas
+que la persona ya tenía en cocheras accesibles **no se cancelan solas**. El admin
+decide qué hacer con ellas desde *Ver reservas*. Ver el riesgo en la sección de
+privacidad, más abajo.
+
+**Endpoints** (`/api/v1/verificaciones-discapacidad`):
+
+| Método y ruta | Qué hace | Quién |
+|---|---|---|
+| `POST /` (multipart, campo `archivo`) | Crea la solicitud `EN_REVISION`. 409 si ya hay una en revisión o una vigente; 400 vacío, 413 grande, 415 tipo no permitido | Cualquier cuenta, sobre lo suyo |
+| `GET /mia` | Estado, plazo de gracia y última solicitud (con el motivo si fue rechazada) | Cualquier cuenta |
+| `GET /mia/documento` | El propio certificado, mientras exista | Cualquier cuenta |
+| `POST /mia/cancelar` | Retira la propia solicitud en revisión | Cualquier cuenta |
+| `GET /?estado=EN_REVISION` | Cola (máx. 200, más viejas primero) con nombre, email y fecha | ADMIN |
+| `GET /pendientes/cantidad` | Para el contador de la navegación | ADMIN |
+| `GET /{id}/documento` | Ver o descargar el certificado (queda auditado) | ADMIN |
+| `POST /{id}/aprobar` `{venceEl?}` | Aprueba. 409 si ya fue resuelta | ADMIN |
+| `POST /{id}/rechazar` `{motivo}` | Rechaza. El motivo es obligatorio | ADMIN |
+| `POST /{id}/revocar` `{motivo}` | Revoca una verificación vigente | ADMIN |
+
+El rol EMPLEADO no ve certificados: es un dato de salud y no lo necesita para
+operar. Si dos administradores resuelven la misma solicitud a la vez, gana el
+primero y el segundo recibe un 409 con un mensaje claro. La subida tiene un rate
+limit propio: 5 por hora y por cuenta.
+
+#### Privacidad y retención
+
+Un certificado de discapacidad es **información de salud**: un dato sensible para
+la ley argentina de protección de datos personales (Ley 25.326).
+
+- Se pide el certificado, no un diagnóstico, y la aplicación no lee ni guarda nada
+  de su contenido. El admin solo mira el archivo y decide.
+- El servidor valida la extensión, el content-type **y la firma real** del archivo
+  (sus primeros bytes). Lo guarda con un nombre generado (UUID) en un directorio
+  **privado** (`DISCAPACIDAD_DOCS_DIR`), nunca dentro del repo ni servido como estático.
+- Solo se sirve por el endpoint autenticado, con `Cache-Control: no-store` y
+  `X-Content-Type-Options: nosniff`. Solo lo ven los administradores y el dueño.
+  Cada vez que alguien lo abre queda registrado quién y cuándo
+  (`verificacion_documento_accesos`).
+- **Minimización:** el archivo solo hace falta mientras se revisa. Un barrido
+  horario borra los rechazados y cancelados enseguida, y el resto a los
+  `documento-retencion-dias` (30) de la decisión. De la solicitud queda el
+  registro (quién resolvió, cuándo y el resultado), nunca el archivo.
+- Los mails no llevan datos de salud: al admin solo le avisan que hay una
+  solicitud pendiente, y al visitante el resultado.
+
+**Riesgo a tener en cuenta:** como las reservas existentes no se cancelan al
+revocar, alguien con una verificación revocada puede usar una ACCESIBLE ya
+reservada. Hay que revisarlas a mano.
+
+#### Configuración (`aparcar.discapacidad.*`)
+
+| Propiedad | Por defecto | Qué controla |
+|---|---|---|
+| `documento-max-mb` | 5 | Tamaño máximo del certificado. `spring.servlet.multipart` queda apenas arriba (6 MB / 7 MB): si se sube este valor, hay que subir también esos |
+| `documento-retencion-dias` | 30 | Días que se conserva el archivo después de la decisión |
+| `gracia-migracion-dias` | 30 | Plazo de las cuentas autodeclaradas para subir el certificado |
+| `documentos-dir` | `DISCAPACIDAD_DOCS_DIR`, o `data/discapacidad-docs` en dev | Directorio privado de los certificados |
+| `subidas-por-hora` | 5 | Rate limit de la subida, por cuenta |
+| `notificar-por-mail` | true | Avisos por mail (usan la misma casilla que la recuperación de contraseña) |
+
+En desarrollo, `data/` (dentro de `aparcar-api-back/`) está en `.gitignore`. En
+Docker, la imagen fija `DISCAPACIDAD_DOCS_DIR=/var/lib/aparcar/discapacidad`, un
+directorio que solo puede leer el usuario del proceso. `deploy/compose.yaml` monta
+ahí el volumen `discapacidad_docs` para que los certificados sobrevivan a cada
+redespliegue. Ese volumen **no** hace falta respaldarlo a largo plazo: los
+archivos se borran solos.
+
+#### Bases existentes
+
+No hay pasos manuales:
+
+1. Liquibase aplica `014-verificacion-discapacidad.yaml`: crea las tablas
+   `verificaciones_discapacidad` y `verificacion_documento_accesos`, y agrega
+   `visitantes.discapacidad_acceso_provisorio_hasta`. En Postgres crea además un
+   índice parcial que impide dos solicitudes en revisión por cuenta. No toca
+   ningún `tiene_discapacidad`.
+2. Al arrancar, `DiscapacidadMigracionBackfill` les da a las cuentas que hoy
+   tienen `tiene_discapacidad = true` (autodeclaradas, sin verificación) un
+   **plazo de gracia** de `gracia-migracion-dias`. No pierden el acceso de golpe,
+   y su perfil les avisa que suban el certificado antes de esa fecha.
+3. Pasado el plazo sin verificación, el barrido horario les quita el acceso. Si
+   subieron el certificado a tiempo y está en revisión, lo conservan hasta que
+   lo revisen. Es idempotente: reiniciar no extiende el plazo.
 
 ### Estructura
 
