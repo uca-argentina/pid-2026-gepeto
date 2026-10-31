@@ -35,6 +35,8 @@ public record ReservaResponseDto(
         @JsonInclude(JsonInclude.Include.NON_NULL) List<ReservaMovimientoResponseDto> historial,
         UUID recurrenciaId,
         Instant confirmadaDesdeEsperaAt,
-        Instant notificacionLeidaAt
+        Instant notificacionLeidaAt,
+        /** Puntos usados, descuento, y puntos que suma o sumo al ingresar. */
+        ReservaPuntosDto puntos
 ) {
 }

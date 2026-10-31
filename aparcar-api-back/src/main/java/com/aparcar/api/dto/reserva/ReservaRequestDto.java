@@ -42,4 +42,14 @@ public class ReservaRequestDto {
 
     /** Solo se compara: el servidor calcula siempre el importe definitivo. */
     private BigDecimal precioEsperado;
+
+    /**
+     * Puntos a canjear como descuento: un entero positivo. Llega como numero
+     * decimal para poder rechazar un valor con decimales en vez de truncarlo
+     * en silencio. El cliente nunca manda un precio ni un porcentaje.
+     */
+    private BigDecimal puntosAUsar;
+
+    /** Usar todos los puntos que se puedan: el minimo entre el saldo y el tope. */
+    private boolean usarTodosLosPuntos;
 }

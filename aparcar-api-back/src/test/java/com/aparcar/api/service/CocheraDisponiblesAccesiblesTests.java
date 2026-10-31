@@ -56,6 +56,9 @@ public class CocheraDisponiblesAccesiblesTests {
     @Mock
     private com.aparcar.api.service.impl.PlanificacionReservas planificacion;
 
+    @Mock
+    private com.aparcar.api.service.IPuntosService puntosService;
+
     @InjectMocks
     private CocheraService cocheraService;
 
