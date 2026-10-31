@@ -97,6 +97,18 @@ aparcar:
     # Avisos por mail (sin datos de salud) a los admins y al visitante.
     notificar-por-mail: true
 
+  puntos:
+    # Las franjas y sus puntos estan fijas en el codigo (FranjaPuntos).
+    # Una reserva mas corta que esto no suma puntos al ingresar.
+    duracion-minima-min: 60
+    # Reservas por dia que suman puntos de franja; las demas se usan igual.
+    max-acreditaciones-dia: 2
+    # Cada vez que la racha llega a un multiplo de racha-dias, suma racha-bonus.
+    racha-dias: 7
+    racha-bonus: 10
+    # 100 puntos = 10 % de descuento, hasta este tope por reserva.
+    descuento-max-pct: 50
+
 springdoc:
   swagger-ui:
     path: /docs

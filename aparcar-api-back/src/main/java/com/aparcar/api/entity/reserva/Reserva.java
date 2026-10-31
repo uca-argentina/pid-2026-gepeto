@@ -92,6 +92,36 @@ public class Reserva {
     @Column(name = "tipo_tarifa", length = 20, updatable = false)
     private CocheraTipo tipoTarifa;
 
+    // ---- Puntos ----
+    // precioTotal sigue siendo el importe de la tarifa (subtotal). Si se
+    // canjearon puntos, el descuento y lo que efectivamente se paga van aparte.
+
+    /** Puntos canjeados como descuento al crear la reserva. Null si no se uso ninguno. */
+    @Column(name = "puntos_usados", updatable = false)
+    private Integer puntosUsados;
+
+    @Column(name = "descuento_pct", precision = 5, scale = 2, updatable = false)
+    private BigDecimal descuentoPct;
+
+    @Column(name = "descuento_monto", precision = 18, scale = 2, updatable = false)
+    private BigDecimal descuentoMonto;
+
+    /** Lo que se paga: precioTotal menos el descuento. Null si no hubo descuento. */
+    @Column(name = "precio_final", precision = 18, scale = 2, updatable = false)
+    private BigDecimal precioFinal;
+
+    /** Cuando se devolvieron los puntos canjeados, por cancelar antes de usarla. */
+    @Column(name = "puntos_reintegrados_at")
+    private Instant puntosReintegradosAt;
+
+    /** Puntos de franja que sumo al registrar el ingreso (0 si no sumo). Null antes del ingreso. */
+    @Column(name = "puntos_acreditados")
+    private Integer puntosAcreditados;
+
+    /** Por que no sumo puntos al ingresar (duracion minima, tope diario). */
+    @Column(name = "puntos_motivo", length = 200)
+    private String puntosMotivo;
+
     @CreationTimestamp
     @Column(name = "fecha_creacion", nullable = false, updatable = false)
     private Instant fechaCreacion;
