@@ -23,6 +23,7 @@ import com.aparcar.api.repository.CocheraRepository;
 import com.aparcar.api.repository.ReservaRepository;
 import com.aparcar.api.repository.VehiculoRepository;
 import com.aparcar.api.repository.VisitanteRepository;
+import com.aparcar.api.service.IPuntosService;
 import com.aparcar.api.service.IReservaService;
 import com.aparcar.api.service.ITarifaService;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +52,7 @@ public class ReservaService implements IReservaService {
     private final CodigoAcceso codigoAcceso;
     private final ReglasAcceso reglasAcceso;
     private final PlanificacionReservas planificacion;
+    private final IPuntosService puntosService;
 
     @Override
     @Transactional
@@ -103,7 +105,19 @@ public class ReservaService implements IReservaService {
 
         // La categoria esta validada; el servidor calcula el importe incluso cuando se entra en espera.
         var cotizacion = tarifaService.cotizar(tipo, dto.getDesde(), dto.getHasta());
-        if (dto.getPrecioEsperado() != null && dto.getPrecioEsperado().compareTo(cotizacion.total()) != 0) {
+        ReglasPuntos.Descuento descuento = null;
+        if (dto.getPuntosAUsar() != null || dto.isUsarTodosLosPuntos()) {
+            // Solo el titular canjea, y sobre una cochera asignada: la espera
+            // podria no confirmarse nunca, y la recurrencia la arma la administracion.
+            if (requesterIsAdmin || recurrenciaId != null || cochera == null) {
+                throw new ValidationException("Los puntos solo se usan en una reserva propia con cochera asignada.");
+            }
+            descuento = puntosService.prepararCanje(visitante, cotizacion.total(), dto.getPuntosAUsar(),
+                    dto.isUsarTodosLosPuntos());
+        }
+        // Con descuento, el cliente confirma el precio final que le mostro la cotizacion.
+        var aPagar = descuento == null ? cotizacion.total() : descuento.precioFinal();
+        if (dto.getPrecioEsperado() != null && dto.getPrecioEsperado().compareTo(aPagar) != 0) {
             throw new ValidationException("El precio cambió. Revisá la nueva cotización antes de confirmar.");
         }
 
@@ -117,6 +131,12 @@ public class ReservaService implements IReservaService {
         reserva.setRecurrenciaId(recurrenciaId);
         reserva.setPrecioTotal(cotizacion.total());
         reserva.setTipoTarifa(cotizacion.tipo());
+        if (descuento != null) {
+            reserva.setPuntosUsados(descuento.puntos());
+            reserva.setDescuentoPct(descuento.porcentaje());
+            reserva.setDescuentoMonto(descuento.monto());
+            reserva.setPrecioFinal(descuento.precioFinal());
+        }
 
         Visitante actor = requesterIsAdmin ? buscarActor(requesterEmail) : visitante;
         reserva.registrarAccion(ReservaAccion.ALTA, actor, requesterIsAdmin);
@@ -124,6 +144,7 @@ public class ReservaService implements IReservaService {
         // El codigo se deriva del id, que recien existe despues de guardar.
         // Misma transaccion: si algo falla, no queda una reserva sin codigo.
         if (cochera != null) codigoAcceso.asignar(guardada, reglasAcceso.instante());
+        if (descuento != null) puntosService.confirmarCanje(visitante, guardada, descuento);
         return guardada;
     }
 
@@ -274,6 +295,8 @@ public class ReservaService implements IReservaService {
         Visitante actor = requesterIsAdmin ? buscarActor(requesterEmail) : reserva.getVisitante();
         reserva.setEstado(ReservaEstado.CANCELADA);
         reserva.registrarAccion(ReservaAccion.CANCELACION, actor, requesterIsAdmin);
+        // Cancelada antes de usarla: los puntos canjeados vuelven.
+        puntosService.reintegrar(reserva);
 
         reservaRepository.save(reserva);
         planificacion.promover();
@@ -450,7 +473,8 @@ public class ReservaService implements IReservaService {
                         new ReservaMovimientoResponseDto(movimiento.getId(), movimiento.getAccion(),
                                 movimiento.getFecha(), movimiento.getActorId(), movimiento.getActorNombre(),
                                 movimiento.getActorEmail(), movimiento.getActorRol())).toList() : null,
-                reserva.getRecurrenciaId(), reserva.getConfirmadaDesdeEsperaAt(), reserva.getNotificacionLeidaAt());
+                reserva.getRecurrenciaId(), reserva.getConfirmadaDesdeEsperaAt(), reserva.getNotificacionLeidaAt(),
+                puntosService.deReserva(reserva));
     }
 
     /**

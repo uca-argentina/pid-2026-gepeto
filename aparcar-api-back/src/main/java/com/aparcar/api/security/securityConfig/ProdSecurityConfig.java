@@ -181,6 +181,17 @@ public class ProdSecurityConfig {
                                 "/api/v1/verificaciones-discapacidad/**"
                         ).hasAuthority("ADMIN")
 
+                        // Puntos: cada cuenta ve su billetera y sus movimientos;
+                        // el resumen del programa es solo del ADMIN. Ningun
+                        // endpoint acredita: se suman al registrar el ingreso.
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/puntos/resumen")
+                        .hasAuthority("ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/api/v1/puntos/billetera",
+                                "/api/v1/puntos/movimientos"
+                        ).authenticated()
+                        .requestMatchers("/api/v1/puntos", "/api/v1/puntos/**").denyAll()
+
                         // Validar codigos de acceso (ingreso y egreso) es la
                         // tarea central del personal en la puerta.
                         .requestMatchers("/api/v1/accesos/**").hasAnyAuthority("ADMIN", "EMPLEADO")

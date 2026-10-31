@@ -1,5 +1,66 @@
 # Mapa de archivos
 
+## Puntos, rachas y descuentos (gamificación)
+
+Backend (rutas relativas a `aparcar-api-back/src/main/java/com/aparcar/api/`):
+
+- `entity/puntos/FranjaPuntos.java` 🆕: las cuatro franjas fijas con sus puntos
+  (noche 20, mañana 10, mediodía 15, tarde 10), `[inicio, fin)` con la noche
+  cruzando la medianoche. `TipoMovimientoPuntos.java` 🆕: `ACREDITACION_FRANJA`,
+  `BONUS_RACHA`, `CANJE`, `REINTEGRO`.
+- `entity/puntos/BilleteraPuntos.java` 🆕: saldo (CHECK `>= 0`), racha actual, mejor
+  racha, último día contado y versión. Una por cuenta, sin FK.
+  `entity/puntos/MovimientoPuntos.java` 🆕: el libro inmutable (`@Immutable`), con
+  restricción única por cuenta, reserva y tipo.
+- `entity/reserva/Reserva.java` ✏️: puntos usados, porcentaje y monto del
+  descuento, precio final (los cuatro fijos desde el alta), cuándo se
+  reintegraron, puntos acreditados al ingresar y el motivo si no sumó.
+- `service/impl/ReglasPuntos.java` 🆕: las cuentas sin base: franja de la hora de
+  inicio, duración mínima, racha y bonus, y el descuento lineal con `BigDecimal`
+  HALF_UP a 2 decimales.
+- `service/IPuntosService.java` 🆕 / `service/impl/PuntosService.java` 🆕:
+  billetera, movimientos, resumen, cotización con puntos, canje (validar con la
+  billetera bloqueada y descontar), reintegro y acreditación al ingresar
+  (idempotente, tope diario, racha y bonus). Los choques terminan en 409.
+- `service/impl/CreadorBilleteras.java` 🆕: crea la billetera en su propia
+  transacción, tolerando que otra la cree a la vez.
+- `service/impl/ReservaService.java` ✏️ (canje al crear, reintegro al cancelar y el
+  bloque `puntos` en la respuesta), `AccesoService.java` ✏️ (acredita al registrar
+  el ingreso, en la misma transacción) y `CocheraService.java` ✏️ (reintegra al
+  cancelar por deshabilitación).
+- `controller/PuntosController.java` 🆕 y `dto/puntos/` 🆕 (`BilleteraResponseDto`,
+  `MovimientoPuntosResponseDto`, `ResumenPuntosResponseDto`).
+  `controller/TarifaController.java` ✏️: la cotización acepta `puntos` y `usarTodos`.
+- `dto/reserva/CotizacionResponseDto.java` ✏️ (subtotal, descuento, saldo y puntos a
+  ganar; el constructor anterior sigue sirviendo), `ReservaRequestDto.java` ✏️
+  (`puntosAUsar`, `usarTodosLosPuntos`), `ReservaResponseDto.java` ✏️ y
+  `ReservaPuntosDto.java` 🆕.
+- `repository/BilleteraPuntosRepository.java` 🆕 (bloqueo de fila, rachas vigentes)
+  y `repository/MovimientoPuntosRepository.java` 🆕 (historial, tope diario, sumas).
+- `config/PuntosProperties.java` 🆕 (`aparcar.puntos.*`) y `config/PuntosConfig.java` 🆕.
+- `security/securityConfig/DevSecurityConfig.java` ✏️ y `ProdSecurityConfig.java` ✏️:
+  billetera y movimientos para cualquier cuenta, resumen solo ADMIN, todo lo demás
+  bajo `/api/v1/puntos` cerrado.
+- `src/main/resources/db/changelog/015-puntos.yaml` 🆕, `db.changelog-master.yaml` ✏️
+  y `application.yml` ✏️.
+
+Frontend (rutas relativas a `aparcar-front/`):
+
+- `app/dashboard-user/puntos/page.jsx` 🆕 y `components/BilleteraPuntos.jsx` 🆕:
+  "Mis puntos" (saldo, racha con su avance, mejor racha, reglas, tabla de franjas
+  e historial). `app/dashboard-user/page.jsx` ✏️ suma el acceso en el encabezado.
+- `components/UsarPuntos.jsx` 🆕: la caja "Usar puntos" del alta.
+  `components/ReservasContent.jsx` ✏️ la muestra solo al visitante (no en espera ni
+  recurrentes), cotiza con y sin puntos y envía `puntosAUsar` o `usarTodosLosPuntos`.
+- `components/CotizacionReserva.jsx` ✏️: subtotal y descuento, y "Ganás X puntos al
+  ingresar" (destacado en la franja que más suma) o el motivo si no suma.
+  `hooks/useCotizacion.js` ✏️: parámetro opcional de canje.
+- `components/ReservasListado.jsx` ✏️ y `ReservasListado.module.css` ✏️: en "Mis
+  reservas", total con descuento, puntos usados, reintegro y lo que sumó o suma.
+- `app/dashboard-admin/dashboard/ResumenPuntos.jsx` 🆕 y `page.jsx` ✏️: tarjeta
+  "Programa de puntos" en el Dashboard.
+- `utils/puntos.js` 🆕, `components/DashboardIcon.jsx` ✏️ (ícono) y `app/globals.css` ✏️.
+
 ## Verificación de discapacidad con certificado
 
 Backend (rutas relativas a `aparcar-api-back/src/main/java/com/aparcar/api/`):
@@ -595,6 +656,7 @@ Configuración general de Spring.
 | `WebConfig.java` | Maneja headers `X-Forwarded-*` |
 | `AccesoProperties.java` 🆕 | Reglas del control de acceso (`aparcar.acceso.*`): anticipo, tolerancia, gracia, permanencia mínima, idempotencia, rate limit y secreto del código |
 | `AccesoConfig.java` 🆕 | Activa `AccesoProperties` y no deja arrancar en `prod` con el secreto de desarrollo (ni con uno vacío) |
+| `PuntosProperties.java` 🆕 / `PuntosConfig.java` 🆕 | Reglas de los puntos (`aparcar.puntos.*`): duración mínima, tope diario de acreditaciones, días y bonus de la racha y tope de descuento |
 | `ZonaHorariaConfig.java` ✏️ | Expone además el `Clock` del predio que usan las reglas de acceso. Fija la zona horaria de la aplicación (`app.zona-horaria`, por defecto `America/Argentina/Buenos_Aires`). Sin esto el contenedor arranca en UTC y las franjas, que son reloj de pared, quedan desfasadas respecto del navegador |
 | `middleware/DevExceptionHandler.java` | Convierte excepciones a respuestas JSON detalladas en desarrollo. Agregado el handler de `AccessDeniedException`, que devuelve 403 con el mensaje del service (ej. "No podés modificar un vehículo que no es tuyo") |
 | `middleware/ProdExceptionHandler.java` ✏️ | Manejo de errores para producción, con el mismo handler de `AccessDeniedException`. Suma el de `HttpMessageNotReadableException` 🆕: un JSON mal formado o con un valor imposible de convertir (ej. un tipo de cochera inexistente) es un 400, no un 500 |
@@ -610,6 +672,8 @@ Endpoints REST de la aplicación.
 | `AuthController.java` | `/register`, `/login`, `/forgot-password`, `/reset-password` |
 | `CocheraController.java` ✏️ | Gestión de cocheras y consulta de cocheras disponibles. Suma `POST /alta-por-planta` 🆕. `/disponibles` recibe el `Authentication` (null si es anónimo) para no ofrecerle cocheras ACCESIBLE a un visitante sin discapacidad declarada. Incluye además `GET /sectores` y el alta en lote vieja `POST /bulk` |
 | `AccesoController.java` 🆕 | Control de acceso: `POST /api/v1/accesos/consulta`, `POST /api/v1/accesos/registro` y `GET /api/v1/accesos/movimientos` (solo ADMIN) |
+| `PuntosController.java` 🆕 | `GET /api/v1/puntos/billetera`, `/movimientos` (cualquier cuenta, lo propio) y `/resumen` (ADMIN). Solo lectura: los puntos se ganan al ingresar |
+| `TarifaController.java` ✏️ | La cotización acepta `puntos` (se lee como texto para rechazar decimales con un mensaje propio) y `usarTodos`, y agrega el descuento y los puntos a ganar de quien cotiza |
 | `ReservaController.java` | Alta y consulta de reservas |
 | `VerificacionDiscapacidadController.java` 🆕 | Verificación de discapacidad con certificado (`/api/v1/verificaciones-discapacidad`): subida multipart, estado propio y propio certificado para cualquier cuenta; cola, contador, certificado ajeno, aprobar, rechazar y revocar solo ADMIN |
 | `UserController.java` | Gestión ADMIN de usuarios: activar, listar inactivos, eliminar, listar todos y editar |
@@ -674,6 +738,10 @@ Todo lo que el backend sabe hacer hoy. La columna "Quién puede" sale de `DevSec
 | `POST /api/v1/accesos/consulta` 🆕 | `{codigo}` (con o sin `APARCAR:`, guiones o espacios). Datos de la reserva, acción que corresponde o motivo. 400 formato inválido, 404 inexistente | ADMIN |
 | `POST /api/v1/accesos/registro` 🆕 | `{codigo, accion}`. Registra ingreso o egreso; idempotente dentro de 2 minutos. 400 regla violada, 404 inexistente, 409 concurrencia | ADMIN |
 | `GET /api/v1/accesos/movimientos` 🆕 | Ingresos y egresos del día | ADMIN |
+| `GET /api/v1/puntos/billetera` 🆕 | Saldo, racha vigente, mejor racha, días para el bonus, reglas y franjas | Autenticado (lo propio) |
+| `GET /api/v1/puntos/movimientos` 🆕 | Movimientos propios, más recientes primero (máx. 100) | Autenticado (lo propio) |
+| `GET /api/v1/puntos/resumen` 🆕 | Emitidos, canjeados, en circulación, usuarios con racha y mejor racha | ADMIN |
+| `GET /api/v1/tarifas/cotizacion` ✏️ | Acepta `puntos` o `usarTodos=true`: devuelve el total con descuento, el subtotal y lo que sumaría. Sin ellos, `total` no cambia | ADMIN, EMPLEADO, USER |
 | `GET /docs` | Swagger UI: la API documentada e interactiva | Público |
 | `GET /actuator/health` | Chequeo de salud del servicio | Público |
 
@@ -723,6 +791,16 @@ Objetos usados para entrada y salida de información de la API.
 | `CocheraResponseDto.java` | Datos devueltos de una cochera |
 | `ReservaRequestDto.java` | Datos necesarios para crear una reserva |
 | `ReservaResponseDto.java` | Respuesta completa de una reserva |
+| `ReservaPuntosDto.java` 🆕 | Bloque `puntos` de cada reserva: usados, descuento, precio final, reintegrados, acreditados, a ganar y motivo |
+| `CotizacionResponseDto.java` ✏️ | Suma subtotal, porcentaje y monto del descuento, puntos aplicados, saldo, máximo canjeable, puntos a ganar y motivo. El constructor de 7 argumentos sigue armando una cotización sin descuento |
+
+### `dto/puntos/` 🆕
+
+| Archivo | Qué hace |
+|---|---|
+| `BilleteraResponseDto.java` | Saldo, racha, bonus, reglas y franjas |
+| `MovimientoPuntosResponseDto.java` | Un movimiento del libro |
+| `ResumenPuntosResponseDto.java` | Totales del programa para el ADMIN |
 
 ---
 
@@ -752,6 +830,15 @@ Entidades JPA que representan los datos persistidos.
 | `Reserva.java` | Entidad de reservas. La `fecha` (un día) se reemplazó por la franja `desde`/`hasta`. Expone `seSolapaCon(desde, hasta)` y `estaVigenteEn(momento)`, que es donde está escrita la regla de superposición |
 | `ModalidadReserva.java` | Enum `FRANJA`, `MEDIA_JORNADA`, `JORNADA_COMPLETA`, deducido de la duración de la franja. No se persiste |
 | `ReservaEstado.java` | Enum `CONFIRMADA`, `CANCELADA`, `FINALIZADA`. `FINALIZADA` la pone una tarea programada cuando pasa el `hasta`; es informativa, la disponibilidad no depende de ella |
+
+### `entity/puntos/` 🆕
+
+| Archivo | Qué hace |
+|---|---|
+| `FranjaPuntos.java` | Enum de las franjas por hora de inicio, con `de(hora)` y la noche que cruza la medianoche |
+| `TipoMovimientoPuntos.java` | Tipos de movimiento del libro |
+| `BilleteraPuntos.java` | Saldo (nunca negativo), racha y mejor racha, con versión. `ultimoDiaRacha` lleva `@JdbcType(LocalDateJdbcType.class)` por el mismo motivo que `venceEl` |
+| `MovimientoPuntos.java` | Libro inmutable: puntos con signo, reserva y descripción. Sin FK, como la auditoría |
 
 ---
 
@@ -807,6 +894,8 @@ Acceso a datos usando Spring Data JPA.
 | `ReservaRepository.java` ✏️ | Acceso a reservas y consultas relacionadas con disponibilidad. Agregado `existsByVehiculoId`, que usa `VehiculoService.eliminar` para no borrar un vehículo con reservas. Suma las consultas de vehículos adentro (EN_CURSO, que ocupan hasta el egreso), la búsqueda por código y las candidatas del barrido y del backfill |
 | `ReservaMovimientoRepository.java` 🆕 | Ingresos y egresos recientes, con la reserva, el vehículo y la cochera |
 | `AccesoIntentoRepository.java` 🆕 | Registro de intentos de validación de códigos |
+| `BilleteraPuntosRepository.java` 🆕 | Billetera por cuenta, `findParaActualizar` con bloqueo de fila, rachas vigentes y mejor racha |
+| `MovimientoPuntosRepository.java` 🆕 | Historial propio, existencia por reserva y tipo, acreditaciones del día y sumas por cuenta y por tipo |
 | `VehiculoRepository.java` | Acceso a vehículos |
 | `VisitanteRepository.java` | Acceso a visitantes |
 
@@ -870,6 +959,7 @@ Lógica de negocio.
 | `ICocheraService.java` / `impl/CocheraService.java` ✏️ | Gestión de cocheras. La disponibilidad se calcula por rango: una cochera figura libre solo si no tiene ninguna reserva confirmada que pise la franja pedida. Suma `crearPorPlanta` 🆕 (valida, numera, guarda todo con `saveAllAndFlush` y traduce un choque de número duplicado a 400) y el filtro de ACCESIBLE en `listarDisponibles` según quién pregunta. `crearEnLote` (el `/bulk` viejo) sigue |
 | `impl/NumeracionCocheras.java` 🆕 | La numeración automática `{PREFIJO}-{secuencial}`, como puro cálculo sin base (por eso se testea aislada). El `switch` de prefijos es exhaustivo: si se agrega un tipo al enum, no compila hasta asignarle el suyo |
 | `IReservaService.java` / `impl/ReservaService.java` ✏️ | Lógica de reservas. Valida compatibilidad de tipos y la franja: que el fin sea posterior al inicio, que no esté enteramente vencida, que la cochera esté libre en todo el rango y que el vehículo no esté comprometido en otra. Suma `validarAccesibilidad` 🆕: una ACCESIBLE solo para un dueño con la discapacidad declarada |
+| `IPuntosService.java` 🆕 / `impl/PuntosService.java` 🆕 | Puntos: billetera, movimientos, resumen, cotización con descuento, canje, reintegro y acreditación al ingresar. `impl/ReglasPuntos.java` 🆕 hace las cuentas; `impl/CreadorBilleteras.java` 🆕 crea la billetera en su propia transacción |
 | `IUserService.java` / `impl/UserService.java` | Gestión administrativa de usuarios: listar, editar, activar y eliminar. Al eliminar, desvincula primero el visitante propio de la cuenta (si tiene uno) antes de borrarla |
 | `IVehiculoService.java` / `impl/VehiculoService.java` | Gestión de vehículos. Agregados `editar` y `eliminar`, los dos con `verificarPropietario`: un ADMIN pasa siempre; un USER solo si el `appUser` del visitante dueño coincide con el email del que pide, y si no, `AccessDeniedException`. `eliminar` además bloquea si el vehículo tiene reservas |
 | `IVisitanteService.java` / `impl/VisitanteService.java` ✏️ | Gestión de visitantes, más `obtenerPropio(email)`, `crearPropio(email, dto)` y `actualizarPropio(email, dto)`: el visitante carga y edita sus propios datos, vinculados a su cuenta. El alta del admin y `actualizarPropio` guardan la declaración de discapacidad |
@@ -914,6 +1004,7 @@ Un administrador puede posteriormente modificar sus authorities, activarlos o el
 | `006-reservas-por-franja-horaria.yaml` | Convierte la reserva por día en una franja `desde`/`hasta`. Las reservas existentes se conservan como el día completo que ocupaban, que es lo que significaban antes. Crea los índices `(cochera_id, estado, desde, hasta)` y su equivalente por vehículo, que son los que sostienen la consulta de solapamiento. El backfill va en dos versiones porque la aritmética de fechas no es portable: prod usa Postgres y los tests H2 |
 | `007-visitante-tiene-discapacidad.yaml` 🆕 | Agrega `visitantes.tiene_discapacidad` (boolean, no nulo, `false` por defecto): las cuentas que ya existían quedan como "sin declarar" |
 | `014-verificacion-discapacidad.yaml` 🆕 | Tablas `verificaciones_discapacidad` y `verificacion_documento_accesos`, columna `visitantes.discapacidad_acceso_provisorio_hasta`, e índice parcial en Postgres de una sola solicitud EN_REVISION por cuenta. No toca `tiene_discapacidad`: el plazo de gracia lo da `DiscapacidadMigracionBackfill` |
+| `015-puntos.yaml` 🆕 | Tablas `billeteras_puntos` (única por cuenta, CHECK saldo `>= 0`) y `movimientos_puntos` (única por cuenta, reserva y tipo; índice por cuenta y fecha), y columnas del canje y la acreditación en `reservas`. Sin backfill |
 | `011-acceso-reservas.yaml` 🆕 | Agrega a `reservas` `codigo` (índice único), `codigo_emitido_at`, `ingreso_at`, `egreso_at` y `minutos_exceso`; un índice de `reserva_movimientos` por acción y fecha, y la tabla `acceso_intentos`. Solo estructura: el código lo asigna `CodigosAccesoBackfill` al arrancar |
 
 ### Por qué `003` no tenía foreign key física hacia `app_users` (histórico)
@@ -968,6 +1059,11 @@ Mismas marcas que el resto del documento: 🆕/✏️ = agregado/modificado en e
 | `filters/VerificacionRateLimitFilterTests.java` 🆕 | **Caja blanca** del límite de subidas: solo el POST, 5 por hora y por cuenta, sin chocar con los otros filtros |
 | `service/ValidadorDocumentoTests.java` 🆕 | **Caja blanca** del validador: tipos, borde del tamaño, firma real distinta de la extensión y nombres con path traversal |
 | `service/VerificacionDiscapacidadServiceTests.java` 🆕 | **Caja blanca** del servicio con reloj fijo: transiciones válidas e inválidas, una sola en revisión, reenvío, motivo obligatorio, 409, gracia, vencimiento, retención y migración |
+| `entity/FranjaPuntosTests.java` 🆕 | **Caja blanca** de las franjas: los bordes (05:59, 06:00, 09:59, 10:00, 13:59, 14:00, 21:59, 22:00, 00:00) y que cada minuto del día caiga en una sola |
+| `service/ReglasPuntosTests.java` 🆕 | **Caja blanca** de las reglas: hora de inicio, duración mínima, racha (mismo día, consecutivo, corte, medianoche, bonus en 7/14/21, vigente) y descuento (lineal, HALF_UP, tope) |
+| `service/PuntosServiceTests.java` 🆕 | **Caja blanca** con reloj fijo: acreditación única, tope diario, corta, bonus, 409; canje (todos, tope, saldo, cero, negativos, decimales); reintegro una vez; billetera vacía y cotización |
+| `integration/PuntosControllerTests.java` 🆕 | **Caja negra**: roles, ningún endpoint acredita, cotización con y sin puntos y sus 400, flujo completo (canje → ingreso → puntos → racha), reintegro al cancelar, sin reintegro al vencer, canjes y acreditaciones simultáneos, y que el saldo sea la suma del libro |
+| `integration/PuntosMigracionTests.java` 🆕 | La migración 015 sobre una base con reservas: sin backfill, restricciones y se puede volver a correr |
 | `component/ReservasVencidasTests.java` ✏️ | **Caja blanca** del barrido: marca VENCIDA (no FINALIZADA) las CONFIRMADAS sin ingreso fuera de tolerancia, con reloj fijo |
 | `component/CodigosAccesoBackfillTests.java` 🆕 | **Caja blanca** del backfill de códigos: asigna, fecha la emisión (la tolerancia corre desde la migración) y es idempotente |
 | `config/AccesoConfigTests.java` 🆕 | El secreto de los códigos: producción no arranca con el de desarrollo ni con uno vacío |
@@ -1042,6 +1138,7 @@ Sección para usuarios con rol `ADMIN`.
 |---|---|
 | `page.jsx` ✏️ | Entrada del dashboard ADMIN, protegida con `requireAuth(["ADMIN"])`. Server Component: solo valida el rol y arma la barra de navegación (suma **Control de acceso**). El contenido lo delega en `PanelOperativo` |
 | `PanelOperativo.jsx` | Agrupa las tres secciones operativas del panel: la cuadrícula de ocupación, el alta de visitantes y **el formulario de reservas**. Existe como componente de cliente aparte porque `page.jsx` es Server Component y no puede tener estado: acá vive el contador que le avisa a la cuadrícula que se creó una reserva y tiene que recargarse |
+| `dashboard/ResumenPuntos.jsx` 🆕 | Tarjeta "Programa de puntos" del Dashboard: emitidos, canjeados, en circulación, usuarios con racha y mejor racha. Se pide una vez al entrar |
 | `accesos/page.jsx` 🆕 | Ruta `/dashboard-admin/accesos`; valida server-side rol `ADMIN` |
 | `accesos/ControlAccesoContent.jsx` 🆕 | Control de acceso en la puerta: pestañas para escanear o escribir el código, tarjeta con los datos y la acción (ingreso/egreso), confirmación explícita protegida contra el doble clic, motivo destacado si no vale, y movimientos del día. Responsiva, con botones grandes |
 | `VisitantesContent.jsx` ✏️ | Alta de visitante + vehículo hecha por el admin (formulario completo). Suma el checkbox opcional "Persona con discapacidad": viaja en el alta y, mientras no está marcado, el desplegable no ofrece cocheras ACCESIBLE (con una nota que explica cómo verlas) |
@@ -1093,6 +1190,7 @@ Sección destinada a usuarios internos con rol `USER`.
 | `page.jsx` | Entrada del dashboard USER, protegida con `requireAuth(["USER"])`. Combina vehículos y reservas; el encabezado incluye el menú **Mi cuenta** |
 | `MiPerfilContent.jsx` | Reexporta `components/MisVehiculos.jsx`, compartido con la sección recurrente ADMIN. El perfil del visitante conserva sus endpoints, validaciones, confirmación de baja y avisos al formulario de reservas |
 | `PanelVisitante.jsx` | Agrupa vehículos y reservas y mantiene el contador que refresca las patentes cuando cambia un vehículo |
+| `puntos/page.jsx` 🆕 | "Mis puntos": valida rol `USER` y muestra `components/BilleteraPuntos.jsx` |
 | `ReservasContent.jsx` | **Se mudó a `components/`**, porque ahora lo usan los dos dashboards. Ver esa sección |
 
 ---
@@ -1119,6 +1217,9 @@ Sección destinada a usuarios internos con rol `USER`.
 | `LectorQR.jsx` 🆕 | Lector con la cámara: la pide recién al activarla, prefiere la trasera, usa `BarcodeDetector` o `jsqr`, la libera al leer, al detener y al desmontar, y explica cuando no hay permiso, cámara o contexto seguro |
 | `OcupacionCocheras.jsx` ✏️ | Panel de ocupación: muestra las reservas EN_CURSO como "Vehículo adentro" y avisa cuántos minutos se pasó de hora |
 | `AtajosJornada.jsx` | Los dos atajos de jornada (**media jornada** / **jornada completa**), compartidos por el formulario de reserva y el alta de visitante. Solo mueven el campo `Hasta`, sumando al inicio los minutos exactos del umbral con el que el backend clasifica la modalidad. El que coincide con la franja cargada queda marcado (`aria-pressed`), así que además de ser un atajo sirve de lectura de lo que se está reservando. Quedan deshabilitados sin inicio, porque no habría a qué sumarle. El `idPrefijo` evita que choquen los `id` cuando los dos formularios conviven en la misma página |
+| `BilleteraPuntos.jsx` 🆕 | Saldo, racha con su avance hacia el bonus, mejor racha, reglas, tabla de franjas e historial |
+| `UsarPuntos.jsx` 🆕 | Caja "Usar puntos" del alta: cantidad, *Usar todos* y el aviso si la cantidad no sirve |
+| `CotizacionReserva.jsx` ✏️ | Muestra subtotal y descuento cuando hay puntos, y lo que suma la reserva al ingresar |
 
 Las pantallas nuevas basadas en Server Components utilizan preferentemente `requireAuth()` desde `utils/serverAuth.js`.
 
@@ -1148,6 +1249,7 @@ Las pantallas nuevas basadas en Server Components utilizan preferentemente `requ
 | `env.js` | Resuelve variables públicas tanto en desarrollo como en Docker |
 | `serverAuth.js` | Protección server-side mediante `requireAuth(allowedRoles)` |
 | `codigoAcceso.js` 🆕 | Normalización y formato del código de acceso, contenido del QR y texto de la ventana de ingreso |
+| `puntos.js` 🆕 | Validación previa de la cantidad de puntos, formatos y los textos de puntos de cada reserva |
 | `ocupacion.js` ✏️ | Ocupación por día. EN_CURSO ocupa hasta ahora si se pasó de hora (`hastaEfectivo`); VENCIDA no ocupa |
 | `franjaHoraria.js` | Todo lo que necesita la franja horaria en el front: el tamaño del bloque (`PASO_MINUTOS`), bajar un horario al bloque en el que cae, el arranque por defecto, los umbrales de jornada y la traducción de la modalidad que manda el backend. El formato legible (`formatearRango`) se arma a mano y no con `toLocaleString`, porque `es-AR` devuelve reloj de 12 horas (`10:00 a. m.`), peor de leer para horarios de cochera, y el resultado varía según el ICU del entorno. Distingue dos reglas que conviene no confundir ✏️: `redondearAlBloqueLocal` lleva al bloque más cercano lo que escribe una persona, y `alBloque` trunca hacia abajo el arranque por defecto. El redondeo se resuelve sobre un `Date` y no sobre el texto porque puede empujar a la hora siguiente, y hasta al día siguiente |
 
@@ -1183,6 +1285,13 @@ Convención: `test/` refleja la estructura de `app/`, `store/` y `utils/` (misma
 | `components/ContadorVerificaciones.test.jsx` 🆕 | El contador de pendientes al entrar, cada minuto y al resolver una |
 | `components/VerificacionDiscapacidad.test.jsx` 🆕 | El bloque del perfil en cada estado, validación previa, envío multipart, errores del backend, doble clic y retiro |
 | `utils/verificacionDiscapacidad.test.js` 🆕 | Validación del archivo y formato de fechas |
+| `components/BilleteraPuntos.test.jsx` 🆕 | Saldo, racha y su progreso, reglas, tabla de franjas, historial, vacía, a un día del bonus y error con reintento |
+| `components/ReservasPuntos.test.jsx` 🆕 | "Usar puntos": cantidad, *Usar todos*, inválidos, lo que se gana (destacado), sin saldo, modo admin y Mis reservas |
+| `dashboard-admin/dashboard/ResumenPuntos.test.jsx` 🆕 | La tarjeta del admin y su error con reintento |
+| `utils/puntos.test.js` 🆕 | Validación de la cantidad, formatos y textos de una reserva |
+| `hooks/useCotizacion.test.jsx` ✏️ | Suma el canje: manda `puntos` o `usarTodos`, y nada sin canje |
+| `dashboard-user/paginas.test.jsx` ✏️ | Suma el acceso y la pantalla de Mis puntos |
+| `dashboard-admin/dashboard/pagina.test.jsx` ✏️ | La ruta muestra la tarjeta de puntos |
 | `dashboard-admin/cocheras/CocherasManagement.test.jsx` ✏️ | CRUD completo: filtros, alta, edición (con `window.confirm` al deshabilitar), baja (con confirmación), la navegación de regreso al panel, y el **alta por planta** (cantidades en 0, botón deshabilitado, payload, números asignados por el backend y su error) |
 | `dashboard-admin/usuarios/UserManagement.test.jsx` | Alta de usuario, activar, editar roles, eliminar (con confirmación), y la navegación de regreso al panel |
 | `components/ReservasContent.test.jsx` ✏️ | Resolución de visitante/vehículo por patente, cochera deshabilitada hasta tener match, **regresión del bug de caché de vehículos al hacer foco**, envío de la reserva, y toda la franja horaria: arranque en el bloque de 15 en curso, `step` declarado, horarios fuera de bloque bajados al bloque, rango invertido, atajos de jornada llevados hasta el campo y la modalidad que muestra el listado. Se movió junto con el componente. Suma las cocheras accesibles: ocultas para el admin si el dueño no declaró discapacidad, sin filtrar de nuevo en modo visitante, y el mensaje de rechazo del backend |

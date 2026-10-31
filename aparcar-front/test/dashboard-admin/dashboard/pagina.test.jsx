@@ -10,6 +10,7 @@ vi.mock("@/components/DashboardHeader", () => ({ default: ({ children }) => <hea
 vi.mock("@/components/ParkingHeading", () => ({ default: () => <h1>Mi estacionamiento</h1> }));
 vi.mock("@/app/dashboard-admin/PanelOperativo", () => ({ default: () => <p>Ocupación operativa existente</p> }));
 vi.mock("@/app/dashboard-admin/dashboard/DashboardContent", () => ({ default: () => <main><h1>Dashboard</h1><p>Indicadores del estacionamiento</p></main> }));
+vi.mock("@/app/dashboard-admin/dashboard/ResumenPuntos", () => ({ default: () => <section aria-label="Programa de puntos" /> }));
 
 const { default: DashboardPage } = await import("@/app/dashboard-admin/dashboard/page");
 const { default: PanelPage } = await import("@/app/dashboard-admin/page");
@@ -29,6 +30,7 @@ describe("Ruta del Dashboard administrativo", () => {
     expect(screen.getByRole("heading", { name: "Dashboard", level: 1 })).toBeInTheDocument();
     expect(screen.getByText("Indicadores del estacionamiento")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /volver al panel/i })).toHaveAttribute("href", "/dashboard-admin");
+    expect(screen.getByRole("region", { name: "Programa de puntos" })).toBeInTheDocument();
   });
 
   it("no renderiza datos si la protección del servidor rechaza la sesión", async () => {

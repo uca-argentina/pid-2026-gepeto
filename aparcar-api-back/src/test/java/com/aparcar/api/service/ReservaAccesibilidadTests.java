@@ -74,6 +74,9 @@ public class ReservaAccesibilidadTests {
     @Mock
     private com.aparcar.api.service.impl.PlanificacionReservas planificacion;
 
+    @Mock
+    private com.aparcar.api.service.IPuntosService puntosService;
+
     @InjectMocks
     private ReservaService reservaService;
 

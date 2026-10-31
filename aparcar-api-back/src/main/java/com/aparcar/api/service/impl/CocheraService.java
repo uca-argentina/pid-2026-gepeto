@@ -17,6 +17,7 @@ import com.aparcar.api.repository.CocheraRepository;
 import com.aparcar.api.repository.ReservaRepository;
 import com.aparcar.api.repository.VisitanteRepository;
 import com.aparcar.api.service.ICocheraService;
+import com.aparcar.api.service.IPuntosService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -41,6 +42,7 @@ public class CocheraService implements ICocheraService {
     private final VisitanteRepository visitanteRepository;
     private final Clock clock;
     private final PlanificacionReservas planificacion;
+    private final IPuntosService puntosService;
 
     @Override
     @Transactional
@@ -266,6 +268,8 @@ public class CocheraService implements ICocheraService {
         reservas.forEach(reserva -> {
             reserva.setEstado(ReservaEstado.CANCELADA);
             reserva.registrarAccion(ReservaAccion.DESHABILITACION, actor, true);
+            // La cancela la administracion: los puntos canjeados vuelven.
+            puntosService.reintegrar(reserva);
         });
         reservaRepository.saveAll(reservas);
     }

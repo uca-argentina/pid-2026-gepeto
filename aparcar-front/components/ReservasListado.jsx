@@ -8,6 +8,7 @@ import PatenteVisual from "@/components/PatenteVisual";
 import { formatearRango, hora, MODALIDAD_ETIQUETA } from "@/utils/franjaHoraria";
 import { tieneCodigoVigente } from "@/utils/codigoAcceso";
 import { formatearPrecio } from "@/utils/tarifas";
+import { textosPuntosReserva } from "@/utils/puntos";
 import {
   FILTROS_RESERVAS, ORDENES_RESERVAS, formatearFechaRegistro, seleccionarReservas,
 } from "@/utils/reservasListado";
@@ -165,7 +166,14 @@ export default function ReservasListado({
 
                   <div className={styles.pie}>
                     <div>
-                      <p className={styles.importe}>{reserva.precioTotal == null ? "Sin importe registrado" : `Total: ${formatearPrecio(reserva.precioTotal)} ARS`}</p>
+                      <p className={styles.importe}>{reserva.precioTotal == null ? "Sin importe registrado"
+                        : reserva.puntos?.precioFinal != null
+                          ? <>Total: {formatearPrecio(reserva.puntos.precioFinal)} ARS <span className={styles.subtotal}>
+                            (subtotal {formatearPrecio(reserva.precioTotal)} − {formatearPrecio(reserva.puntos.descuentoMonto)})</span></>
+                          : `Total: ${formatearPrecio(reserva.precioTotal)} ARS`}</p>
+                      {!esAdmin && textosPuntosReserva(reserva).map((texto) => (
+                        <p key={texto} className={styles.puntos}>{texto}</p>
+                      ))}
                       <p className={styles.alta}>{esAdmin ? "Alta" : "Fecha de alta"}: {formatearFechaRegistro(reserva.fechaCreacion)}</p>
                       {textoAcceso(reserva.acceso) && <p className={styles.alta}>{textoAcceso(reserva.acceso)}</p>}
                     </div>

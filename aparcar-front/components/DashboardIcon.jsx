@@ -13,6 +13,7 @@ const paths = {
   logout: <><path d="M9 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4m6-4 4-4-4-4m-7 4h11" /></>,
   car: <><path d="M5 17H3v-5l2-5h14l2 5v5h-2" /><path d="M3 12h18M9 17h6" /><circle cx="7" cy="17" r="2" /><circle cx="17" cy="17" r="2" /></>,
   certificado: <><rect x="4" y="3" width="16" height="18" rx="2.5" /><path d="M8 8h8M8 12h5" /><path d="m11 17 1.5 1.5L16 15" /></>,
+  estrella: <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z" />,
   qr: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3" /></>,
 };
 

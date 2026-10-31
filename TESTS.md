@@ -11,6 +11,110 @@ Que prueba cada archivo de test del proyecto, caso por caso. Ver `ARCHIVOS.md` p
 
 # Backend (`aparcar-api-back/src/test/java/com/aparcar/api/`)
 
+## `entity/FranjaPuntosTests.java`
+
+_12 tests._ Caja blanca de las franjas de puntos.
+
+```
+Los bordes: el inicio es inclusive y el fin exclusive   (parametrizado: 00:00, 05:59, 06:00, 09:59, 10:00, 13:59, 14:00, 21:59, 22:00, 23:59)
+Cada minuto del dia cae en exactamente una franja       (recorre los 1440 minutos)
+La noche es la que mas puntos da
+```
+
+## `service/ReglasPuntosTests.java`
+
+_32 tests._ Caja blanca de `ReglasPuntos` con las propiedades por defecto
+(60 min, 2 por día, racha de 7, bonus de 10, tope del 50 %).
+
+```
+estimacion: cuenta la hora de inicio, aunque la reserva siga en otra franja
+estimacion: una reserva que cruza la medianoche arrancando a las 23 suma la nocturna
+estimacion: justo la duracion minima suma; un bloque menos no
+racha: el primer ingreso arranca la racha en 1
+racha: dos ingresos el mismo dia no la cambian
+racha: dias consecutivos la suman
+racha: saltear un dia la reinicia en 1 y conserva la mejor
+racha: un dia anterior al ultimo contado no la cambia
+racha: el cambio de dia es a la medianoche: 23:59 y 00:00 son dias consecutivos
+racha: el bonus toca en cada multiplo de 7          (8 casos: 0, 1, 6, 7, 8, 13, 14, 21)
+racha: 21 dias seguidos dan tres bonus, en los dias 7, 14 y 21
+racha: la racha se muestra viva si el ultimo dia fue hoy o ayer, y en 0 si fue antes
+racha: dias para el proximo bonus                   (5 casos)
+descuento: lineal, con BigDecimal y HALF_UP a 2 decimales   (7 casos, incluidos 4,999995 → 5,00 y 0,025 → 0,03)
+descuento: el tope de 50 % son 500 puntos
+```
+
+## `service/PuntosServiceTests.java`
+
+_29 tests._ Caja blanca de `PuntosService` con repositorios simulados y reloj
+fijo (lunes 2/11/2026 23:10).
+
+```
+acreditacion: una reserva nocturna suma 20 y arranca la racha
+acreditacion: una reserva ya acreditada no vuelve a sumar
+acreditacion: si ya existe el movimiento de esa reserva (otro intento en paralelo), no suma de nuevo
+acreditacion: una reserva mas corta que el minimo no suma, pero cuenta para la racha
+acreditacion: pasado el tope diario no suma, pero la reserva se usa igual
+acreditacion: el septimo dia seguido suma el bonus como movimiento aparte
+acreditacion: un segundo ingreso el mismo dia del bonus no lo repite
+acreditacion: un choque de version se traduce a 409
+canje: 100 puntos son 10 % de descuento
+canje: usar todos con mucho saldo usa solo lo que llega al tope
+canje: usar todos con poco saldo usa el saldo
+canje: usar todos sin saldo es un 400
+canje: cero, negativos y decimales se rechazan      (4 casos: 0, -5, 1.5, 0.01)
+canje: mas puntos que el saldo es un 400
+canje: pasar el tope de descuento es un 400, aunque alcance el saldo
+canje: confirmar descuenta el saldo y deja un movimiento negativo
+canje: si el saldo bajo entre la validacion y la confirmacion, es un 409 y no queda negativo
+reintegro: cancelar devuelve exactamente los puntos usados, una sola vez
+reintegro: sin puntos usados no hay nada que devolver
+consultas: sin billetera se muestra en cero, sin crearla
+consultas: una racha cortada se muestra en 0 y conserva la mejor
+consultas: la cotizacion sin puntos no cambia el precio y dice cuanto sumaria
+consultas: la cotizacion con puntos devuelve el total con descuento
+consultas: sin cuenta, la cotizacion queda como estaba
+consultas: una reserva pendiente muestra lo que sumaria; una cancelada, que no suma
+consultas: una reserva vencida con puntos usados no figura reintegrada
+```
+
+## `integration/PuntosControllerTests.java`
+
+_21 tests._ Caja negra contra la base real. Los datos se arman relativos al
+reloj real; el flujo completo calcula los puntos esperados con la franja del
+bloque en curso.
+
+```
+[Caja negra] un anonimo recibe 401 en la billetera
+[Caja negra] el resumen es solo del ADMIN                     (USER y EMPLEADO 403)
+[Caja negra] ningun endpoint acredita puntos
+[Caja negra] sin actividad, la billetera esta en cero con las franjas y no se crea
+[Caja negra] la cotizacion sin puntos mantiene el total y agrega lo que sumaria
+[Caja negra] la cotizacion con puntos descuenta: 100 puntos son 10 %   (y "usar todos"; cotizar no gasta)
+[Caja negra] puntos invalidos, sin saldo o sobre el tope en la cotizacion → 400   (6 casos: abc, 1.5, 0, -10, 301, 600)
+[Caja negra] la cotizacion corta avisa que no suma
+[Caja negra] reservar con descuento, ingresar y sumar: el libro cierra con la billetera
+[Caja negra] si el precio esperado no es el final con descuento, no reserva ni gasta
+[Caja negra] reservar con mas puntos que el saldo → 400 y no se crea
+[Caja negra] el ADMIN no canjea puntos de otra cuenta, y una reserva en espera no los usa
+[Caja negra] cancelar antes de usarla devuelve los puntos una sola vez
+[Caja negra] una reserva con puntos que vence sin ingreso no los devuelve
+Dos canjes simultaneos sobre el mismo saldo: uno gana, el otro ve el saldo nuevo
+Dos acreditaciones simultaneas de la misma reserva suman una sola vez
+```
+
+El flujo completo cubre además el doble escaneo (no vuelve a sumar), la racha
+en 1, el historial con el canje y la acreditación, y el bloque `puntos` de la
+reserva. Los tests de concurrencia corren dos transacciones reales a la vez y
+comprueban que el saldo sea la suma de los movimientos.
+
+## `integration/PuntosMigracionTests.java`
+
+_1 test._ La migración 015 sobre una base con una reserva: no le inventa puntos,
+crea la billetera (una por cuenta, saldo nunca negativo) y el libro (una
+acreditación por reserva; el bonus de la misma reserva es otro tipo), y se puede
+volver a correr.
+
 ## `integration/VerificacionDiscapacidadControllerTests.java`
 
 _16 tests._ Caja negra de `/api/v1/verificaciones-discapacidad` con MockMvc
@@ -210,8 +314,9 @@ Frontend asociado:
   métricas del servidor, tabla accesible, carga sin ceros ficticios, reintento,
   conservación de datos ante error, solicitudes sin solapamiento, estado vacío,
   ocupación fuera de servicio, actualización solo visible y aborto al desmontar.
-- `test/dashboard-admin/dashboard/pagina.test.jsx` — **3 tests**: exige ADMIN,
-  no renderiza tras rechazo y agrega el enlace desde el panel existente.
+- `test/dashboard-admin/dashboard/pagina.test.jsx` ✏️ — **3 tests**: exige ADMIN,
+  no renderiza tras rechazo y agrega el enlace desde el panel existente. Además
+  comprueba que la ruta muestre la tarjeta de puntos.
 - `test/browser/dashboard.ui.mjs` — **8 tests**: temas claro y oscuro a
   360/768/1440 px, tabla con teclado, ausencia de desbordes y errores de navegador,
   reintento y lectura desactualizada, y acceso bloqueado para USER. La API se
@@ -1171,6 +1276,52 @@ cambiarPasswordPropia lanza NotFoundException si no existe una cuenta con ese em
 
 # Frontend (`aparcar-front/test/`)
 
+## `components/BilleteraPuntos.test.jsx`
+
+_6 tests._
+
+```
+muestra el saldo, lo que alcanza de descuento y la racha con su avance
+explica las reglas con la tabla de franjas que manda el servidor
+lista el historial con signo y tipo
+sin actividad: saldo en cero, racha apagada y sin movimientos
+a un día del bonus lo dice así
+si falla la carga, avisa y permite reintentar
+```
+
+## `components/ReservasPuntos.test.jsx`
+
+_10 tests._ "Usar puntos" en el alta, con una cotización simulada que imita la
+del servidor (100 puntos = 10 %).
+
+```
+muestra el saldo, aplica los puntos con el precio del servidor y los envía
+'Usar todos' pide el máximo al servidor y lo envía sin cantidad
+con "1.5" / "400" / "-3" avisa, no lo cotiza y no deja confirmar   (3 casos)
+destaca lo que se gana en la franja que más suma
+si no suma, dice por qué
+sin saldo lo dice, sin campo para cargar puntos
+el modo admin no ofrece puntos ni dice lo que se gana
+Mis reservas muestra el total con descuento, los puntos usados y lo que suma
+```
+
+## `dashboard-admin/dashboard/ResumenPuntos.test.jsx`
+
+_2 tests._ La tarjeta "Programa de puntos" con sus cinco datos, y el error con
+reintento.
+
+## `utils/puntos.test.js`
+
+_16 tests._ `validarPuntos` (válidos, 8 rechazos y el tope con saldo de sobra),
+formatos de porcentaje y puntos, y los textos de puntos de una reserva
+(pendiente, con descuento y acreditada, cancelada con reintegro, vencida sin
+reintegro, sin sumar con motivo, sin datos).
+
+## `dashboard-user/paginas.test.jsx` ✏️
+
+Suma 2 tests: el encabezado del panel lleva a **Mis puntos**, y esa pantalla
+exige USER, muestra la billetera y vuelve al panel.
+
 ## `components/VerificacionDiscapacidad.test.jsx`
 
 _17 tests._ El bloque "Cocheras accesibles" de Mis datos.
@@ -1401,9 +1552,9 @@ _13 tests._
   campos/botones mientras guarda.
 - Recargar con cambios pendientes requiere aceptar descartarlos.
 
-## `hooks/useCotizacion.test.jsx`
+## `hooks/useCotizacion.test.jsx` ✏️
 
-_5 tests._
+_7 tests._
 
 - No consulta sin tipo o con franja inválida.
 - Ignora respuestas tardías e invalida el precio inmediatamente al cambiar la
@@ -1411,6 +1562,7 @@ _5 tests._
 - Expone errores del backend y permite reintentar, incluyendo precio cero.
 - Rechaza respuestas sin un precio válido.
 - Cambiar la franja vuelve a consultar el importe.
+- Con un canje pide `puntos` o `usarTodos`; sin canje no manda parámetros de puntos.
 
 ## `components/ReservasTarifas.test.jsx`
 
@@ -1991,10 +2143,19 @@ es case-insensitive
 
 | | Archivos | Tests |
 |---|---|---|
-| Backend | 67 | 757 |
-| Frontend (Vitest) | 51 | 642 |
+| Backend | 72 | 852 |
+| Frontend (Vitest) | 55 | 680 |
 | Frontend UI (Playwright) | 5 | 42 |
-| **Total** | **123** | **1441** |
+| **Total** | **132** | **1574** |
+
+Puntos, rachas y descuentos: antes de empezar, los runners daban 67 archivos /
+757 tests de backend y 51 / 642 de Vitest. La feature suma 5 archivos y 95 tests
+de backend (los tests existentes solo se ajustaron a las dependencias nuevas, sin
+cambiar casos) y 4 archivos y 38 tests de Vitest (`useCotizacion` y
+`dashboard-user/paginas` suman 2 cada uno). Verificación: `mvn clean install`
+(852 tests, sin fallos), también con `-Duser.timezone=UTC` como en CI, `npm test`
+(680), `npm run lint` (sin errores; conserva la advertencia previa de React Hook
+Form) y `npm run build`. La regresión de Playwright no se volvió a correr.
 
 Verificación de discapacidad con certificado: antes de empezar, los runners
 daban 59 archivos / 654 tests de backend y 46 / 596 de Vitest (la tabla de arriba

@@ -27,3 +27,5 @@ databaseChangeLog:
       file: db/changelog/013-reservas-recurrentes-espera.yaml
   - include:
       file: db/changelog/014-verificacion-discapacidad.yaml
+  - include:
+      file: db/changelog/015-puntos.yaml
