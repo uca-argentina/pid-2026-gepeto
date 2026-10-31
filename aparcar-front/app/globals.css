@@ -396,6 +396,69 @@
   .dark .verificacion-error { color: #fca5a5; }
   .verificacion-privacidad { color: var(--color-muted); font-size: 12px; line-height: 1.6; }
 
+  /* Puntos (gamificacion). Los colores de estado llevan su variante oscura. */
+  .puntos-titulo { margin: 8px 0 18px; color: var(--color-ink); font-size: 26px; font-weight: 700; }
+  .puntos { display: grid; gap: 20px; }
+  .puntos-resumen { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+  .puntos-tarjeta, .puntos-seccion { display: grid; gap: 10px; align-content: start; padding: 24px; min-width: 0; }
+  .puntos-tarjeta-titulo { color: var(--color-muted); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .puntos-seccion h2 { color: var(--color-ink); font-size: 17px; font-weight: 650; }
+  .puntos-saldo { color: var(--color-ink); font-size: 40px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .puntos-saldo span { color: var(--color-muted); font-size: 15px; font-weight: 600; }
+  .puntos-nota { color: var(--color-muted); font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+  .puntos-racha { display: flex; align-items: center; gap: 10px; color: var(--color-ink); font-size: 22px; font-weight: 750; }
+  .puntos-llama { width: 30px; height: 30px; flex-shrink: 0; fill: var(--color-line); }
+  .puntos-racha.is-activa .puntos-llama { fill: #f97316; }
+  .puntos-ciclo { display: flex; gap: 6px; }
+  .puntos-ciclo li { flex: 1; height: 10px; border-radius: 999px; background: var(--color-line); }
+  .puntos-ciclo li.is-hecho { background: #f97316; }
+  .puntos-reglas { display: grid; gap: 8px; padding-left: 18px; list-style: disc; color: var(--color-ink); font-size: 13px; line-height: 1.6; }
+  .puntos-tabla { overflow-x: auto; }
+  .puntos-tabla table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .puntos-tabla th, .puntos-tabla td { padding: 10px 8px; border-bottom: 1px solid var(--color-line); color: var(--color-ink); text-align: left; }
+  .puntos-tabla thead th { color: var(--color-muted); font-size: 12px; font-weight: 600; }
+  .puntos-tabla tbody th { font-weight: 600; }
+  .puntos-chip { display: inline-block; padding: 2px 10px; border-radius: 999px; background: color-mix(in srgb, var(--color-accent) 14%, var(--color-surface)); color: var(--color-link); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .puntos-movimientos { display: grid; }
+  .puntos-movimientos li { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--color-line); }
+  .puntos-movimientos li:last-child { border-bottom: 0; }
+  .puntos-movimientos li > div { min-width: 0; }
+  .puntos-movimiento-tipo { color: var(--color-ink); font-size: 14px; font-weight: 650; }
+  .puntos-fecha { color: var(--color-muted); font-size: 11px; }
+  .puntos-movimiento-valor { flex-shrink: 0; color: #047857; font-size: 16px; font-weight: 750; font-variant-numeric: tabular-nums; }
+  .puntos-movimiento-valor.is-negativo { color: #b91c1c; }
+  .dark .puntos-movimiento-valor { color: #6ee7b7; }
+  .dark .puntos-movimiento-valor.is-negativo { color: #fca5a5; }
+  .puntos-aviso { display: grid; gap: 12px; justify-items: start; padding: 20px; color: var(--color-ink); font-size: 14px; }
+  /* Canje al reservar y lo que suma la cotizacion. */
+  .puntos-canje { display: grid; gap: 10px; min-width: 0; padding: 16px; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-surface); }
+  .puntos-canje-titulo { padding: 0 4px; color: var(--color-ink); font-size: 14px; font-weight: 650; }
+  .puntos-canje-ayuda { color: var(--color-muted); font-size: 13px; line-height: 1.55; }
+  .puntos-canje-ayuda strong { color: var(--color-ink); }
+  .puntos-canje-fila { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px; }
+  .puntos-canje-campo { display: grid; gap: 6px; flex: 1 1 140px; min-width: 0; color: var(--color-ink); font-size: 13px; font-weight: 600; }
+  .puntos-canje .profile-secondary[aria-pressed="true"] { border-color: var(--color-accent); color: var(--color-link); box-shadow: var(--shadow-card); }
+  .puntos-canje-quitar { min-height: 44px; padding: 0 6px; color: var(--color-link); font-size: 13px; font-weight: 600; text-decoration: underline; }
+  .puntos-canje-error { color: #b91c1c; font-size: 13px; }
+  .dark .puntos-canje-error { color: #fca5a5; }
+  .cotizacion-descuento { display: grid; gap: 4px; margin-top: 6px; font-size: 13px; color: var(--color-muted); }
+  .cotizacion-descuento div { display: flex; justify-content: space-between; gap: 12px; }
+  .cotizacion-descuento dd { color: var(--color-ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .cotizacion-ganas { margin-top: 10px; color: var(--color-ink); font-size: 13px; }
+  .cotizacion-ganas.is-destacado { display: inline-block; padding: 6px 12px; border-radius: 999px; background: #f973161f; color: #9a3412; }
+  .dark .cotizacion-ganas.is-destacado { color: #fdba74; }
+  .puntos-admin { margin-top: 20px; }
+  .puntos-admin-encabezado { display: flex; justify-content: space-between; gap: 12px; color: var(--color-link); }
+  .puntos-admin-datos { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .puntos-admin-datos div { padding: 14px; border: 1px solid var(--color-line); border-radius: 12px; }
+  .puntos-admin-datos dt { color: var(--color-muted); font-size: 12px; font-weight: 600; }
+  .puntos-admin-datos dd { margin-top: 4px; color: var(--color-ink); font-size: 24px; font-weight: 750; font-variant-numeric: tabular-nums; }
+  .puntos-admin-datos dd span { color: var(--color-muted); font-size: 13px; font-weight: 600; }
+  @media (max-width: 640px) {
+    .puntos-resumen { grid-template-columns: minmax(0, 1fr); }
+    .puntos-tarjeta, .puntos-seccion { padding: 18px; }
+  }
+
   /* Cola de verificaciones (admin). En angosto la lista va arriba y el detalle abajo. */
   .nav-contador { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px; background: #dc2626; color: #fff; font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .verificaciones { display: grid; gap: 20px; }

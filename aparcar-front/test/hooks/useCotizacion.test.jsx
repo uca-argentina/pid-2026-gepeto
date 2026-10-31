@@ -57,3 +57,19 @@ it("cambiar la franja vuelve a consultar el importe", async () => {
     params: { tipo: "AUTO", desde, hasta: "2099-01-02T08:00" },
   }));
 });
+
+it("con un canje pide el precio con puntos, o con todos los disponibles", async () => {
+  get.mockResolvedValue({ data: { total: 900 } });
+  const { rerender } = renderHook(({ canje }) => useCotizacion("AUTO", desde, hasta, canje), { initialProps: { canje: { puntos: "100" } } });
+  await waitFor(() => expect(get).toHaveBeenCalledWith("/api/v1/tarifas/cotizacion",
+    { params: { tipo: "AUTO", desde, hasta, puntos: "100" } }));
+  rerender({ canje: { todos: true } });
+  await waitFor(() => expect(get).toHaveBeenLastCalledWith("/api/v1/tarifas/cotizacion",
+    { params: { tipo: "AUTO", desde, hasta, usarTodos: true } }));
+});
+
+it("sin canje no manda parámetros de puntos", async () => {
+  get.mockResolvedValue({ data: { total: 1000 } });
+  renderHook(() => useCotizacion("AUTO", desde, hasta));
+  await waitFor(() => expect(get).toHaveBeenCalledWith("/api/v1/tarifas/cotizacion", { params: { tipo: "AUTO", desde, hasta } }));
+});

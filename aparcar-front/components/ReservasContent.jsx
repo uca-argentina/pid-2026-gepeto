@@ -15,8 +15,10 @@ import ReservasListado from "@/components/ReservasListado";
 import AvisoListaEspera from "@/components/AvisoListaEspera";
 import NotificacionesReservas from "@/components/NotificacionesReservas";
 import RepeticionReserva, { contarRepeticiones, limiteRepeticion } from "@/components/RepeticionReserva";
+import UsarPuntos from "@/components/UsarPuntos";
 import useCotizacion from "@/hooks/useCotizacion";
 import useDisponibilidad from "@/hooks/useDisponibilidad";
+import { validarPuntos } from "@/utils/puntos";
 import { useAutoRefresco } from "@/hooks/useAutoRefresco";
 import { tieneCodigoVigente } from "@/utils/codigoAcceso";
 import {
@@ -82,6 +84,7 @@ export default function ReservasContent({
   const [vehiculos, setVehiculos] = useState([]);
   const [diasSemana, setDiasSemana] = useState([]);
   const [repetirHasta, setRepetirHasta] = useState("");
+  const [canje, setCanje] = useState({ texto: "", todos: false });
   const [reservas, setReservas] = useState([]);
   const [loadingReservas, setLoadingReservas] = useState(true);
   const [errorReservas, setErrorReservas] = useState(false);
@@ -144,7 +147,21 @@ export default function ReservasContent({
   const diaInicial = desde ? new Date(`${desde.slice(0, 10)}T12:00:00`).getDay() || 7 : null;
   const repeticionValida = !recurrente || (cantidadRepeticiones > 0 && cantidadRepeticiones <= 90
     && repetirHasta <= limiteRepeticion(desde) && diasSemana.includes(diaInicial));
-  const cotizacion = useCotizacion(cocheraElegida?.tipo ?? vehiculoEncontrado?.tipo, desde, hasta);
+  const tipoTarifa = cocheraElegida?.tipo ?? vehiculoEncontrado?.tipo;
+  const cotizacionBase = useCotizacion(tipoTarifa, desde, hasta);
+
+  // Puntos: solo el visitante, en una reserva propia con cochera. La base
+  // trae el saldo; con un canje válido se pide aparte el precio con descuento.
+  const saldoPuntos = cotizacionBase.datos?.saldoDisponible;
+  const ofrecePuntos = !esAdmin && !recurrente && !enEspera && saldoPuntos != null;
+  const maximoPuntos = cotizacionBase.datos?.maxPuntosCanjeables ?? 0;
+  const errorPuntos = ofrecePuntos && !canje.todos && canje.texto !== ""
+    ? validarPuntos(canje.texto, { saldo: saldoPuntos, maximo: maximoPuntos }) : null;
+  const pidePuntos = ofrecePuntos && saldoPuntos > 0 && (canje.todos || canje.texto !== "");
+  const canjeValido = pidePuntos && !errorPuntos;
+  const cotizacionConPuntos = useCotizacion(canjeValido ? tipoTarifa : undefined, desde, hasta,
+    canje.todos ? { todos: true } : { puntos: canje.texto.trim() });
+  const cotizacion = canjeValido ? cotizacionConPuntos : cotizacionBase;
 
   // Lo último que llegó, para no reescribir el estado con datos idénticos. Es
   // una referencia porque solo sirve para comparar, no se dibuja.
@@ -236,6 +253,7 @@ export default function ReservasContent({
     }
 
     if (!cotizacion.lista || (!cocheraElegida && !enEspera) || !rangoValido || !repeticionValida) return;
+    if (pidePuntos && !canjeValido) return;
 
     try {
       const res = await api.post(recurrente ? "/api/v1/reservas/recurrentes" : "/api/v1/reservas", {
@@ -252,6 +270,7 @@ export default function ReservasContent({
         desde: redondearAlBloqueLocal(data.desde),
         hasta: redondearAlBloqueLocal(data.hasta),
         precioEsperado: cotizacion.datos.total,
+        ...(canjeValido ? (canje.todos ? { usarTodosLosPuntos: true } : { puntosAUsar: Number(canje.texto.trim()) }) : {}),
       });
       toast.success(recurrente ? `${res.data.length} reservas recurrentes creadas correctamente`
         : res.data?.estado === "LISTA_ESPERA" ? "Reserva agregada a la lista de espera"
@@ -265,12 +284,15 @@ export default function ReservasContent({
       reset({ patente: "", cocheraId: "", listaEspera: false, ...franjaPorDefecto() });
       setDiasSemana([]);
       setRepetirHasta("");
+      setCanje({ texto: "", todos: false });
       disponibilidad.recargar();
       cargarReservas();
       onOcupacionCambiada?.();
     } catch (err) {
       toast.error(err.response?.data?.message || "No se pudo crear la reserva.");
-      cotizacion.recargar();
+      // El saldo pudo cambiar: se vuelve a pedir con y sin puntos.
+      cotizacionBase.recargar();
+      cotizacionConPuntos.recargar();
       disponibilidad.recargar();
     }
   };
@@ -493,12 +515,18 @@ export default function ReservasContent({
             diasSemana={diasSemana} onDias={setDiasSemana} repetirHasta={repetirHasta} onHasta={setRepetirHasta}
             cantidad={cantidadRepeticiones} />}
 
-          <CotizacionReserva cotizacion={cotizacion} />
+          {ofrecePuntos && (
+            <UsarPuntos saldo={saldoPuntos} maximo={maximoPuntos} texto={canje.texto} todos={canje.todos}
+              error={errorPuntos} onCambiar={setCanje} />
+          )}
+
+          <CotizacionReserva cotizacion={cotizacion} mostrarPuntos={!esAdmin && !recurrente && !enEspera} />
 
           <div>
             <button
               type="submit"
-              disabled={isSubmitting || (!cocheraElegida && !enEspera) || !cotizacion.lista || !rangoValido || !repeticionValida}
+              disabled={isSubmitting || (!cocheraElegida && !enEspera) || !cotizacion.lista || !rangoValido || !repeticionValida
+                || (pidePuntos && !canjeValido)}
               className="ui-primary group relative flex w-full justify-center px-3 py-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? "Reservando..." : enEspera ? "Ingresar a lista de espera" : recurrente ? "Confirmar reservas recurrentes" : "Confirmar reserva"}

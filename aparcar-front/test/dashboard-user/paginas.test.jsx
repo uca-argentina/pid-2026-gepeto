@@ -29,6 +29,7 @@ vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 const { default: DashboardUserPage } = await import("@/app/dashboard-user/page");
 const { default: PerfilUserPage } = await import("@/app/dashboard-user/perfil/page");
 const { default: ReservasUserPage } = await import("@/app/dashboard-user/reservas/page");
+const { default: PuntosUserPage } = await import("@/app/dashboard-user/puntos/page");
 
 const renderPagina = async (Pagina) => render(await Pagina());
 
@@ -139,5 +140,27 @@ describe("atajo a Mis reservas", () => {
     const vehiculos = screen.getByRole("link", { name: /mis vehículos/i });
 
     expect(estaAntes(reservas, vehiculos)).toBe(true);
+  });
+});
+
+describe("/dashboard-user/puntos", () => {
+  it("el encabezado del panel lleva a Mis puntos", async () => {
+    await renderPagina(DashboardUserPage);
+
+    const nav = screen.getByRole("navigation", { name: "Mi cuenta" });
+    expect(within(nav).getByRole("link", { name: "Mis puntos" })).toHaveAttribute("href", "/dashboard-user/puntos");
+  });
+
+  it("exige el rol USER, muestra la billetera y vuelve al panel", async () => {
+    getMock.mockImplementation((url) => Promise.resolve({ data: url.endsWith("/billetera") ? {
+      saldo: 40, rachaActual: 2, mejorRacha: 3, diasParaBonus: 5, rachaDias: 7, rachaBonus: 10, descuentoMaxPct: 50,
+      puntosPorPorcentaje: 10, maxPuntosCanjeables: 500, duracionMinimaMin: 60, maxAcreditacionesDia: 2, franjas: [],
+    } : [] }));
+    await renderPagina(PuntosUserPage);
+
+    expect(requireAuthMock).toHaveBeenCalledWith(["USER"]);
+    expect(screen.getByRole("heading", { level: 1, name: "Mis puntos" })).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Tu saldo" })).toHaveTextContent("40 puntos");
+    expect(screen.getByRole("link", { name: /volver al panel/i })).toHaveAttribute("href", "/dashboard-user");
   });
 });
