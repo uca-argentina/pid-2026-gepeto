@@ -337,6 +337,92 @@ No hay pasos manuales:
    subieron el certificado a tiempo y está en revisión, lo conservan hasta que
    lo revisen. Es idempotente: reiniciar no extiende el plazo.
 
+### Puntos, rachas y descuentos
+
+Para repartir mejor la demanda, cada reserva **usada** suma puntos según la hora
+en que **empieza** (hora del predio, intervalos `[inicio, fin)`):
+
+| Franja | Inicio | Puntos |
+|---|---|---|
+| Noche (valle de demanda) | 22:00 a 06:00 | 20 |
+| Mañana (pico de demanda) | 06:00 a 10:00 | 10 |
+| Mediodía (demanda media) | 10:00 a 14:00 | 15 |
+| Tarde (demanda alta) | 14:00 a 22:00 | 10 |
+
+Las franjas son fijas (`FranjaPuntos`), y un test recorre los 1440 minutos del día
+para comprobar que cada uno cae en una sola.
+
+**Cuándo se suman.** Solo al **registrar el ingreso** (CONFIRMADA → EN_CURSO), en
+la misma transacción: si la acreditación falla, el ingreso tampoco queda. Por eso
+esta feature depende del control de acceso por QR. Ningún endpoint acredita
+puntos. Una reserva acredita **una sola vez** (restricción única en la base y
+chequeo con la billetera bloqueada). CANCELADA y VENCIDA no suman nada.
+
+- Una reserva de menos de `duracion-minima-min` (60) no suma.
+- Como mucho suman `max-acreditaciones-dia` (2) reservas por día. Las demás se usan
+  igual y muestran el motivo.
+
+**Racha.** Días locales seguidos con al menos un ingreso (cualquier ingreso, sume
+o no puntos de franja). Otro ingreso el mismo día no la cambia; el día siguiente
+la suma; saltear un día la reinicia en 1. Se guarda la mejor racha. Cada vez que
+llega a un múltiplo de `racha-dias` (7, 14, 21…) suma un **bonus** de `racha-bonus`
+(10) como movimiento aparte.
+
+**Canje.** Al crear la reserva, 100 puntos = 10 % de descuento (lineal: 10 puntos
+por punto porcentual), con tope de `descuento-max-pct` (50 %). "Usar todos" usa el
+menor entre el saldo y lo que llega al tope. El cliente solo manda la cantidad (o
+"todos"); el porcentaje, el monto (`BigDecimal`, HALF_UP a 2 decimales) y el precio
+final los calcula el servidor. Solo el titular canjea, sobre una reserva propia con
+cochera asignada: no el ADMIN en nombre de otro, ni la lista de espera, ni las
+recurrentes.
+
+- **Cancelar antes de usarla** devuelve exactamente lo usado (movimiento
+  `REINTEGRO`, una sola vez), también si la cancela un ADMIN o la deshabilitación
+  de la cochera.
+- **Vencida sin ingreso** no devuelve nada: es la forma de no premiar el no-show.
+- Una reserva con descuento suma puntos igual al ingresar.
+
+**Billetera y libro.** Cada cuenta tiene una billetera (saldo, racha, mejor racha)
+que se crea la primera vez que hace falta, y un libro inmutable de movimientos
+(`ACREDITACION_FRANJA`, `BONUS_RACHA`, `CANJE`, `REINTEGRO`). El saldo nunca es
+negativo (CHECK en la base) y siempre es la suma de los movimientos. Dos
+operaciones simultáneas sobre la misma billetera se ordenan con un bloqueo de
+fila; si igual chocan, la segunda recibe un 409.
+
+**Endpoints:**
+
+| Método y ruta | Qué hace | Quién |
+|---|---|---|
+| `GET /api/v1/puntos/billetera` | Saldo, racha vigente, mejor racha, días para el bonus, reglas y franjas | Cualquier cuenta, sobre lo suyo |
+| `GET /api/v1/puntos/movimientos` | Los propios, más recientes primero (máx. 100) | Cualquier cuenta |
+| `GET /api/v1/puntos/resumen` | Emitidos, canjeados, en circulación, usuarios con racha activa, mejor racha | ADMIN |
+| `GET /api/v1/tarifas/cotizacion?…&puntos=N` o `&usarTodos=true` | Igual que antes, más `subtotal`, `descuentoPct`, `descuento`, `puntosAplicados`, `saldoDisponible`, `maxPuntosCanjeables`, `puntosAGanar` y `motivoSinPuntos`. Sin esos parámetros, `total` no cambia | ADMIN, EMPLEADO, USER |
+| `POST /api/v1/reservas` con `puntosAUsar` o `usarTodosLosPuntos` | Crea la reserva con el descuento. `precioEsperado`, si se manda, es el precio final | El titular |
+
+Las reservas devuelven un bloque `puntos` (usados, descuento, precio final,
+reintegrados, acreditados, a ganar y motivo). `precioTotal` sigue siendo el
+importe de la tarifa, sin descuento.
+
+#### Configuración (`aparcar.puntos.*`)
+
+| Propiedad | Por defecto | Qué controla |
+|---|---|---|
+| `duracion-minima-min` | 60 | Duración mínima para sumar puntos de franja |
+| `max-acreditaciones-dia` | 2 | Reservas por día que suman puntos de franja |
+| `racha-dias` | 7 | Cada cuántos días seguidos toca el bonus |
+| `racha-bonus` | 10 | Puntos del bonus de racha |
+| `descuento-max-pct` | 50 | Tope de descuento por reserva |
+
+No hay variables de entorno nuevas.
+
+#### Bases existentes
+
+Liquibase aplica `015-puntos.yaml`: crea `billeteras_puntos` y
+`movimientos_puntos` y agrega a `reservas` las columnas del canje y de la
+acreditación, todas nulas. **No hay backfill:** las reservas anteriores no suman
+puntos retroactivos, y las billeteras se crean solas con el primer ingreso o la
+primera consulta que lo necesite. No hay pasos manuales.
+
 ### Estructura
 
 Este repositorio contiene las dos mitades del proyecto:
