@@ -3,6 +3,7 @@ import { requireAuth } from "@/utils/serverAuth";
 import DashboardHeader from "@/components/DashboardHeader";
 import ProfileSettings from "@/components/ProfileSettings";
 import MiPerfilContent from "../MiPerfilContent";
+import MisAmonestaciones from "@/components/MisAmonestaciones";
 
 export default async function PerfilUserPage() {
   await requireAuth(["USER"]);
@@ -16,6 +17,9 @@ export default async function PerfilUserPage() {
             dentro de "Mis datos", después de los datos personales. */}
         <ProfileSettings>
           <MiPerfilContent />
+          {/* Al final del perfil, como se pidió: las faltas vigentes y el
+              historial de incidencias, que es permanente. */}
+          <MisAmonestaciones />
         </ProfileSettings>
       </div>
     </div>

@@ -65,3 +65,14 @@
     .paginacion > span { width: 100%; order: -1; text-align: center; }
   }
 }
+
+/* Ámbar, no rojo: el rojo ya es "cancelar", y son dos acciones muy distintas
+   que quedan una al lado de la otra. */
+.amonestar {
+  border-color: color-mix(in srgb, #d99100 45%, transparent);
+  color: #a86f00;
+}
+
+.amonestar:hover:not(:disabled) {
+  background: color-mix(in srgb, #d99100 12%, var(--color-surface));
+}

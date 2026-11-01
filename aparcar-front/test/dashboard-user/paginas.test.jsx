@@ -46,6 +46,11 @@ beforeEach(() => {
     if (url === "/api/v1/vehiculos") {
       return Promise.resolve({ data: [{ id: "veh1", patente: "AB123CD", tipo: "AUTO", visitanteId: "v1" }] });
     }
+    if (url === "/api/v1/amonestaciones/mias") {
+      return Promise.resolve({
+        data: { vigentes: 0, maxFaltas: 3, mesesVentana: 3, bloqueado: false, bloqueadoHasta: null, historial: [] },
+      });
+    }
     return Promise.resolve({ data: [] });
   });
 });

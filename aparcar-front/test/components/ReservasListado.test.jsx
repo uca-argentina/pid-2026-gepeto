@@ -211,3 +211,42 @@ describe("ReservasListado en modo usuario", () => {
     expect(screen.getByText("Página 1 de 2")).toBeInTheDocument();
   });
 });
+
+/**
+ * El botón de amonestar.
+ *
+ * La guarda importante es de visibilidad: el listado del visitante y el del
+ * personal son el mismo componente, y un visitante no tiene que poder siquiera
+ * ver la acción de sancionar. El backend la rechazaría igual, pero ofrecerla
+ * sería desconcertante.
+ */
+describe("acción de amonestar", () => {
+  it("no aparece si no se pasa el manejador: es el caso del visitante", async () => {
+    render(<ReservasListado modo="user" reservas={[reserva()]} cargando={false} error={false} />);
+
+    expect(screen.queryByRole("button", { name: /amonestar/i })).not.toBeInTheDocument();
+  });
+
+  it("aparece cuando el panel del personal lo habilita", () => {
+    render(
+      <ReservasListado modo="admin" reservas={[reserva()]} cargando={false} error={false}
+        onAmonestar={vi.fn()} />
+    );
+
+    expect(screen.getByRole("button", { name: /amonestar/i })).toBeInTheDocument();
+  });
+
+  it("avisa sobre qué reserva se está amonestando", async () => {
+    const usuario = userEvent.setup();
+    const onAmonestar = vi.fn();
+    const laReserva = reserva();
+    render(
+      <ReservasListado modo="admin" reservas={[laReserva]} cargando={false} error={false}
+        onAmonestar={onAmonestar} />
+    );
+
+    await usuario.click(screen.getByRole("button", { name: /amonestar/i }));
+
+    expect(onAmonestar).toHaveBeenCalledWith(laReserva);
+  });
+});

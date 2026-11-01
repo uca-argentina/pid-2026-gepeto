@@ -726,3 +726,49 @@
   html { scroll-behavior: auto; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* --- Régimen de faltas ------------------------------------------------- */
+@layer components {
+  /* Los puntitos. Tamaño fijo para que no se deformen con la tipografía. */
+  .falta-puntos { display: flex; gap: 7px; align-items: center; margin: 10px 0 2px; }
+  .falta-punto { width: 13px; height: 13px; border-radius: 50%; background: var(--color-line); flex-shrink: 0; }
+  .falta-punto-usado { background: #d14343; }
+  /* La que bloqueó: anillo para que se distinga del resto sin depender del color. */
+  .falta-punto-excedido { background: #8f1d1d; box-shadow: 0 0 0 3px color-mix(in srgb, #d14343 28%, transparent); }
+
+  .falta-bloqueo { margin: 12px 0; padding: 14px 16px; border-left: 4px solid #d14343;
+    border-radius: 8px; background: color-mix(in srgb, #d14343 9%, var(--color-surface)); }
+  .falta-bloqueo p { margin: 0; font-size: 13px; line-height: 1.55; }
+  .falta-bloqueo p + p { margin-top: 5px; color: var(--color-muted); }
+
+  .falta-historial { margin-top: 18px; border-top: 1px solid var(--color-line); padding-top: 14px; }
+  .falta-historial > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--color-ink); padding: 4px 0; }
+  .falta-historial > summary:hover { color: var(--color-link); }
+
+  .falta-lista { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+  .falta-lista > li { padding: 11px 13px; border: 1px solid var(--color-line); border-radius: 9px; background: var(--color-bg); }
+  /* Las que salieron de la ventana se atenúan: siguen en el historial pero ya
+     no suman, y conviene que eso se note sin tener que leer la aclaración. */
+  .falta-vencida { opacity: .62; }
+  .falta-motivo { margin: 0; font-size: 13px; line-height: 1.5; color: var(--color-ink); }
+  .falta-detalle { margin: 5px 0 0; font-size: 11.5px; color: var(--color-muted); }
+
+  /* El modal de dos pasos. */
+  .amonestacion-contexto { margin: 14px 0; padding: 14px; border: 1px solid var(--color-line); border-radius: 10px; text-align: center; }
+  .amonestacion-contexto p { margin: 8px 0 0; font-size: 13px; }
+  .amonestacion-franja { color: var(--color-muted); }
+  .amonestacion-contador { margin: 4px 0 14px; font-size: 13px; line-height: 1.55; }
+  .amonestacion-aviso { margin-top: 9px; padding: 9px 12px; border-left: 3px solid #d99100;
+    border-radius: 7px; background: color-mix(in srgb, #d99100 11%, var(--color-surface)); color: var(--color-ink); }
+  .amonestacion-campo { display: block; }
+  .amonestacion-campo > span { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+  .amonestacion-campo textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--color-line);
+    border-radius: 9px; background: var(--color-bg); color: var(--color-ink); font: inherit; font-size: 13px; resize: vertical; }
+  .amonestacion-acciones { display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px; }
+
+  /* La columna de faltas en el panel de cuentas. */
+  .falta-celda { display: flex; flex-direction: column; gap: 5px; }
+  .falta-bloqueo-chip { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start;
+    padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600;
+    background: color-mix(in srgb, #d14343 14%, var(--color-surface)); color: #a52020; }
+}

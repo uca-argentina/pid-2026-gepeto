@@ -61,6 +61,26 @@ public class Visitante {
     private Boolean isActive;
 
     /**
+     * Hasta cuándo la cuenta está inhabilitada por acumular faltas.
+     *
+     * <p>Null, o una fecha ya pasada, significa que no está bloqueada: el
+     * bloqueo se vence solo, sin que nadie tenga que ejecutar nada. La tarea
+     * programada que restituye cuentas existe para limpiar el campo y avisar,
+     * no para que el bloqueo deje de aplicar.
+     *
+     * <p>Es distinto de {@code isActive}, que es una baja administrativa de la
+     * cuenta y no tiene vencimiento. Una cuenta bloqueada sigue activa: entra,
+     * ve su historial y sus faltas; lo único que no puede es reservar.
+     */
+    @Column(name = "bloqueado_hasta")
+    private java.time.LocalDateTime bloqueadoHasta;
+
+    /** True si hay un bloqueo por faltas vigente en este momento. */
+    public boolean estaBloqueado(java.time.LocalDateTime ahora) {
+        return bloqueadoHasta != null && bloqueadoHasta.isAfter(ahora);
+    }
+
+    /**
      * Si la persona puede usar las cocheras de tipo ACCESIBLE.
      *
      * <p>Es un valor DERIVADO de la verificacion con certificado: lo pone en
