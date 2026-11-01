@@ -167,4 +167,28 @@ public interface ReservaRepository extends JpaRepository<Reserva, UUID> {
             + "LEFT JOIN FETCH r.historial "
             + "WHERE r.visitante.email = :email AND r.recurrenciaId IS NOT NULL ORDER BY r.desde")
     List<Reserva> findRecurrentesByVisitanteEmail(@Param("email") String email);
+
+    /**
+     * Reservas cuya franja ya empezo hace rato y a las que nunca se les
+     * registro el ingreso.
+     *
+     * <p>Mira dos estados a proposito: una reserva a la que nadie se presento
+     * queda en CONFIRMADA hasta que la tarea de vencimientos la pasa a VENCIDA,
+     * y las dos corren cada un minuto. Segun cual gane, la misma situacion se
+     * ve en un estado o en el otro.
+     */
+    @Query("SELECT r FROM Reserva r WHERE r.ingresoAt IS NULL "
+            + "AND r.estado IN (com.aparcar.api.entity.reserva.ReservaEstado.CONFIRMADA, "
+            + "com.aparcar.api.entity.reserva.ReservaEstado.VENCIDA) "
+            + "AND r.desde < :limite")
+    List<Reserva> findSinIngresoDesdeAntesDe(@Param("limite") LocalDateTime limite);
+
+    /**
+     * Reservas con el auto adentro cuya franja termino hace rato y sin egreso
+     * registrado.
+     */
+    @Query("SELECT r FROM Reserva r WHERE r.egresoAt IS NULL "
+            + "AND r.estado = com.aparcar.api.entity.reserva.ReservaEstado.EN_CURSO "
+            + "AND r.hasta < :limite")
+    List<Reserva> findSinEgresoHastaAntesDe(@Param("limite") LocalDateTime limite);
 }

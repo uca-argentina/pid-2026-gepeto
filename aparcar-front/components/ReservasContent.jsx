@@ -10,6 +10,7 @@ import api from "@/app/api";
 import AtajosJornada from "@/components/AtajosJornada";
 import CotizacionReserva from "@/components/CotizacionReserva";
 import ModalCodigoAcceso from "@/components/ModalCodigoAcceso";
+import ModalAmonestacion from "@/components/ModalAmonestacion";
 import PatenteVisual from "@/components/PatenteVisual";
 import ReservasListado from "@/components/ReservasListado";
 import AvisoListaEspera from "@/components/AvisoListaEspera";
@@ -27,6 +28,7 @@ import {
   formatearRango,
   franjaPorDefecto,
 } from "@/utils/franjaHoraria";
+import { formatearFechaRegistro } from "@/utils/reservasListado";
 
 const reservaSchema = z
   .object({
@@ -91,6 +93,28 @@ export default function ReservasContent({
   // La reserva cuyo código de acceso (QR) se está mostrando.
   const [reservaCodigo, setReservaCodigo] = useState(null);
   const [codigoRecienCreado, setCodigoRecienCreado] = useState(false);
+  // La reserva sobre la que se está por aplicar una falta. Null = modal cerrado.
+  const [reservaAmonestar, setReservaAmonestar] = useState(null);
+
+  // Si la cuenta del visitante está inhabilitada por faltas. Solo se consulta
+  // del lado del visitante: el personal reserva a nombre de otro, y ahí el
+  // bloqueo lo valida el backend sobre esa otra persona, no sobre quien pide.
+  const [bloqueo, setBloqueo] = useState(null);
+
+  useEffect(() => {
+    if (esAdmin) return undefined;
+    let vigente = true;
+    api
+      .get("/api/v1/amonestaciones/mias")
+      .then((res) => vigente && setBloqueo(res.data?.bloqueado ? res.data : null))
+      .catch(() => {
+        // Sin este dato el formulario se muestra igual: el backend rechaza la
+        // reserva de todos modos. Es un aviso anticipado, no la defensa.
+      });
+    return () => {
+      vigente = false;
+    };
+  }, [esAdmin, refreshKey]);
 
   const {
     register,
@@ -345,7 +369,19 @@ export default function ReservasContent({
       </div>
 
       <div className="ui-card p-8">
-        {sinVehiculos ? (
+        {bloqueo ? (
+          <div className="falta-bloqueo" role="alert">
+            <p><strong>Tu cuenta está inhabilitada para reservar.</strong></p>
+            <p>
+              Acumulaste más faltas de las permitidas. Se restituye sola el{" "}
+              <strong>{formatearFechaRegistro(bloqueo.bloqueadoHasta)}</strong>. Podés
+              ver el detalle en{" "}
+              <Link href="/dashboard-user/perfil" className="font-semibold text-link underline-offset-2 hover:underline">
+                Mis datos
+              </Link>.
+            </p>
+          </div>
+        ) : sinVehiculos ? (
           <p className="text-sm text-ink/60">
             Cargá al menos un vehículo en{" "}
             <Link href={recurrente ? "#mis-vehiculos" : "/dashboard-user/perfil#mis-vehiculos"} className="font-semibold text-link underline-offset-2 hover:underline">
@@ -541,6 +577,7 @@ export default function ReservasContent({
       {muestraListado && (
       <ReservasListado
         modo={esAdmin ? "admin" : "user"}
+        onAmonestar={esAdmin ? setReservaAmonestar : undefined}
         reservas={reservas}
         cargando={loadingReservas}
         error={errorReservas}
@@ -551,6 +588,14 @@ export default function ReservasContent({
           setReservaCodigo(reserva);
         }}
       />
+      )}
+
+      {reservaAmonestar && (
+        <ModalAmonestacion
+          reserva={reservaAmonestar}
+          onClose={() => setReservaAmonestar(null)}
+          onAplicada={() => cargarReservas()}
+        />
       )}
 
       {reservaCodigo && (

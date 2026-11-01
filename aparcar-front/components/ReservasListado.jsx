@@ -30,6 +30,9 @@ const textoAcceso = (acceso) => {
  */
 export default function ReservasListado({
   modo = "user", reservas, cargando, error, onReintentar, onCancelar, onVerCodigo,
+  // Si viene, agrega "Amonestar" a cada reserva. Lo pasa el panel del personal;
+  // en el listado del visitante nunca llega, así que el botón no existe ahí.
+  onAmonestar,
 }) {
   const esAdmin = modo === "admin";
   const id = useId();
@@ -181,6 +184,12 @@ export default function ReservasListado({
                       {!esAdmin && onVerCodigo && tieneCodigoVigente(reserva) && (
                         <button type="button" className={`${styles.boton} ${styles.qr}`} onClick={() => onVerCodigo(reserva)}>
                           Ver QR
+                        </button>
+                      )}
+                      {onAmonestar && (
+                        <button type="button" className={`${styles.boton} ${styles.amonestar}`}
+                          onClick={() => onAmonestar(reserva)}>
+                          Amonestar
                         </button>
                       )}
                       {/* Con el vehículo adentro ya no se cancela: se registra la salida. */}

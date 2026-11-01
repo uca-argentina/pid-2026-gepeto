@@ -197,6 +197,21 @@ public class ProdSecurityConfig {
                         .requestMatchers("/api/v1/accesos/**").hasAnyAuthority("ADMIN", "EMPLEADO")
                         .requestMatchers("/api/v1/dashboard", "/api/v1/dashboard/**").hasAuthority("ADMIN")
 
+                        // --- Regimen de faltas ---
+                        // Lo propio lo ve cualquiera; va primero para que no
+                        // caiga en la regla del personal de mas abajo.
+                        .requestMatchers("/api/v1/amonestaciones/mias").authenticated()
+                        // Los numeros del regimen los fija el administrador.
+                        .requestMatchers("/api/v1/amonestaciones/configuracion")
+                        .hasAuthority("ADMIN")
+                        // Levantar un bloqueo es una decision del administrador,
+                        // aunque la falta la pueda aplicar un empleado.
+                        .requestMatchers("/api/v1/amonestaciones/visitante/*/restituir")
+                        .hasAuthority("ADMIN")
+                        // Aplicar faltas y consultar las de otro: el personal.
+                        .requestMatchers("/api/v1/amonestaciones", "/api/v1/amonestaciones/**")
+                        .hasAnyAuthority("ADMIN", "EMPLEADO")
+
                         // Las series recurrentes las arma solo el ADMIN:
                         // va antes que la regla general de /api/v1/reservas/**.
                         .requestMatchers("/api/v1/reservas/recurrentes", "/api/v1/reservas/recurrentes/**")

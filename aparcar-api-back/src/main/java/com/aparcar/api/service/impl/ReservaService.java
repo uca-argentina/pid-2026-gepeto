@@ -65,6 +65,7 @@ public class ReservaService implements IReservaService {
     private Reserva crearReserva(ReservaRequestDto dto, String requesterEmail, boolean requesterIsAdmin,
                                   UUID recurrenciaId) {
         Visitante visitante = resolverVisitante(dto, requesterEmail, requesterIsAdmin);
+        validarNoBloqueado(visitante);
 
         Vehiculo vehiculo = vehiculoRepository.findById(dto.getVehiculoId())
                 .orElseThrow(() -> new NotFoundException("Vehiculo no encontrado."));
@@ -366,6 +367,29 @@ public class ReservaService implements IReservaService {
      * alguien que entro hace un rato, y para que el formulario, que arranca en
      * "ahora", no falle por los segundos que tarda el usuario en enviarlo.
      */
+
+    /**
+     * Frena la reserva si la cuenta está inhabilitada por acumular faltas.
+     *
+     * <p>Va sobre el visitante resuelto y no sobre quien pide, a propósito: si
+     * mirara a quien pide, un operador podría reservar a nombre de alguien
+     * sancionado y saltear el bloqueo sin darse cuenta.
+     *
+     * <p>El bloqueo solo alcanza a reservar. La cuenta sigue entrando y
+     * pudiendo ver sus faltas y su historial, que es justamente lo que
+     * necesita para entender por qué no puede reservar.
+     */
+    private void validarNoBloqueado(Visitante visitante) {
+        LocalDateTime ahora = reglasAcceso.ahora();
+        if (!visitante.estaBloqueado(ahora)) {
+            return;
+        }
+        throw new ValidationException(
+                "La cuenta está inhabilitada por acumulación de faltas hasta el %s."
+                        .formatted(visitante.getBloqueadoHasta()
+                                .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))));
+    }
+
     private void validarRango(LocalDateTime desde, LocalDateTime hasta) {
         if (desde == null || hasta == null) throw new ValidationException("Indica inicio y fin de la reserva.");
         // La reserva se toma en bloques de 15 minutos. Se valida en el backend
