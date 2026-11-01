@@ -29,3 +29,5 @@ databaseChangeLog:
       file: db/changelog/014-verificacion-discapacidad.yaml
   - include:
       file: db/changelog/015-puntos.yaml
+  - include:
+      file: db/changelog/016-amonestaciones.yaml

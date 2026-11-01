@@ -153,6 +153,41 @@ public class ReservaServiceTests {
     }
 
     @Test
+    @DisplayName("crear rechaza la reserva si la cuenta esta bloqueada por faltas")
+    void crearRechazaSiLaCuentaEstaBloqueada() {
+        visitante.setBloqueadoHasta(java.time.LocalDateTime.now().plusDays(10));
+
+        var error = assertThrows(ValidationException.class,
+                () -> reservaService.crear(dto, ADMIN_EMAIL, true));
+
+        // El mensaje lleva la fecha: la persona tiene que poder saber cuando
+        // vuelve a poder reservar sin preguntarle a nadie.
+        assertTrue(error.getMessage().contains("inhabilitada"));
+    }
+
+    @Test
+    @DisplayName("crear mira al titular de la reserva, no a quien la carga")
+    void elBloqueoAlcanzaAlTitularAunqueLaCargueOtro() {
+        visitante.setBloqueadoHasta(java.time.LocalDateTime.now().plusDays(10));
+
+        // La pide un ADMIN, que no esta bloqueado, a nombre de alguien que si.
+        // Si la validacion mirara a quien pide, el bloqueo se saltearia sin
+        // que nadie se diera cuenta.
+        assertThrows(ValidationException.class,
+                () -> reservaService.crear(dto, ADMIN_EMAIL, true));
+    }
+
+    @Test
+    @DisplayName("un bloqueo ya vencido no impide reservar")
+    void unBloqueoVencidoNoImpideReservar() {
+        visitante.setBloqueadoHasta(java.time.LocalDateTime.now().minusMinutes(1));
+        when(reservaRepository.save(any())).thenAnswer(i -> i.getArgument(0));
+
+        // Se vence solo: no hace falta que ninguna tarea lo haya limpiado.
+        assertEquals(ReservaEstado.CONFIRMADA, reservaService.crear(dto, ADMIN_EMAIL, true).estado());
+    }
+
+    @Test
     @DisplayName("crear lanza ValidationException si el tipo de cochera no es compatible con el vehiculo")
     void crearLanzaValidationExceptionSiTiposNoSonCompatibles() {
         cochera.setTipo(CocheraTipo.MOTO);
