@@ -81,6 +81,12 @@ export default async function DashboardAdminPage() {
             <span>Gestionar tarifas</span>
           </Link>
           )}
+          {esAdmin && (
+          <Link href="/dashboard-admin/sanciones" className="dashboard-nav-link">
+            <DashboardIcon name="shield" />
+            <span>Régimen de faltas</span>
+          </Link>
+          )}
         </DashboardHeader>
 
         <ParkingHeading />
