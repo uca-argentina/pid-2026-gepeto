@@ -136,7 +136,14 @@ public class ProdSecurityConfig {
                         // queda solo para ADMIN.
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/tarifas", "/api/v1/tarifas/cotizacion")
                         .hasAnyAuthority("ADMIN", "EMPLEADO", "USER")
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/tarifas/cotizacion")
+                        .hasAnyAuthority("ADMIN", "EMPLEADO", "USER")
                         .requestMatchers("/api/v1/tarifas", "/api/v1/tarifas/**").hasAuthority("ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/convenios")
+                        .hasAnyAuthority("ADMIN", "EMPLEADO", "USER")
+                        .requestMatchers("/api/v1/convenios/credenciales", "/api/v1/convenios/credenciales/**", "/api/v1/convenios/verificar")
+                        .hasAnyAuthority("ADMIN", "EMPLEADO", "USER")
+                        .requestMatchers("/api/v1/convenios", "/api/v1/convenios/**").hasAuthority("ADMIN")
 
                         // Endpoints públicos. Van primero para que
                         // /api/v1/cocheras/disponibles se resuelva acá y no

@@ -53,6 +53,7 @@ public class ReservaService implements IReservaService {
     private final ReglasAcceso reglasAcceso;
     private final PlanificacionReservas planificacion;
     private final IPuntosService puntosService;
+    private final ConvenioService convenioService;
 
     @Override
     @Transactional
@@ -106,6 +107,7 @@ public class ReservaService implements IReservaService {
 
         // La categoria esta validada; el servidor calcula el importe incluso cuando se entra en espera.
         var cotizacion = tarifaService.cotizar(tipo, dto.getDesde(), dto.getHasta());
+        var convenio = convenioService.mejorDescuento(visitante, dto.getCredencialesConvenio(), cotizacion.total());
         ReglasPuntos.Descuento descuento = null;
         if (dto.getPuntosAUsar() != null || dto.isUsarTodosLosPuntos()) {
             // Solo el titular canjea, y sobre una cochera asignada: la espera
@@ -116,8 +118,14 @@ public class ReservaService implements IReservaService {
             descuento = puntosService.prepararCanje(visitante, cotizacion.total(), dto.getPuntosAUsar(),
                     dto.isUsarTodosLosPuntos());
         }
+        // Convenios y puntos no se acumulan. En empate se conservan los puntos.
+        if (convenio != null && descuento != null) {
+            if (convenio.descuentoPct().compareTo(descuento.porcentaje()) >= 0) descuento = null;
+            else convenio = null;
+        }
         // Con descuento, el cliente confirma el precio final que le mostro la cotizacion.
-        var aPagar = descuento == null ? cotizacion.total() : descuento.precioFinal();
+        var aPagar = convenio != null ? cotizacion.total().subtract(convenio.descuentoMonto())
+                : descuento == null ? cotizacion.total() : descuento.precioFinal();
         if (dto.getPrecioEsperado() != null && dto.getPrecioEsperado().compareTo(aPagar) != 0) {
             throw new ValidationException("El precio cambió. Revisá la nueva cotización antes de confirmar.");
         }
@@ -132,6 +140,13 @@ public class ReservaService implements IReservaService {
         reserva.setRecurrenciaId(recurrenciaId);
         reserva.setPrecioTotal(cotizacion.total());
         reserva.setTipoTarifa(cotizacion.tipo());
+        if (convenio != null) {
+            reserva.setConvenioId(convenio.convenioId());
+            reserva.setConvenioNombre(convenio.nombre());
+            reserva.setConvenioDescuentoPct(convenio.descuentoPct());
+            reserva.setConvenioDescuentoMonto(convenio.descuentoMonto());
+            reserva.setPrecioFinal(aPagar);
+        }
         if (descuento != null) {
             reserva.setPuntosUsados(descuento.puntos());
             reserva.setDescuentoPct(descuento.porcentaje());
@@ -193,6 +208,7 @@ public class ReservaService implements IReservaService {
             ocurrencia.setDesde(fecha.atTime(dto.getDesde().toLocalTime()));
             ocurrencia.setHasta(ocurrencia.getDesde().plus(duracion));
             ocurrencia.setPrecioEsperado(dto.getPrecioEsperado());
+            ocurrencia.setCredencialesConvenio(dto.getCredencialesConvenio());
             reservas.add(toResponseDto(crearReserva(ocurrencia, email, true, recurrenciaId), true));
         }
         return reservas;
@@ -498,7 +514,8 @@ public class ReservaService implements IReservaService {
                                 movimiento.getFecha(), movimiento.getActorId(), movimiento.getActorNombre(),
                                 movimiento.getActorEmail(), movimiento.getActorRol())).toList() : null,
                 reserva.getRecurrenciaId(), reserva.getConfirmadaDesdeEsperaAt(), reserva.getNotificacionLeidaAt(),
-                puntosService.deReserva(reserva));
+                puntosService.deReserva(reserva), ConvenioService.deReserva(reserva),
+                reserva.getPrecioFinal() == null ? reserva.getPrecioTotal() : reserva.getPrecioFinal());
     }
 
     /**

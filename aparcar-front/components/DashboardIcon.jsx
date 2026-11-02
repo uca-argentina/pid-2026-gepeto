@@ -6,6 +6,7 @@ const paths = {
   chevron: <path d="m7 10 5 5 5-5" />,
   shield: <><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z" /><path d="m8 12 3 3 5-5" /></>,
   tarifas: <><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M3 10h18m-6 5h3" /></>,
+  convenios: <><path d="m3 12 9-9h8a1 1 0 0 1 1 1v8l-9 9-9-9Z" /><circle cx="16.5" cy="7.5" r="1" /><path d="m8 13 3 3m-1-5 3 3" /></>,
   parking: <><rect x="4" y="3" width="16" height="18" rx="4" /><path d="M10 17V7h3a3 3 0 0 1 0 6h-3" /></>,
   calendar: <><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M7 3v4m10-4v4M3 11h18m-13 5h2m4 0h2" /></>,
   users: <><circle cx="9" cy="8" r="3" /><path d="M3 21v-2a6 6 0 0 1 12 0v2m1-16a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 4v2" /></>,

@@ -1,5 +1,8 @@
 package com.aparcar.api.dto.reserva;
 
+import com.aparcar.api.dto.convenio.CredencialConvenioDto;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.NotNull;
 import com.aparcar.api.entity.reserva.CocheraTipo;
 import lombok.Data;
@@ -7,9 +10,13 @@ import lombok.Data;
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
 import java.util.UUID;
+import java.util.List;
 
 @Data
 public class ReservaRequestDto {
+    @Size(max = 100)
+    private List<@Valid @NotNull CredencialConvenioDto> credencialesConvenio;
+
     /**
      * A nombre de quien va la reserva. Solo lo puede mandar un ADMIN: si quien
      * reserva es un USER, el backend ignora este campo y usa su propia cuenta,

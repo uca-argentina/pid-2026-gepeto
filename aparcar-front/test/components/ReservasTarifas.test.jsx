@@ -14,6 +14,7 @@ beforeEach(() => {
   historial = [];
   cotizar = (params) => Promise.resolve({ data: { tipo: params.tipo, total: params.tipo === "ACCESIBLE" ? 800 : 1000, horas: 1 } });
   get.mockImplementation((url, config) => {
+    if (url.startsWith("/api/v1/convenios")) return Promise.resolve({ data: [] });
     if (url.endsWith("/cotizacion")) return cotizar(config.params);
     if (url.endsWith("/vehiculos")) return Promise.resolve({ data: [{ id: "v1", patente: "ABC123", tipo: "AUTO", visitanteId: "u1" }] });
     if (url.endsWith("/visitantes")) return Promise.resolve({ data: [{ id: "u1", nombre: "Juan", tieneDiscapacidad: true }] });

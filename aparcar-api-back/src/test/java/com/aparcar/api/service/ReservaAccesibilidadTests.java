@@ -80,6 +80,9 @@ public class ReservaAccesibilidadTests {
     @InjectMocks
     private ReservaService reservaService;
 
+    @Mock
+    private com.aparcar.api.service.impl.ConvenioService convenioService;
+
     private Visitante visitante;
     private Cochera cochera;
     private ReservaRequestDto dto;

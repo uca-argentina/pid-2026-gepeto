@@ -103,6 +103,7 @@ describe("ReservasContent: trazabilidad", () => {
 
 function mockData({ visitantes = [], vehiculos = [], reservas = [], disponibles = [] }) {
   getMock.mockImplementation((url) => {
+    if (url.startsWith("/api/v1/convenios")) return Promise.resolve({ data: [] });
     if (url === "/api/v1/tarifas/cotizacion") return Promise.resolve({ data: { tipo: "AUTO", total: 1000, horas: 1 } });
     if (url === "/api/v1/visitantes") return Promise.resolve({ data: visitantes });
     if (url === "/api/v1/vehiculos") return Promise.resolve({ data: vehiculos });

@@ -110,6 +110,19 @@ public class Reserva {
     @Column(name = "precio_final", precision = 18, scale = 2, updatable = false)
     private BigDecimal precioFinal;
 
+    /** Copia inmutable: borrar o editar el convenio no altera una reserva acordada. */
+    @Column(name = "convenio_id", updatable = false)
+    private UUID convenioId;
+
+    @Column(name = "convenio_nombre", length = 100, updatable = false)
+    private String convenioNombre;
+
+    @Column(name = "convenio_descuento_pct", precision = 5, scale = 2, updatable = false)
+    private BigDecimal convenioDescuentoPct;
+
+    @Column(name = "convenio_descuento_monto", precision = 18, scale = 2, updatable = false)
+    private BigDecimal convenioDescuentoMonto;
+
     /** Cuando se devolvieron los puntos canjeados, por cancelar antes de usarla. */
     @Column(name = "puntos_reintegrados_at")
     private Instant puntosReintegradosAt;

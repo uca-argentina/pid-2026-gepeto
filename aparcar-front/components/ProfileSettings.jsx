@@ -10,6 +10,7 @@ import api from "@/app/api";
 import { useAuthStore } from "@/store/authStore";
 import DashboardIcon from "@/components/DashboardIcon";
 import VerificacionDiscapacidad from "@/components/VerificacionDiscapacidad";
+import MisConvenios from "@/components/MisConvenios";
 
 const perfilSchema = z.object({
   email: z.string().trim().min(1, "El email es obligatorio").email("Ingresá un correo válido").max(255),
@@ -165,6 +166,8 @@ export default function ProfileSettings({ admin = false, children }) {
               certificado. También para el admin, que reserva para sí sus series
               recurrentes. */}
           <VerificacionDiscapacidad />
+
+          <MisConvenios documento={perfil.documento} />
 
           {children}
 

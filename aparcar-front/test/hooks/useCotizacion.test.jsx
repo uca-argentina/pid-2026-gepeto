@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-const { get } = vi.hoisted(() => ({ get: vi.fn() }));
-vi.mock("@/app/api", () => ({ default: { get } }));
+const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
+vi.mock("@/app/api", () => ({ default: { get, post } }));
 import useCotizacion from "@/hooks/useCotizacion";
 const desde = "2099-01-01T08:00";
 const hasta = "2099-01-01T09:00";
@@ -72,4 +72,20 @@ it("sin canje no manda parámetros de puntos", async () => {
   get.mockResolvedValue({ data: { total: 1000 } });
   renderHook(() => useCotizacion("AUTO", desde, hasta));
   await waitFor(() => expect(get).toHaveBeenCalledWith("/api/v1/tarifas/cotizacion", { params: { tipo: "AUTO", desde, hasta } }));
+});
+
+it("cotiza credenciales en el cuerpo y descarta el precio al cambiar el visitante", async () => {
+  const pendientes = [];
+  post.mockImplementation(() => new Promise((resolve) => pendientes.push(resolve)));
+  const credencialesConvenio = [{ convenioId: "uca", credencial: "UCA-123" }];
+  const { result, rerender } = renderHook(({ visitanteId }) => useCotizacion("AUTO", desde, hasta,
+    { puntos: "100" }, { visitanteId, credencialesConvenio }), { initialProps: { visitanteId: "v1" } });
+  expect(post).toHaveBeenCalledWith("/api/v1/tarifas/cotizacion", {
+    tipo: "AUTO", desde, hasta, puntos: "100", visitanteId: "v1", credencialesConvenio,
+  });
+  await act(async () => pendientes[0]({ data: { total: 850 } }));
+  expect(result.current.lista).toBe(true);
+  rerender({ visitanteId: "v2" });
+  expect(result.current.lista).toBe(false);
+  expect(get).not.toHaveBeenCalled();
 });

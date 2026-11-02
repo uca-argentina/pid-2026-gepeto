@@ -36,6 +36,7 @@ function mockPerfil({ perfil = PERFIL, vehiculos = [], verificacion = SIN_SOLICI
     if (url === "/api/v1/visitantes/me") return Promise.resolve({ data: perfil });
     if (url === "/api/v1/vehiculos") return Promise.resolve({ data: vehiculos });
     if (url === "/api/v1/verificaciones-discapacidad/mia") return Promise.resolve({ data: verificacion });
+    if (url === "/api/v1/convenios" || url === "/api/v1/convenios/credenciales") return Promise.resolve({ data: [] });
     return Promise.reject(new Error(`URL no mockeada: ${url}`));
   });
 }
