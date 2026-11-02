@@ -1,0 +1,103 @@
+databaseChangeLog:
+  - changeSet:
+      id: 017-convenios
+      author: aparcar
+      changes:
+        - createTable:
+            tableName: convenios
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: nombre
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: formato_credencial
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: descuento_pct
+                  type: decimal(5,2)
+                  constraints:
+                    nullable: false
+        - sql:
+            sql: ALTER TABLE convenios ADD CONSTRAINT ck_convenios_descuento CHECK (descuento_pct > 0 AND descuento_pct <= 100)
+        - createTable:
+            tableName: credenciales_convenio
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: visitante_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: convenio_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: credencial
+                  type: varchar(100)
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: credenciales_convenio
+            columnNames: visitante_id, convenio_id
+            constraintName: uk_credenciales_convenio_titular
+        - addForeignKeyConstraint:
+            baseTableName: credenciales_convenio
+            baseColumnNames: visitante_id
+            referencedTableName: visitantes
+            referencedColumnNames: id
+            constraintName: fk_credenciales_convenio_visitante
+            onDelete: CASCADE
+        - addForeignKeyConstraint:
+            baseTableName: credenciales_convenio
+            baseColumnNames: convenio_id
+            referencedTableName: convenios
+            referencedColumnNames: id
+            constraintName: fk_credenciales_convenio_convenio
+            onDelete: CASCADE
+        # Copias sin FK: el historial y el precio sobreviven a cambios y bajas del convenio.
+        - addColumn:
+            tableName: reservas
+            columns:
+              - column:
+                  name: convenio_id
+                  type: uuid
+              - column:
+                  name: convenio_nombre
+                  type: varchar(100)
+              - column:
+                  name: convenio_descuento_pct
+                  type: decimal(5,2)
+              - column:
+                  name: convenio_descuento_monto
+                  type: decimal(18,2)
+        - insert:
+            tableName: convenios
+            columns:
+              - column: { name: id, value: "11c10000-0000-4000-8000-000000000001" }
+              - column: { name: nombre, value: "UCA" }
+              - column: { name: formato_credencial, value: "UCA-XXX" }
+              - column: { name: descuento_pct, valueNumeric: 15 }
+        - insert:
+            tableName: convenios
+            columns:
+              - column: { name: id, value: "11c10000-0000-4000-8000-000000000002" }
+              - column: { name: nombre, value: "Club Nación" }
+              - column: { name: formato_credencial, value: "NACION-XXX" }
+              - column: { name: descuento_pct, valueNumeric: 10 }

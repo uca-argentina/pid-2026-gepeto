@@ -24,6 +24,7 @@ const cochera = (overrides = {}) => ({
 
 function mockCocheras(disponibles = []) {
   getMock.mockImplementation((url) => {
+    if (url.startsWith("/api/v1/convenios")) return Promise.resolve({ data: [] });
     if (url === "/api/v1/tarifas/cotizacion") return Promise.resolve({ data: { tipo: "AUTO", total: 1000, horas: 1 } });
     if (url === "/api/v1/cocheras/disponibles") return Promise.resolve({ data: disponibles });
     return Promise.reject(new Error(`URL no mockeada: ${url}`));

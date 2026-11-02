@@ -114,7 +114,7 @@ public class PuntosService implements IPuntosService {
                 : reglas.descuento(base.total(), resolverPuntos(visitante, saldo, puntos, usarTodos));
         return new CotizacionResponseDto(base.tipo(), descuento.precioFinal(), base.moneda(), base.jornadas(),
                 base.mediasJornadas(), base.horas(), base.fracciones(), base.total(), descuento.porcentaje(),
-                descuento.monto(), descuento.puntos(), saldo, maxUsable, estimacion.puntos(), estimacion.motivo());
+                descuento.monto(), descuento.puntos(), saldo, maxUsable, estimacion.puntos(), estimacion.motivo(), null);
     }
 
     // ---- Canje y reintegro ----

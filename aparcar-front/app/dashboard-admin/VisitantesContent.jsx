@@ -9,8 +9,10 @@ import api from "@/app/api";
 import { formatoPatenteValido, MENSAJE_FORMATO_INVALIDO, normalizarPatente } from "@/utils/patenteValidation";
 import AtajosJornada from "@/components/AtajosJornada";
 import CotizacionReserva from "@/components/CotizacionReserva";
+import ConveniosCredenciales from "@/components/ConveniosCredenciales";
 import AvisoListaEspera from "@/components/AvisoListaEspera";
 import useCotizacion from "@/hooks/useCotizacion";
+import useConvenios from "@/hooks/useConvenios";
 import useDisponibilidad from "@/hooks/useDisponibilidad";
 import {
   PASO_MINUTOS,
@@ -79,6 +81,7 @@ export default function VisitantesContent({ onAltaCreada }) {
   });
 
   const tipoVehiculo = watch("tipoVehiculo");
+  const documento = watch("documento") ?? "";
   const desde = watch("desde");
   const hasta = watch("hasta");
   const cocheraId = watch("cocheraId");
@@ -99,7 +102,8 @@ export default function VisitantesContent({ onAltaCreada }) {
   const cocheraElegida = cocherasOfrecidas.find((c) => c.id === cocheraId);
   const puedeEsperar = disponibilidad.lista && cocherasOfrecidas.length === 0;
   const enEspera = puedeEsperar && listaEspera;
-  const cotizacion = useCotizacion(cocheraElegida?.tipo ?? tipoVehiculo, desde, hasta);
+  const convenios = useConvenios({ documento });
+  const cotizacion = useCotizacion(cocheraElegida?.tipo ?? tipoVehiculo, desde, hasta, null, convenios.contextoCotizacion);
 
   // Si la cochera elegida deja de estar en la lista (cambió la franja o el
   // tipo), se limpia la selección para no mandar una opción que ya no se ve.
@@ -115,7 +119,7 @@ export default function VisitantesContent({ onAltaCreada }) {
   }, [disponibilidad.solicitud, setValue]);
 
   const onSubmit = async (data) => {
-    if (!cotizacion.lista || (!cocheraElegida && !enEspera) || !rangoValido) return;
+    if (!cotizacion.lista || convenios.cargando || convenios.verificando || (!cocheraElegida && !enEspera) || !rangoValido) return;
     try {
       const res = await api.post("/api/v1/visitantes/alta", {
         nombre: data.nombre,
@@ -131,6 +135,7 @@ export default function VisitantesContent({ onAltaCreada }) {
         desde: redondearAlBloqueLocal(data.desde),
         hasta: redondearAlBloqueLocal(data.hasta),
         precioEsperado: cotizacion.datos.total,
+        ...(convenios.credenciales.length ? { credencialesConvenio: convenios.credenciales } : {}),
       });
 
       toast.success(
@@ -310,6 +315,7 @@ export default function VisitantesContent({ onAltaCreada }) {
               </div>
             </div>
 
+            <ConveniosCredenciales modelo={convenios} />
             <CotizacionReserva cotizacion={cotizacion} />
 
             {errors.root && <p role="alert" className="text-sm text-red-500">{errors.root.message}</p>}
@@ -317,7 +323,7 @@ export default function VisitantesContent({ onAltaCreada }) {
             <div>
               <button
                 type="submit"
-                disabled={isSubmitting || !cotizacion.lista}
+                disabled={isSubmitting || !cotizacion.lista || convenios.cargando || convenios.verificando}
                 className="ui-primary group relative flex w-full justify-center px-3 py-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? "Guardando..." : enEspera ? "Dar de alta e ingresar a lista de espera" : "Dar de alta y reservar"}

@@ -23,12 +23,13 @@ public record CotizacionResponseDto(
         long jornadas, long mediasJornadas, long horas, long fracciones,
         BigDecimal subtotal, BigDecimal descuentoPct, BigDecimal descuento,
         Integer puntosAplicados, Integer saldoDisponible, Integer maxPuntosCanjeables,
-        Integer puntosAGanar, String motivoSinPuntos
+        Integer puntosAGanar, String motivoSinPuntos,
+        com.aparcar.api.dto.convenio.DescuentoConvenioDto convenio
 ) {
     /** La cotizacion de la tarifa, sin puntos: total y subtotal son el mismo. */
     public CotizacionResponseDto(CocheraTipo tipo, BigDecimal total, String moneda,
                                  long jornadas, long mediasJornadas, long horas, long fracciones) {
         this(tipo, total, moneda, jornadas, mediasJornadas, horas, fracciones,
-                total, BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), 0, null, null, null, null);
+                total, BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), 0, null, null, null, null, null);
     }
 }

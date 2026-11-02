@@ -37,6 +37,8 @@ public record ReservaResponseDto(
         Instant confirmadaDesdeEsperaAt,
         Instant notificacionLeidaAt,
         /** Puntos usados, descuento, y puntos que suma o sumo al ingresar. */
-        ReservaPuntosDto puntos
+        ReservaPuntosDto puntos,
+        com.aparcar.api.dto.convenio.DescuentoConvenioDto convenio,
+        BigDecimal precioFinal
 ) {
 }

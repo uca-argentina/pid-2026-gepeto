@@ -92,6 +92,7 @@ public class VisitanteService implements IVisitanteService {
         reservaDto.setDesde(desde);
         reservaDto.setHasta(hasta);
         reservaDto.setPrecioEsperado(dto.getPrecioEsperado());
+        reservaDto.setCredencialesConvenio(dto.getCredencialesConvenio());
         ReservaResponseDto reserva = reservaService.crear(reservaDto, requesterEmail, true);
 
         return new VisitanteAltaResponseDto(toResponseDto(visitante), vehiculo, reserva);

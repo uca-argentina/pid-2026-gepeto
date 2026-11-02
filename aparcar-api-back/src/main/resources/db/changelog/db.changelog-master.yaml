@@ -31,3 +31,5 @@ databaseChangeLog:
       file: db/changelog/015-puntos.yaml
   - include:
       file: db/changelog/016-amonestaciones.yaml
+  - include:
+      file: db/changelog/017-convenios.yaml

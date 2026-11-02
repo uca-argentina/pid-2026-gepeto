@@ -82,6 +82,9 @@ public class ReservaServiceTests {
     @InjectMocks
     private ReservaService reservaService;
 
+    @Mock
+    private com.aparcar.api.service.impl.ConvenioService convenioService;
+
     private Visitante visitante;
     private Vehiculo vehiculo;
     private Cochera cochera;

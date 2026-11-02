@@ -2,11 +2,13 @@ package com.aparcar.api.controller;
 
 import com.aparcar.api.dto.ErrorResponseDto;
 import com.aparcar.api.dto.reserva.CotizacionResponseDto;
+import com.aparcar.api.dto.reserva.CotizacionRequestDto;
 import com.aparcar.api.dto.reserva.TarifaDto;
 import com.aparcar.api.dto.reserva.TarifasRequestDto;
 import com.aparcar.api.entity.reserva.CocheraTipo;
 import com.aparcar.api.exception.ValidationException;
-import com.aparcar.api.service.IPuntosService;
+import com.aparcar.api.service.impl.CotizacionService;
+import com.aparcar.api.security.Roles;
 import com.aparcar.api.service.ITarifaService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +19,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -31,7 +34,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class TarifaController {
     private final ITarifaService tarifaService;
-    private final IPuntosService puntosService;
+    private final CotizacionService cotizacionService;
 
     @GetMapping
     public List<TarifaDto> listar() {
@@ -51,11 +54,13 @@ public class TarifaController {
             @RequestParam(required = false) String puntos,
             @RequestParam(defaultValue = "false") boolean usarTodos,
             Authentication authentication) {
-        var cotizacion = tarifaService.cotizar(tipo, desde, hasta);
-        // Sin parametros de puntos responde lo mismo que antes, mas lo que
-        // sumaria y el saldo de quien cotiza.
-        return puntosService.cotizar(cotizacion, authentication == null ? null : authentication.getName(),
-                desde, hasta, leerPuntos(puntos), usarTodos);
+        return cotizacionService.cotizar(new CotizacionRequestDto(tipo, desde, hasta, leerPuntos(puntos),
+                usarTodos, null, null, null), authentication.getName(), Roles.esPersonal(authentication));
+    }
+
+    @PostMapping("/cotizacion")
+    public CotizacionResponseDto cotizar(@Valid @RequestBody CotizacionRequestDto dto, Authentication authentication) {
+        return cotizacionService.cotizar(dto, authentication.getName(), Roles.esPersonal(authentication));
     }
 
     /** Se lee a mano para rechazar "1.5" o "abc" con un mensaje propio, no el generico de parametros. */

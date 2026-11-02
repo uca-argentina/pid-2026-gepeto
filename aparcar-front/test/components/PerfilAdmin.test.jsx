@@ -12,7 +12,7 @@ vi.mock("sonner", () => ({ toast: { error, success } }));
 const perfil = { nombre: "Ana Pérez", documento: "30111222", email: "admin@test.com", telefono: "111", tieneDiscapacidad: false, nombreEstacionamiento: "Parking Larrea" };
 beforeEach(() => {
   vi.resetAllMocks();
-  get.mockResolvedValue({ data: perfil });
+  get.mockImplementation((url) => Promise.resolve({ data: url.startsWith("/api/v1/convenios") ? [] : perfil }));
   put.mockImplementation((url, data) => Promise.resolve({ data: { ...perfil, ...data } }));
 });
 
@@ -30,9 +30,9 @@ describe("Perfil del administrador", () => {
     await waitFor(() => expect(put).toHaveBeenCalledWith("/api/v1/visitantes/me", {
       email: perfil.email, documento: "30444555", telefono: "", nombreEstacionamiento: "Parking Centro",
     }));
-    // Solo su perfil y su verificación de discapacidad: nunca el catálogo de vehículos.
+    // Solo sus datos, verificación y convenios: nunca el catálogo de vehículos.
     expect(get.mock.calls.every(([url]) =>
-      ["/api/v1/visitantes/me", "/api/v1/verificaciones-discapacidad/mia"].includes(url))).toBe(true);
+      ["/api/v1/visitantes/me", "/api/v1/verificaciones-discapacidad/mia", "/api/v1/convenios", "/api/v1/convenios/credenciales"].includes(url))).toBe(true);
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
