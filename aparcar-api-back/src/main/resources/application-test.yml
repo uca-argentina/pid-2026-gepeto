@@ -31,3 +31,9 @@ aparcar:
     # Los tests de integracion comparten el filtro entre clases: el limite real
     # se prueba aparte, en AccesoRateLimitFilterTests.
     rate-limit-por-minuto: 100000
+  discapacidad:
+    # Dentro de target/: se borra con mvn clean y nunca entra al repo.
+    documentos-dir: target/test-discapacidad-docs
+    notificar-por-mail: false
+    # El limite real se prueba aparte, en VerificacionRateLimitFilterTests.
+    subidas-por-hora: 100000

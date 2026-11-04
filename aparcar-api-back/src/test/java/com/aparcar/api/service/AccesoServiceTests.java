@@ -91,6 +91,9 @@ class AccesoServiceTests {
     @Mock
     private RegistroIntentosAcceso registroIntentos;
 
+    @Mock
+    private com.aparcar.api.service.IPuntosService puntosService;
+
     private Reserva reserva;
     private Visitante operador;
 
@@ -139,7 +142,7 @@ class AccesoServiceTests {
     private AccesoService servicioA(LocalDateTime ahora) {
         return new AccesoService(reservaRepository, reservaMovimientoRepository, visitanteRepository,
                 vehiculoRepository, cocheraRepository,
-                AccesoDePrueba.reglas(AccesoDePrueba.relojEn(ahora)), registroIntentos, planificacion);
+                AccesoDePrueba.reglas(AccesoDePrueba.relojEn(ahora)), registroIntentos, planificacion, puntosService);
     }
 
     private void enCurso(LocalDateTime ingreso) {

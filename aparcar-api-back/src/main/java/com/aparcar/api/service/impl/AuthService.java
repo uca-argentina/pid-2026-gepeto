@@ -58,9 +58,8 @@ public class AuthService implements IAuthService {
                 registrationDto.getTelefono(),
                 Set.of(AppAuthority.USER),
                 true);
-        // Autodeclarado y opcional: si no viene, la cuenta nace sin el permiso
-        // (el default de la entidad) y la persona lo puede marcar despues.
-        user.setTieneDiscapacidad(Boolean.TRUE.equals(registrationDto.getTieneDiscapacidad()));
+        // Sin acceso a las cocheras ACCESIBLE (el default de la entidad): eso lo
+        // da la verificacion del certificado, que se pide despues desde el perfil.
         Visitante savedUser;
         try {
             // save realiza su propia transacción. Si otra solicitud gana la

@@ -1,5 +1,8 @@
 package com.aparcar.api.dto.reserva;
 
+import com.aparcar.api.dto.convenio.CredencialConvenioDto;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 import com.aparcar.api.entity.reserva.VehiculoTipo;
 import com.aparcar.api.entity.reserva.CocheraTipo;
 import jakarta.validation.constraints.Email;
@@ -10,6 +13,7 @@ import lombok.Data;
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
 import java.util.UUID;
+import java.util.List;
 
 /**
  * Alta operativa de un visitante desde el panel del admin: crea en un solo acto
@@ -22,6 +26,9 @@ import java.util.UUID;
  */
 @Data
 public class VisitanteAltaDto {
+    @Size(max = 100)
+    private List<@Valid @NotNull CredencialConvenioDto> credencialesConvenio;
+
     @NotBlank(message = "El nombre es obligatorio")
     private String nombre;
 
@@ -58,14 +65,4 @@ public class VisitanteAltaDto {
     private LocalDateTime hasta;
 
     private BigDecimal precioEsperado;
-
-    /**
-     * Opcional: el admin lo marca si ya sabe, al momento del alta, que la
-     * persona tiene una discapacidad. Si no viene se toma como false, y el
-     * propio visitante lo puede cambiar despues desde su perfil.
-     *
-     * <p>Se aplica ANTES de crear la reserva del alta, asi que un alta con
-     * esto en true puede reservar directamente una cochera ACCESIBLE.
-     */
-    private Boolean tieneDiscapacidad;
 }

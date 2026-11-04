@@ -31,6 +31,8 @@
   .pie > div { min-width: 0; }
   .importe { font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
   .alta { margin-top: 4px; color: var(--color-muted); font-size: 11px; overflow-wrap: anywhere; }
+  .subtotal { color: var(--color-muted); font-size: 12px; font-weight: 500; }
+  .puntos { margin-top: 4px; color: var(--color-link); font-size: 12px; font-weight: 550; overflow-wrap: anywhere; }
   .boton { min-height: 44px; border: 1px solid var(--color-line); border-radius: 9px; background: var(--color-surface); padding: 8px 12px; color: var(--color-ink); font-size: 12px; font-weight: 600; transition: background .15s, border-color .15s; }
   .boton:hover:not(:disabled) { background: var(--color-bg); border-color: var(--color-accent); }
   .boton:disabled { opacity: .45; cursor: not-allowed; }
@@ -62,4 +64,15 @@
     .paginacion { flex-wrap: wrap; padding: 12px; }
     .paginacion > span { width: 100%; order: -1; text-align: center; }
   }
+}
+
+/* Ámbar, no rojo: el rojo ya es "cancelar", y son dos acciones muy distintas
+   que quedan una al lado de la otra. */
+.amonestar {
+  border-color: color-mix(in srgb, #d99100 45%, transparent);
+  color: #a86f00;
+}
+
+.amonestar:hover:not(:disabled) {
+  background: color-mix(in srgb, #d99100 12%, var(--color-surface));
 }

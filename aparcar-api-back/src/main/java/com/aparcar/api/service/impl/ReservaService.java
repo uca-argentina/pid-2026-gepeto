@@ -23,6 +23,7 @@ import com.aparcar.api.repository.CocheraRepository;
 import com.aparcar.api.repository.ReservaRepository;
 import com.aparcar.api.repository.VehiculoRepository;
 import com.aparcar.api.repository.VisitanteRepository;
+import com.aparcar.api.service.IPuntosService;
 import com.aparcar.api.service.IReservaService;
 import com.aparcar.api.service.ITarifaService;
 import lombok.RequiredArgsConstructor;
@@ -51,6 +52,8 @@ public class ReservaService implements IReservaService {
     private final CodigoAcceso codigoAcceso;
     private final ReglasAcceso reglasAcceso;
     private final PlanificacionReservas planificacion;
+    private final IPuntosService puntosService;
+    private final ConvenioService convenioService;
 
     @Override
     @Transactional
@@ -63,6 +66,7 @@ public class ReservaService implements IReservaService {
     private Reserva crearReserva(ReservaRequestDto dto, String requesterEmail, boolean requesterIsAdmin,
                                   UUID recurrenciaId) {
         Visitante visitante = resolverVisitante(dto, requesterEmail, requesterIsAdmin);
+        validarNoBloqueado(visitante);
 
         Vehiculo vehiculo = vehiculoRepository.findById(dto.getVehiculoId())
                 .orElseThrow(() -> new NotFoundException("Vehiculo no encontrado."));
@@ -103,7 +107,26 @@ public class ReservaService implements IReservaService {
 
         // La categoria esta validada; el servidor calcula el importe incluso cuando se entra en espera.
         var cotizacion = tarifaService.cotizar(tipo, dto.getDesde(), dto.getHasta());
-        if (dto.getPrecioEsperado() != null && dto.getPrecioEsperado().compareTo(cotizacion.total()) != 0) {
+        var convenio = convenioService.mejorDescuento(visitante, dto.getCredencialesConvenio(), cotizacion.total());
+        ReglasPuntos.Descuento descuento = null;
+        if (dto.getPuntosAUsar() != null || dto.isUsarTodosLosPuntos()) {
+            // Solo el titular canjea, y sobre una cochera asignada: la espera
+            // podria no confirmarse nunca, y la recurrencia la arma la administracion.
+            if (requesterIsAdmin || recurrenciaId != null || cochera == null) {
+                throw new ValidationException("Los puntos solo se usan en una reserva propia con cochera asignada.");
+            }
+            descuento = puntosService.prepararCanje(visitante, cotizacion.total(), dto.getPuntosAUsar(),
+                    dto.isUsarTodosLosPuntos());
+        }
+        // Convenios y puntos no se acumulan. En empate se conservan los puntos.
+        if (convenio != null && descuento != null) {
+            if (convenio.descuentoPct().compareTo(descuento.porcentaje()) >= 0) descuento = null;
+            else convenio = null;
+        }
+        // Con descuento, el cliente confirma el precio final que le mostro la cotizacion.
+        var aPagar = convenio != null ? cotizacion.total().subtract(convenio.descuentoMonto())
+                : descuento == null ? cotizacion.total() : descuento.precioFinal();
+        if (dto.getPrecioEsperado() != null && dto.getPrecioEsperado().compareTo(aPagar) != 0) {
             throw new ValidationException("El precio cambió. Revisá la nueva cotización antes de confirmar.");
         }
 
@@ -117,6 +140,19 @@ public class ReservaService implements IReservaService {
         reserva.setRecurrenciaId(recurrenciaId);
         reserva.setPrecioTotal(cotizacion.total());
         reserva.setTipoTarifa(cotizacion.tipo());
+        if (convenio != null) {
+            reserva.setConvenioId(convenio.convenioId());
+            reserva.setConvenioNombre(convenio.nombre());
+            reserva.setConvenioDescuentoPct(convenio.descuentoPct());
+            reserva.setConvenioDescuentoMonto(convenio.descuentoMonto());
+            reserva.setPrecioFinal(aPagar);
+        }
+        if (descuento != null) {
+            reserva.setPuntosUsados(descuento.puntos());
+            reserva.setDescuentoPct(descuento.porcentaje());
+            reserva.setDescuentoMonto(descuento.monto());
+            reserva.setPrecioFinal(descuento.precioFinal());
+        }
 
         Visitante actor = requesterIsAdmin ? buscarActor(requesterEmail) : visitante;
         reserva.registrarAccion(ReservaAccion.ALTA, actor, requesterIsAdmin);
@@ -124,6 +160,7 @@ public class ReservaService implements IReservaService {
         // El codigo se deriva del id, que recien existe despues de guardar.
         // Misma transaccion: si algo falla, no queda una reserva sin codigo.
         if (cochera != null) codigoAcceso.asignar(guardada, reglasAcceso.instante());
+        if (descuento != null) puntosService.confirmarCanje(visitante, guardada, descuento);
         return guardada;
     }
 
@@ -171,6 +208,7 @@ public class ReservaService implements IReservaService {
             ocurrencia.setDesde(fecha.atTime(dto.getDesde().toLocalTime()));
             ocurrencia.setHasta(ocurrencia.getDesde().plus(duracion));
             ocurrencia.setPrecioEsperado(dto.getPrecioEsperado());
+            ocurrencia.setCredencialesConvenio(dto.getCredencialesConvenio());
             reservas.add(toResponseDto(crearReserva(ocurrencia, email, true, recurrenciaId), true));
         }
         return reservas;
@@ -274,6 +312,8 @@ public class ReservaService implements IReservaService {
         Visitante actor = requesterIsAdmin ? buscarActor(requesterEmail) : reserva.getVisitante();
         reserva.setEstado(ReservaEstado.CANCELADA);
         reserva.registrarAccion(ReservaAccion.CANCELACION, actor, requesterIsAdmin);
+        // Cancelada antes de usarla: los puntos canjeados vuelven.
+        puntosService.reintegrar(reserva);
 
         reservaRepository.save(reserva);
         planificacion.promover();
@@ -320,7 +360,7 @@ public class ReservaService implements IReservaService {
      *
      * <p>{@code visitante} es siempre el dueño de la reserva (ya resuelto por
      * {@link #resolverVisitante}). Cuando un ADMIN reserva en nombre de otro,
-     * lo que cuenta es la declaracion de esa otra persona, no la del admin que
+     * lo que cuenta es la verificacion de esa otra persona, no la del admin que
      * esta cargando la reserva.
      */
     private void validarAccesibilidad(Cochera cochera, Visitante visitante) {
@@ -329,8 +369,8 @@ public class ReservaService implements IReservaService {
         }
         if (!visitante.puedeUsarCocheraAccesible()) {
             throw new ValidationException(
-                    ("La cochera %s es de uso exclusivo para personas con discapacidad, y %s no lo tiene "
-                            + "declarado en su perfil.").formatted(cochera.getNumero(), visitante.getNombre()));
+                    ("La cochera %s es de uso exclusivo para personas con discapacidad, y %s no tiene "
+                            + "verificado su certificado.").formatted(cochera.getNumero(), visitante.getNombre()));
         }
     }
 
@@ -343,6 +383,29 @@ public class ReservaService implements IReservaService {
      * alguien que entro hace un rato, y para que el formulario, que arranca en
      * "ahora", no falle por los segundos que tarda el usuario en enviarlo.
      */
+
+    /**
+     * Frena la reserva si la cuenta está inhabilitada por acumular faltas.
+     *
+     * <p>Va sobre el visitante resuelto y no sobre quien pide, a propósito: si
+     * mirara a quien pide, un operador podría reservar a nombre de alguien
+     * sancionado y saltear el bloqueo sin darse cuenta.
+     *
+     * <p>El bloqueo solo alcanza a reservar. La cuenta sigue entrando y
+     * pudiendo ver sus faltas y su historial, que es justamente lo que
+     * necesita para entender por qué no puede reservar.
+     */
+    private void validarNoBloqueado(Visitante visitante) {
+        LocalDateTime ahora = reglasAcceso.ahora();
+        if (!visitante.estaBloqueado(ahora)) {
+            return;
+        }
+        throw new ValidationException(
+                "La cuenta está inhabilitada por acumulación de faltas hasta el %s."
+                        .formatted(visitante.getBloqueadoHasta()
+                                .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))));
+    }
+
     private void validarRango(LocalDateTime desde, LocalDateTime hasta) {
         if (desde == null || hasta == null) throw new ValidationException("Indica inicio y fin de la reserva.");
         // La reserva se toma en bloques de 15 minutos. Se valida en el backend
@@ -450,7 +513,9 @@ public class ReservaService implements IReservaService {
                         new ReservaMovimientoResponseDto(movimiento.getId(), movimiento.getAccion(),
                                 movimiento.getFecha(), movimiento.getActorId(), movimiento.getActorNombre(),
                                 movimiento.getActorEmail(), movimiento.getActorRol())).toList() : null,
-                reserva.getRecurrenciaId(), reserva.getConfirmadaDesdeEsperaAt(), reserva.getNotificacionLeidaAt());
+                reserva.getRecurrenciaId(), reserva.getConfirmadaDesdeEsperaAt(), reserva.getNotificacionLeidaAt(),
+                puntosService.deReserva(reserva), ConvenioService.deReserva(reserva),
+                reserva.getPrecioFinal() == null ? reserva.getPrecioTotal() : reserva.getPrecioFinal());
     }
 
     /**

@@ -247,3 +247,61 @@ describe("UserManagement", () => {
     expect(deleteMock).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * La columna de faltas del panel de cuentas.
+ *
+ * Es donde el administrador ve de un vistazo quién está cerca del límite y
+ * quién ya quedó bloqueado. Lo que se prueba es que el botón de restituir solo
+ * exista cuando hay algo que levantar: ofrecerlo siempre invita a apretarlo
+ * sobre cuentas que no están bloqueadas.
+ */
+describe("faltas en el panel de cuentas", () => {
+  it("dibuja los puntitos de cada cuenta", async () => {
+    getMock.mockResolvedValue({
+      data: [usuario({ faltasVigentes: 2, maxFaltas: 3 })],
+    });
+    const { container } = render(<UserManagement />);
+    await screen.findByText("Juan Perez");
+
+    expect(container.querySelectorAll(".falta-punto")).toHaveLength(3);
+    expect(container.querySelectorAll(".falta-punto-usado")).toHaveLength(2);
+  });
+
+  it("sin bloqueo no ofrece restituir", async () => {
+    getMock.mockResolvedValue({
+      data: [usuario({ faltasVigentes: 1, maxFaltas: 3, bloqueadoHasta: null })],
+    });
+    render(<UserManagement />);
+    await screen.findByText("Juan Perez");
+
+    expect(screen.queryByRole("button", { name: /restituir/i })).not.toBeInTheDocument();
+  });
+
+  it("con la cuenta bloqueada muestra hasta cuándo y ofrece restituir", async () => {
+    getMock.mockResolvedValue({
+      data: [usuario({ faltasVigentes: 4, maxFaltas: 3, bloqueadoHasta: "2026-12-01T10:00:00" })],
+    });
+    render(<UserManagement />);
+    await screen.findByText("Juan Perez");
+
+    expect(screen.getByText(/bloqueada hasta/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /restituir/i })).toBeInTheDocument();
+  });
+
+  it("restituir llama al endpoint de esa cuenta y recarga el listado", async () => {
+    getMock.mockResolvedValue({
+      data: [usuario({ id: "u-7", faltasVigentes: 4, maxFaltas: 3, bloqueadoHasta: "2026-12-01T10:00:00" })],
+    });
+    postMock.mockResolvedValue({ data: {} });
+    const user = userEvent.setup();
+    render(<UserManagement />);
+    await screen.findByText("Juan Perez");
+
+    await user.click(screen.getByRole("button", { name: /restituir/i }));
+
+    await waitFor(() => expect(postMock)
+      .toHaveBeenCalledWith("/api/v1/amonestaciones/visitante/u-7/restituir"));
+    expect(toastSuccessMock).toHaveBeenCalled();
+  });
+});

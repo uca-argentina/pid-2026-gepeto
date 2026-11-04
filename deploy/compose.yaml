@@ -79,7 +79,8 @@ services:
       ADMIN_DOCUMENTO: ${ADMIN_DOCUMENTO}
       ADMIN_NOMBRE: ${ADMIN_NOMBRE:-Administrador}
 
-      # Solo para recuperar contraseña. Si quedan vacias, el resto anda igual.
+      # Recuperar contraseña y avisos de la verificacion de discapacidad. Si
+      # quedan vacias, el resto anda igual.
       MAIL_USERNAME: ${MAIL_USERNAME:-}
       MAIL_PASSWORD: ${MAIL_PASSWORD:-}
 
@@ -91,6 +92,12 @@ services:
       # techo, en una instancia chica se pasa del limite y el kernel mata el
       # proceso apenas entran unos pedidos.
       JAVA_OPTS: -XX:MaxRAMPercentage=70
+    volumes:
+      # Certificados de discapacidad (datos de salud). La imagen ya apunta
+      # DISCAPACIDAD_DOCS_DIR aca; el volumen hace que sobrevivan a cada
+      # redespliegue. Es privado: ningun otro contenedor lo monta, y los
+      # archivos se borran solos pasada la retencion.
+      - discapacidad_docs:/var/lib/aparcar/discapacidad
     depends_on:
       db:
         condition: service_healthy
@@ -150,6 +157,7 @@ services:
 
 volumes:
   db_data:
+  discapacidad_docs:
   caddy_data:
   caddy_config:
   caddy_logs:

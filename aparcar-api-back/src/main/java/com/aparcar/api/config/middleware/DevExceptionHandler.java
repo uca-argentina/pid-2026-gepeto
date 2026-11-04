@@ -1,6 +1,9 @@
 package com.aparcar.api.config.middleware;
 
 import com.aparcar.api.dto.ErrorResponseDto;
+import com.aparcar.api.exception.ArchivoDemasiadoGrandeException;
+import com.aparcar.api.exception.ConflictoException;
+import com.aparcar.api.exception.TipoArchivoNoPermitidoException;
 import com.aparcar.api.exception.NotFoundException;
 import com.aparcar.api.exception.ValidationException;
 import jakarta.validation.ConstraintViolation;
@@ -10,6 +13,10 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.HttpRequestMethodNotSupportedException;
+import org.springframework.web.HttpMediaTypeNotSupportedException;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
+import org.springframework.web.multipart.support.MissingServletRequestPartException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingPathVariableException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
@@ -28,6 +35,44 @@ import static com.aparcar.api.config.ApplicationConstants.DEV_ENV;
 @ControllerAdvice
 @Profile(DEV_ENV)
 public class DevExceptionHandler {
+    @ExceptionHandler(ConflictoException.class)
+    public ResponseEntity<ErrorResponseDto> handleConflictoException(ConflictoException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+                new ErrorResponseDto(HttpStatus.CONFLICT.value(), e.getMessage(), null));
+    }
+
+    @ExceptionHandler(ArchivoDemasiadoGrandeException.class)
+    public ResponseEntity<ErrorResponseDto> handleArchivoDemasiadoGrandeException(ArchivoDemasiadoGrandeException e) {
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).body(
+                new ErrorResponseDto(HttpStatus.CONTENT_TOO_LARGE.value(), e.getMessage(), null));
+    }
+
+    /** El archivo supero el limite de multipart antes de llegar al controller. */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ErrorResponseDto> handleMaxUploadSizeExceededException() {
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE).body(new ErrorResponseDto(
+                HttpStatus.CONTENT_TOO_LARGE.value(), "El archivo supera el tamaño permitido.", null));
+    }
+
+    @ExceptionHandler(TipoArchivoNoPermitidoException.class)
+    public ResponseEntity<ErrorResponseDto> handleTipoArchivoNoPermitidoException(TipoArchivoNoPermitidoException e) {
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(
+                new ErrorResponseDto(HttpStatus.UNSUPPORTED_MEDIA_TYPE.value(), e.getMessage(), null));
+    }
+
+    @ExceptionHandler(HttpMediaTypeNotSupportedException.class)
+    public ResponseEntity<ErrorResponseDto> handleHttpMediaTypeNotSupportedException() {
+        return ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE).body(new ErrorResponseDto(
+                HttpStatus.UNSUPPORTED_MEDIA_TYPE.value(), "El formato del pedido no es el esperado.", null));
+    }
+
+    /** Un multipart sin el archivo, o que no se pudo leer. */
+    @ExceptionHandler({MissingServletRequestPartException.class, MultipartException.class})
+    public ResponseEntity<ErrorResponseDto> handleMultipartException() {
+        return ResponseEntity.badRequest().body(new ErrorResponseDto(
+                HttpStatus.BAD_REQUEST.value(), "Falta el archivo o no se pudo leer.", null));
+    }
+
     @ExceptionHandler(org.springframework.dao.OptimisticLockingFailureException.class)
     public ResponseEntity<ErrorResponseDto> handleOptimisticLockingFailureException() {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(new ErrorResponseDto(

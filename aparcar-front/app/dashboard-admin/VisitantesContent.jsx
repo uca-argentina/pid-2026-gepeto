@@ -9,8 +9,10 @@ import api from "@/app/api";
 import { formatoPatenteValido, MENSAJE_FORMATO_INVALIDO, normalizarPatente } from "@/utils/patenteValidation";
 import AtajosJornada from "@/components/AtajosJornada";
 import CotizacionReserva from "@/components/CotizacionReserva";
+import ConveniosCredenciales from "@/components/ConveniosCredenciales";
 import AvisoListaEspera from "@/components/AvisoListaEspera";
 import useCotizacion from "@/hooks/useCotizacion";
+import useConvenios from "@/hooks/useConvenios";
 import useDisponibilidad from "@/hooks/useDisponibilidad";
 import {
   PASO_MINUTOS,
@@ -24,9 +26,6 @@ const visitanteSchema = z
     documento: z.string().min(1, "El documento es obligatorio"),
     email: z.string().min(1, "El email es obligatorio").email("Ingresa un correo válido"),
     telefono: z.string().optional(),
-    // Opcional: el admin lo marca si ya sabe que la persona tiene una
-    // discapacidad. Habilita reservar cocheras ACCESIBLE.
-    tieneDiscapacidad: z.boolean().optional(),
     patente: z.string().transform(normalizarPatente).pipe(z.string().min(1, "La patente es obligatoria")),
     tipoVehiculo: z.enum(["AUTO", "MOTO", "CARGA"], {
       message: "Selecciona un tipo de vehículo",
@@ -78,13 +77,13 @@ export default function VisitantesContent({ onAltaCreada }) {
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(visitanteSchema),
-    defaultValues: { tipoVehiculo: "AUTO", cocheraId: "", tieneDiscapacidad: false, listaEspera: false, ...franjaPorDefecto() },
+    defaultValues: { tipoVehiculo: "AUTO", cocheraId: "", listaEspera: false, ...franjaPorDefecto() },
   });
 
   const tipoVehiculo = watch("tipoVehiculo");
+  const documento = watch("documento") ?? "";
   const desde = watch("desde");
   const hasta = watch("hasta");
-  const tieneDiscapacidad = watch("tieneDiscapacidad");
   const cocheraId = watch("cocheraId");
   const listaEspera = watch("listaEspera");
   const rangoValido = Boolean(desde && hasta && hasta > desde);
@@ -92,23 +91,22 @@ export default function VisitantesContent({ onAltaCreada }) {
   const cocheras = disponibilidad.cocheras;
 
   // El backend le muestra todas las cocheras al admin (porque suele reservar
-  // para otra persona) y recién rechaza al confirmar si se elige una ACCESIBLE
-  // para alguien sin discapacidad declarada. Acá ya sabemos si la persona que
-  // se está dando de alta la tiene (es el checkbox de este mismo formulario),
-  // así que no ofrecemos una opción que el backend va a rechazar.
+  // para otra persona) y rechaza al confirmar una ACCESIBLE para alguien sin
+  // la discapacidad verificada. Una cuenta que se está creando nunca la tiene
+  // (se verifica después, con el certificado), así que no se ofrecen.
   const cocherasOfrecidas = useMemo(
-    () => (tieneDiscapacidad ? cocheras : cocheras.filter((c) => c.tipo !== "ACCESIBLE")),
-    [cocheras, tieneDiscapacidad]
+    () => cocheras.filter((c) => c.tipo !== "ACCESIBLE"),
+    [cocheras]
   );
   const hayAccesiblesOcultas = cocherasOfrecidas.length < cocheras.length;
   const cocheraElegida = cocherasOfrecidas.find((c) => c.id === cocheraId);
   const puedeEsperar = disponibilidad.lista && cocherasOfrecidas.length === 0;
   const enEspera = puedeEsperar && listaEspera;
-  const cotizacion = useCotizacion(cocheraElegida?.tipo ?? tipoVehiculo, desde, hasta);
+  const convenios = useConvenios({ documento });
+  const cotizacion = useCotizacion(cocheraElegida?.tipo ?? tipoVehiculo, desde, hasta, null, convenios.contextoCotizacion);
 
-  // Si el admin eligió una ACCESIBLE y después desmarca el checkbox, esa
-  // cochera deja de estar en la lista: se limpia la selección para no mandar
-  // una opción que ya no se ve.
+  // Si la cochera elegida deja de estar en la lista (cambió la franja o el
+  // tipo), se limpia la selección para no mandar una opción que ya no se ve.
   useEffect(() => {
     if (cocheraId && !cocherasOfrecidas.some((c) => c.id === cocheraId)) {
       setValue("cocheraId", "");
@@ -118,17 +116,16 @@ export default function VisitantesContent({ onAltaCreada }) {
   useEffect(() => {
     setValue("cocheraId", "");
     setValue("listaEspera", false);
-  }, [disponibilidad.solicitud, tieneDiscapacidad, setValue]);
+  }, [disponibilidad.solicitud, setValue]);
 
   const onSubmit = async (data) => {
-    if (!cotizacion.lista || (!cocheraElegida && !enEspera) || !rangoValido) return;
+    if (!cotizacion.lista || convenios.cargando || convenios.verificando || (!cocheraElegida && !enEspera) || !rangoValido) return;
     try {
       const res = await api.post("/api/v1/visitantes/alta", {
         nombre: data.nombre,
         documento: data.documento,
         email: data.email,
         telefono: data.telefono || undefined,
-        tieneDiscapacidad: Boolean(data.tieneDiscapacidad),
         patente: data.patente,
         tipoVehiculo: data.tipoVehiculo,
         cocheraId: enEspera ? null : data.cocheraId,
@@ -138,12 +135,13 @@ export default function VisitantesContent({ onAltaCreada }) {
         desde: redondearAlBloqueLocal(data.desde),
         hasta: redondearAlBloqueLocal(data.hasta),
         precioEsperado: cotizacion.datos.total,
+        ...(convenios.credenciales.length ? { credencialesConvenio: convenios.credenciales } : {}),
       });
 
       toast.success(
         `Visitante dado de alta y ${res.data?.reserva?.estado === "LISTA_ESPERA" ? "reserva en lista de espera" : "cochera reservada"}. Su contraseña inicial es su documento (${data.documento}).`
       );
-      reset({ tipoVehiculo: "AUTO", cocheraId: "", tieneDiscapacidad: false, listaEspera: false, ...franjaPorDefecto() });
+      reset({ tipoVehiculo: "AUTO", cocheraId: "", listaEspera: false, ...franjaPorDefecto() });
       disponibilidad.recargar();
       onAltaCreada?.();
     } catch (err) {
@@ -208,20 +206,10 @@ export default function VisitantesContent({ onAltaCreada }) {
                   <label className={labelClasses} htmlFor="telefono">Teléfono (opcional)</label>
                   <input id="telefono" {...register("telefono")} className={inputClasses} placeholder="Teléfono" />
                 </div>
-                <div className="sm:col-span-2">
-                  <label className="flex cursor-pointer items-center gap-2 text-sm text-ink/70" htmlFor="alta-discapacidad">
-                    <input
-                      id="alta-discapacidad"
-                      type="checkbox"
-                      {...register("tieneDiscapacidad")}
-                      className="h-4 w-4 rounded border-ink/20 bg-surface accent-accent"
-                    />
-                    Persona con discapacidad (opcional)
-                  </label>
-                  <p className="mt-1 text-xs text-ink/50">
-                    Marcalo si ya lo sabés: habilita las cocheras accesibles. El visitante lo puede cambiar después desde su perfil.
-                  </p>
-                </div>
+                <p className="sm:col-span-2 text-xs text-ink/50">
+                  Si la persona tiene una discapacidad, puede pedir la verificación desde su perfil, subiendo su
+                  certificado. Las cocheras accesibles se habilitan cuando un administrador lo aprueba.
+                </p>
               </div>
             </div>
 
@@ -320,13 +308,14 @@ export default function VisitantesContent({ onAltaCreada }) {
                   {puedeEsperar && <AvisoListaEspera id="alta-lista-espera" registro={register("listaEspera")} tipoCochera={tipoVehiculo} />}
                   {hayAccesiblesOcultas && (
                     <p className="mt-1 text-xs text-ink/50">
-                      Las cocheras accesibles aparecen al marcar &quot;Persona con discapacidad&quot;.
+                      Las cocheras accesibles no se ofrecen en el alta: requieren el certificado verificado.
                     </p>
                   )}
                 </div>
               </div>
             </div>
 
+            <ConveniosCredenciales modelo={convenios} />
             <CotizacionReserva cotizacion={cotizacion} />
 
             {errors.root && <p role="alert" className="text-sm text-red-500">{errors.root.message}</p>}
@@ -334,7 +323,7 @@ export default function VisitantesContent({ onAltaCreada }) {
             <div>
               <button
                 type="submit"
-                disabled={isSubmitting || !cotizacion.lista}
+                disabled={isSubmitting || !cotizacion.lista || convenios.cargando || convenios.verificando}
                 className="ui-primary group relative flex w-full justify-center px-3 py-3 text-sm font-semibold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSubmitting ? "Guardando..." : enEspera ? "Dar de alta e ingresar a lista de espera" : "Dar de alta y reservar"}

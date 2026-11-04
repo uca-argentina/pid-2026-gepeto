@@ -3,6 +3,10 @@ package com.aparcar.api.service.impl;
 import com.aparcar.api.component.IRevokedUserCache;
 import com.aparcar.api.dto.auth.UpdateUserDto;
 import com.aparcar.api.dto.auth.UserResponseDto;
+import com.aparcar.api.service.impl.ConfiguracionSancionesService;
+import java.util.Map;
+import java.time.LocalDateTime;
+import com.aparcar.api.service.IAmonestacionService;
 import com.aparcar.api.entity.auth.InactiveUsersDto;
 import com.aparcar.api.entity.auth.Visitante;
 import com.aparcar.api.exception.NotFoundException;
@@ -28,6 +32,8 @@ import java.util.stream.Collectors;
 public class UserService implements IUserService {
 
     private final VisitanteRepository visitanteRepository;
+    private final IAmonestacionService amonestaciones;
+    private final ConfiguracionSancionesService configuracionSanciones;
     private final IRevokedUserCache revokedUserCache;
     private final ReservaRepository reservaRepository;
     private final VehiculoRepository vehiculoRepository;
@@ -86,9 +92,16 @@ public class UserService implements IUserService {
 
     @Override
     public List<UserResponseDto> getUsers() {
-        return visitanteRepository.findAll()
-                .stream()
-                .map(this::toResponseDto)
+        List<Visitante> usuarios = visitanteRepository.findAll();
+
+        // Las faltas se cuentan de todas las cuentas en una sola consulta. Una
+        // por usuario seria una consulta por fila del panel.
+        Map<UUID, Long> faltas = amonestaciones.contarVigentesDe(
+                usuarios.stream().map(Visitante::getId).toList());
+        int maxFaltas = configuracionSanciones.obtener().getMaxFaltas();
+
+        return usuarios.stream()
+                .map(user -> toResponseDto(user, faltas.getOrDefault(user.getId(), 0L), maxFaltas))
                 .toList();
     }
 
@@ -114,7 +127,14 @@ public class UserService implements IUserService {
         return toResponseDto(savedUser);
     }
 
+    /** Para las respuestas sueltas, donde contar una sola cuenta no pesa. */
     private UserResponseDto toResponseDto(Visitante user) {
+        return toResponseDto(user,
+                amonestaciones.contarVigentes(user.getId(), LocalDateTime.now()),
+                configuracionSanciones.obtener().getMaxFaltas());
+    }
+
+    private UserResponseDto toResponseDto(Visitante user, long faltasVigentes, int maxFaltas) {
         Set<String> authorities = user.getAuthorities() == null
                 ? Set.of()
                 : user.getAuthorities()
@@ -129,7 +149,10 @@ public class UserService implements IUserService {
                 user.getEmail(),
                 user.getTelefono(),
                 authorities,
-                user.getIsActive()
+                user.getIsActive(),
+                faltasVigentes,
+                maxFaltas,
+                user.estaBloqueado(LocalDateTime.now()) ? user.getBloqueadoHasta() : null
         );
     }
 }

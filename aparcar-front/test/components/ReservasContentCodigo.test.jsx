@@ -23,6 +23,7 @@ const reservaCreada = {
 
 function mockData({ reservas = [] } = {}) {
   getMock.mockImplementation((url, config) => {
+    if (url.startsWith("/api/v1/convenios")) return Promise.resolve({ data: [] });
     if (url === "/api/v1/tarifas/cotizacion") return Promise.resolve({ data: { tipo: config.params.tipo, total: 1000, horas: 1 } });
     if (url === "/api/v1/vehiculos") return Promise.resolve({ data: [{ id: "v1", patente: "ABC123", tipo: "AUTO", visitanteId: "u1" }] });
     if (url === "/api/v1/visitantes") return Promise.resolve({ data: [{ id: "u1", nombre: "Juan", tieneDiscapacidad: false }] });

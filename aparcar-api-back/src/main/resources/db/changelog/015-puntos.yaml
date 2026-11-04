@@ -1,0 +1,133 @@
+databaseChangeLog:
+  # Gamificacion: billetera y libro de puntos, y el canje en la reserva.
+  #
+  # No hay backfill: las reservas anteriores no dan puntos y cada billetera se
+  # crea la primera vez que hace falta. visitante_id y reserva_id son copias,
+  # sin FK, como en el resto de los registros de auditoria: el libro sobrevive
+  # a que se borre una cuenta o una reserva.
+  - changeSet:
+      id: 015-puntos
+      author: aparcar
+      changes:
+        - createTable:
+            tableName: billeteras_puntos
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: visitante_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: uk_billeteras_puntos_visitante
+              - column:
+                  name: saldo
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: racha_actual
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: mejor_racha
+                  type: integer
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: ultimo_dia_racha
+                  type: date
+              - column:
+                  name: version
+                  type: bigint
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        # El saldo nunca puede quedar negativo, aunque falle la aplicacion.
+        - sql:
+            sql: ALTER TABLE billeteras_puntos ADD CONSTRAINT ck_billeteras_puntos_saldo CHECK (saldo >= 0)
+        - createTable:
+            tableName: movimientos_puntos
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: visitante_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tipo
+                  type: varchar(30)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: puntos
+                  type: integer
+                  constraints:
+                    nullable: false
+              - column:
+                  name: reserva_id
+                  type: uuid
+              - column:
+                  name: descripcion
+                  type: varchar(200)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: fecha
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+        # Una reserva acredita, canjea o reintegra una sola vez, aunque se
+        # repita o reintente la operacion.
+        - addUniqueConstraint:
+            tableName: movimientos_puntos
+            columnNames: visitante_id, reserva_id, tipo
+            constraintName: uk_movimientos_puntos_reserva_tipo
+        # Historial propio, mas recientes primero, y el tope diario de acreditaciones.
+        - createIndex:
+            tableName: movimientos_puntos
+            indexName: idx_movimientos_puntos_visitante_fecha
+            columns:
+              - column:
+                  name: visitante_id
+              - column:
+                  name: fecha
+        - addColumn:
+            tableName: reservas
+            columns:
+              - column:
+                  name: puntos_usados
+                  type: integer
+              - column:
+                  name: descuento_pct
+                  type: decimal(5,2)
+              - column:
+                  name: descuento_monto
+                  type: decimal(18,2)
+              - column:
+                  name: precio_final
+                  type: decimal(18,2)
+              - column:
+                  name: puntos_reintegrados_at
+                  type: timestamp with time zone
+              - column:
+                  name: puntos_acreditados
+                  type: integer
+              - column:
+                  name: puntos_motivo
+                  type: varchar(200)

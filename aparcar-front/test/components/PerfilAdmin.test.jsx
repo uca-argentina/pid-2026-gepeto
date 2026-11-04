@@ -12,7 +12,7 @@ vi.mock("sonner", () => ({ toast: { error, success } }));
 const perfil = { nombre: "Ana Pérez", documento: "30111222", email: "admin@test.com", telefono: "111", tieneDiscapacidad: false, nombreEstacionamiento: "Parking Larrea" };
 beforeEach(() => {
   vi.resetAllMocks();
-  get.mockResolvedValue({ data: perfil });
+  get.mockImplementation((url) => Promise.resolve({ data: url.startsWith("/api/v1/convenios") ? [] : perfil }));
   put.mockImplementation((url, data) => Promise.resolve({ data: { ...perfil, ...data } }));
 });
 
@@ -28,9 +28,11 @@ describe("Perfil del administrador", () => {
     await user.clear(screen.getByLabelText("Teléfono"));
     await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await waitFor(() => expect(put).toHaveBeenCalledWith("/api/v1/visitantes/me", {
-      email: perfil.email, documento: "30444555", telefono: "", nombreEstacionamiento: "Parking Centro", tieneDiscapacidad: false,
+      email: perfil.email, documento: "30444555", telefono: "", nombreEstacionamiento: "Parking Centro",
     }));
-    expect(get.mock.calls.every(([url]) => url === "/api/v1/visitantes/me")).toBe(true);
+    // Solo sus datos, verificación y convenios: nunca el catálogo de vehículos.
+    expect(get.mock.calls.every(([url]) =>
+      ["/api/v1/visitantes/me", "/api/v1/verificaciones-discapacidad/mia", "/api/v1/convenios", "/api/v1/convenios/credenciales"].includes(url))).toBe(true);
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   });
 
@@ -94,7 +96,7 @@ describe("Perfil del administrador", () => {
     expect(screen.queryByLabelText("Nombre del estacionamiento")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Guardar cambios" }));
     await waitFor(() => expect(put).toHaveBeenCalledWith("/api/v1/visitantes/me", {
-      email: perfil.email, telefono: "111", tieneDiscapacidad: false,
+      email: perfil.email, telefono: "111",
     }));
   });
 });

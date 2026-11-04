@@ -8,6 +8,7 @@ import PatenteVisual from "@/components/PatenteVisual";
 import { formatearRango, hora, MODALIDAD_ETIQUETA } from "@/utils/franjaHoraria";
 import { tieneCodigoVigente } from "@/utils/codigoAcceso";
 import { formatearPrecio } from "@/utils/tarifas";
+import { formatearPorcentaje, textosPuntosReserva } from "@/utils/puntos";
 import {
   FILTROS_RESERVAS, ORDENES_RESERVAS, formatearFechaRegistro, seleccionarReservas,
 } from "@/utils/reservasListado";
@@ -29,6 +30,9 @@ const textoAcceso = (acceso) => {
  */
 export default function ReservasListado({
   modo = "user", reservas, cargando, error, onReintentar, onCancelar, onVerCodigo,
+  // Si viene, agrega "Amonestar" a cada reserva. Lo pasa el panel del personal;
+  // en el listado del visitante nunca llega, así que el botón no existe ahí.
+  onAmonestar,
 }) {
   const esAdmin = modo === "admin";
   const id = useId();
@@ -165,7 +169,20 @@ export default function ReservasListado({
 
                   <div className={styles.pie}>
                     <div>
-                      <p className={styles.importe}>{reserva.precioTotal == null ? "Sin importe registrado" : `Total: ${formatearPrecio(reserva.precioTotal)} ARS`}</p>
+                      <p className={styles.importe}>{reserva.precioTotal == null ? "Sin importe registrado"
+                        : reserva.convenio
+                          ? `Total: ${formatearPrecio(reserva.precioFinal ?? reserva.puntos?.precioFinal ?? (reserva.precioTotal - reserva.convenio.descuentoMonto))} ARS`
+                        : reserva.puntos?.precioFinal != null
+                          ? <>Total: {formatearPrecio(reserva.puntos.precioFinal)} ARS <span className={styles.subtotal}>
+                            (subtotal {formatearPrecio(reserva.precioTotal)} − {formatearPrecio(reserva.puntos.descuentoMonto)})</span></>
+                          : `Total: ${formatearPrecio(reserva.precioTotal)} ARS`}</p>
+                      {reserva.convenio && <p className={styles.puntos}>
+                        Convenio {reserva.convenio.nombre}: {formatearPorcentaje(reserva.convenio.descuentoPct)} de descuento
+                        {" "}(−{formatearPrecio(reserva.convenio.descuentoMonto)}).
+                      </p>}
+                      {!esAdmin && textosPuntosReserva(reserva).map((texto) => (
+                        <p key={texto} className={styles.puntos}>{texto}</p>
+                      ))}
                       <p className={styles.alta}>{esAdmin ? "Alta" : "Fecha de alta"}: {formatearFechaRegistro(reserva.fechaCreacion)}</p>
                       {textoAcceso(reserva.acceso) && <p className={styles.alta}>{textoAcceso(reserva.acceso)}</p>}
                     </div>
@@ -173,6 +190,12 @@ export default function ReservasListado({
                       {!esAdmin && onVerCodigo && tieneCodigoVigente(reserva) && (
                         <button type="button" className={`${styles.boton} ${styles.qr}`} onClick={() => onVerCodigo(reserva)}>
                           Ver QR
+                        </button>
+                      )}
+                      {onAmonestar && (
+                        <button type="button" className={`${styles.boton} ${styles.amonestar}`}
+                          onClick={() => onAmonestar(reserva)}>
+                          Amonestar
                         </button>
                       )}
                       {/* Con el vehículo adentro ya no se cancela: se registra la salida. */}

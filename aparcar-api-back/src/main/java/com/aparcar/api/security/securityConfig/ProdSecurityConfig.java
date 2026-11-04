@@ -2,7 +2,9 @@ package com.aparcar.api.security.securityConfig;
 
 import com.aparcar.api.component.IRevokedUserCache;
 import com.aparcar.api.config.AccesoProperties;
+import com.aparcar.api.config.DiscapacidadProperties;
 import com.aparcar.api.filters.AccesoRateLimitFilter;
+import com.aparcar.api.filters.VerificacionRateLimitFilter;
 import com.aparcar.api.filters.JWTGeneratorFilter;
 import com.aparcar.api.filters.JWTValidationFilter;
 import com.aparcar.api.filters.RateLimitFilter;
@@ -68,6 +70,7 @@ public class ProdSecurityConfig {
      *                                  context.
      * @param env                       The Spring environment for accessing
      *                                  properties.
+     * @param discapacidadProperties    Limite de subidas de certificados.
      * @param accesoProperties          Reglas del control de acceso (rate limit
      *                                  de /api/v1/accesos/**).
      * @return The configured SecurityFilterChain.
@@ -78,7 +81,8 @@ public class ProdSecurityConfig {
             IRevokedUserCache revokedUserCache,
             SecurityContextRepository securityContextRepository,
             Environment env,
-            AccesoProperties accesoProperties) {
+            AccesoProperties accesoProperties,
+            DiscapacidadProperties discapacidadProperties) {
 
         String secret = env.getProperty(JWT_SECRET_KEY, JWT_SECRET_DEFAULT);
         boolean isDev = Arrays.asList(env.getActiveProfiles()).contains(DEV_ENV);
@@ -94,6 +98,9 @@ public class ProdSecurityConfig {
 
         AccesoRateLimitFilter accesoRateLimitFilter =
                 new AccesoRateLimitFilter(accesoProperties.rateLimitPorMinuto());
+
+        VerificacionRateLimitFilter verificacionRateLimitFilter =
+                new VerificacionRateLimitFilter(discapacidadProperties.subidasPorHora());
 
         return http
                 .securityContext(context ->
@@ -129,7 +136,14 @@ public class ProdSecurityConfig {
                         // queda solo para ADMIN.
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/tarifas", "/api/v1/tarifas/cotizacion")
                         .hasAnyAuthority("ADMIN", "EMPLEADO", "USER")
+                        .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/tarifas/cotizacion")
+                        .hasAnyAuthority("ADMIN", "EMPLEADO", "USER")
                         .requestMatchers("/api/v1/tarifas", "/api/v1/tarifas/**").hasAuthority("ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/convenios")
+                        .hasAnyAuthority("ADMIN", "EMPLEADO", "USER")
+                        .requestMatchers("/api/v1/convenios/credenciales", "/api/v1/convenios/credenciales/**", "/api/v1/convenios/verificar")
+                        .hasAnyAuthority("ADMIN", "EMPLEADO", "USER")
+                        .requestMatchers("/api/v1/convenios", "/api/v1/convenios/**").hasAuthority("ADMIN")
 
                         // Endpoints públicos. Van primero para que
                         // /api/v1/cocheras/disponibles se resuelva acá y no
@@ -158,10 +172,52 @@ public class ProdSecurityConfig {
                                 "/api/v1/visitantes/me/**"
                         ).authenticated()
 
+                        // Verificacion de discapacidad: cada cuenta sube su
+                        // certificado y ve lo suyo; revisar la cola y abrir
+                        // certificados ajenos es solo del ADMIN (un dato de
+                        // salud: el EMPLEADO no lo necesita para operar).
+                        .requestMatchers(
+                                "/api/v1/verificaciones-discapacidad/mia",
+                                "/api/v1/verificaciones-discapacidad/mia/**"
+                        ).authenticated()
+                        .requestMatchers(org.springframework.http.HttpMethod.POST,
+                                "/api/v1/verificaciones-discapacidad"
+                        ).authenticated()
+                        .requestMatchers(
+                                "/api/v1/verificaciones-discapacidad",
+                                "/api/v1/verificaciones-discapacidad/**"
+                        ).hasAuthority("ADMIN")
+
+                        // Puntos: cada cuenta ve su billetera y sus movimientos;
+                        // el resumen del programa es solo del ADMIN. Ningun
+                        // endpoint acredita: se suman al registrar el ingreso.
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/puntos/resumen")
+                        .hasAuthority("ADMIN")
+                        .requestMatchers(org.springframework.http.HttpMethod.GET,
+                                "/api/v1/puntos/billetera",
+                                "/api/v1/puntos/movimientos"
+                        ).authenticated()
+                        .requestMatchers("/api/v1/puntos", "/api/v1/puntos/**").denyAll()
+
                         // Validar codigos de acceso (ingreso y egreso) es la
                         // tarea central del personal en la puerta.
                         .requestMatchers("/api/v1/accesos/**").hasAnyAuthority("ADMIN", "EMPLEADO")
                         .requestMatchers("/api/v1/dashboard", "/api/v1/dashboard/**").hasAuthority("ADMIN")
+
+                        // --- Regimen de faltas ---
+                        // Lo propio lo ve cualquiera; va primero para que no
+                        // caiga en la regla del personal de mas abajo.
+                        .requestMatchers("/api/v1/amonestaciones/mias").authenticated()
+                        // Los numeros del regimen los fija el administrador.
+                        .requestMatchers("/api/v1/amonestaciones/configuracion")
+                        .hasAuthority("ADMIN")
+                        // Levantar un bloqueo es una decision del administrador,
+                        // aunque la falta la pueda aplicar un empleado.
+                        .requestMatchers("/api/v1/amonestaciones/visitante/*/restituir")
+                        .hasAuthority("ADMIN")
+                        // Aplicar faltas y consultar las de otro: el personal.
+                        .requestMatchers("/api/v1/amonestaciones", "/api/v1/amonestaciones/**")
+                        .hasAnyAuthority("ADMIN", "EMPLEADO")
 
                         // Las series recurrentes las arma solo el ADMIN:
                         // va antes que la regla general de /api/v1/reservas/**.
@@ -238,6 +294,11 @@ public class ProdSecurityConfig {
                 .addFilterAfter(
                         accesoRateLimitFilter,
                         JWTValidationFilter.class)
+
+                // Tambien cuenta por cuenta: despues del JWT.
+                .addFilterAfter(
+                        verificacionRateLimitFilter,
+                        AccesoRateLimitFilter.class)
 
                 .httpBasic(config ->
                         config.authenticationEntryPoint(

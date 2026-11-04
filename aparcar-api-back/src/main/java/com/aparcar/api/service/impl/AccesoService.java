@@ -20,6 +20,7 @@ import com.aparcar.api.repository.ReservaRepository;
 import com.aparcar.api.repository.VehiculoRepository;
 import com.aparcar.api.repository.VisitanteRepository;
 import com.aparcar.api.service.IAccesoService;
+import com.aparcar.api.service.IPuntosService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Limit;
@@ -51,6 +52,7 @@ public class AccesoService implements IAccesoService {
     private final ReglasAcceso reglasAcceso;
     private final RegistroIntentosAcceso registroIntentos;
     private final PlanificacionReservas planificacion;
+    private final IPuntosService puntosService;
 
     /** Lo que corresponde hacer con una reserva ahora, o por que no se puede. */
     private record Evaluacion(AccesoAccion accion, AccesoMotivo motivo, String mensaje) {
@@ -139,6 +141,8 @@ public class AccesoService implements IAccesoService {
                 reserva.setIngresoAt(ahora);
                 reserva.registrarAccion(ReservaAccion.INGRESO, operador, true, reglasAcceso.instante());
                 guardar(reserva, AccesoOperacion.INGRESO, operador);
+                // Misma transaccion: si la acreditacion falla, el ingreso tampoco queda.
+                puntosService.acreditarIngreso(reserva, ahora);
                 registroIntentos.registrar(AccesoOperacion.INGRESO, reserva.getCodigo(), reserva.getId(), OK,
                         operador.getEmail());
                 return new AccesoRegistroResponseDto(AccesoAccion.INGRESO, false, ahora, false, null,

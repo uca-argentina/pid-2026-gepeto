@@ -8,6 +8,8 @@ import * as z from "zod";
 import { toast } from "sonner";
 
 import api from "@/app/api";
+import PuntosFaltas from "@/components/PuntosFaltas";
+import { formatearFechaRegistro } from "@/utils/reservasListado";
 import DashboardHeader from "@/components/DashboardHeader";
 
 const createUserSchema = z.object({
@@ -186,6 +188,23 @@ export default function UserManagement() {
         error.response?.data?.message ||
           "No se pudo actualizar el usuario."
       );
+    }
+  };
+
+  /**
+   * Levanta el bloqueo sin borrar las faltas.
+   *
+   * El bloqueo se vence solo a la fecha que muestra la tabla; esto es para
+   * adelantarlo. Las faltas quedan: restituir es dejar usar la cuenta de
+   * nuevo, no perdonar lo que pasó.
+   */
+  const restituir = async (user) => {
+    try {
+      await api.post(`/api/v1/amonestaciones/visitante/${user.id}/restituir`);
+      toast.success("Cuenta restituida.");
+      await loadUsers();
+    } catch (error) {
+      toast.error(error.response?.data?.message || "No se pudo restituir la cuenta.");
     }
   };
 
@@ -582,6 +601,10 @@ export default function UserManagement() {
                           Roles
                         </th>
 
+                        <th scope="col" role="columnheader" className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-ink/50">
+                          Faltas
+                        </th>
+
                         <th scope="col" role="columnheader" className="px-6 py-3 text-right text-xs font-semibold uppercase tracking-wider text-ink/50">
                           Acciones
                         </th>
@@ -627,6 +650,20 @@ export default function UserManagement() {
                             </div>
                           </td>
 
+                          <td role="cell" data-label="Faltas" className="px-6 py-4">
+                            <div className="falta-celda">
+                              <PuntosFaltas
+                                cantidad={user.faltasVigentes ?? 0}
+                                maximo={user.maxFaltas ?? 3}
+                              />
+                              {user.bloqueadoHasta && (
+                                <span className="falta-bloqueo-chip">
+                                  Bloqueada hasta {formatearFechaRegistro(user.bloqueadoHasta)}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
                           <td role="cell" data-label="Acciones" className="px-6 py-4">
                             <div className="flex justify-end gap-2">
                               {!user.isActive && (
@@ -638,6 +675,19 @@ export default function UserManagement() {
                                   className="ui-primary rounded-lg px-3 py-2 text-xs font-semibold transition-colors"
                                 >
                                   Activar
+                                </button>
+                              )}
+
+                              {/* Solo aparece si hay algo que levantar. Es
+                                  exclusivo del ADMIN: el backend rechaza el
+                                  pedido de cualquier otro rol. */}
+                              {user.bloqueadoHasta && (
+                                <button
+                                  type="button"
+                                  onClick={() => restituir(user)}
+                                  className="ui-primary rounded-lg px-3 py-2 text-xs font-semibold transition-colors"
+                                >
+                                  Restituir
                                 </button>
                               )}
 

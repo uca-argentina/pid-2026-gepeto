@@ -72,13 +72,14 @@ class PerfilControllerTests {
         assertNull(visitante.getNombreEstacionamiento());
     }
 
+    // El acceso a cocheras accesibles ya no se autodeclara: el campo se ignora.
     @Test
-    void userConservaContactoYDeclaracionAccesible() throws Exception {
+    void userConservaContactoYNoPuedeAutodeclararseAccesible() throws Exception {
         mvc.perform(put("/api/v1/visitantes/me").with(user(visitante.getEmail()).authorities(() -> "USER"))
                 .contentType(MediaType.APPLICATION_JSON).content("""
                     {"email":"perfil-user@test.com","telefono":"","tieneDiscapacidad":true}
                     """))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.tieneDiscapacidad").value(true));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.tieneDiscapacidad").value(false));
         assertEquals("30000222", visitante.getDocumento());
     }
 

@@ -9,7 +9,11 @@ import com.aparcar.api.entity.reserva.Vehiculo;
 import com.aparcar.api.exception.NotFoundException;
 import com.aparcar.api.exception.ValidationException;
 import com.aparcar.api.repository.ReservaRepository;
+import org.junit.jupiter.api.BeforeEach;
 import com.aparcar.api.repository.VehiculoRepository;
+import com.aparcar.api.service.IAmonestacionService;
+import com.aparcar.api.service.impl.ConfiguracionSancionesService;
+import com.aparcar.api.entity.sancion.ConfiguracionSanciones;
 import com.aparcar.api.repository.VisitanteRepository;
 import com.aparcar.api.service.impl.UserService;
 import org.junit.jupiter.api.DisplayName;
@@ -41,8 +45,24 @@ public class UserServiceTests {
     @Mock
     private VehiculoRepository vehiculoRepository;
 
+    // El listado de usuarios pasó a incluir las faltas de cada cuenta, para
+    // que el panel dibuje los puntitos sin una consulta por fila.
+    @Mock
+    private IAmonestacionService amonestaciones;
+
+    @Mock
+    private ConfiguracionSancionesService configuracionSanciones;
+
     @InjectMocks
     private UserService usersService;
+
+    @BeforeEach
+    void configuracionPorDefecto() {
+        // Valores neutros: ningun test de esta clase trata sobre faltas, pero
+        // armar la respuesta de un usuario ahora las consulta.
+        org.mockito.Mockito.lenient().when(configuracionSanciones.obtener())
+                .thenReturn(ConfiguracionSanciones.porDefecto());
+    }
 
     private final String testEmail = "test@mail.com";
 

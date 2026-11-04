@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireAuth } from "@/utils/serverAuth";
 import DashboardHeader from "@/components/DashboardHeader";
 import DashboardContent from "./DashboardContent";
+import ResumenPuntos from "./ResumenPuntos";
 
 export default async function DashboardPage() {
   await requireAuth(["ADMIN"]);
@@ -13,6 +14,7 @@ export default async function DashboardPage() {
           <Link href="/dashboard-admin" className="dashboard-back-link">← Volver al panel</Link>
         </DashboardHeader>
         <DashboardContent />
+        <ResumenPuntos />
       </div>
     </div>
   );

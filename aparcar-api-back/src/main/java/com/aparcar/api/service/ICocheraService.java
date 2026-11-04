@@ -102,7 +102,7 @@ public interface ICocheraService {
     /**
      * Igual que {@link #listarDisponibles(LocalDateTime, LocalDateTime, VehiculoTipo)},
      * pero ademas saca las cocheras ACCESIBLE cuando quien pide es un visitante
-     * que no tiene declarada una discapacidad: no tiene sentido ofrecerle una
+     * que no tiene verificada su discapacidad: no tiene sentido ofrecerle una
      * cochera que despues la reserva le va a rechazar.
      *
      * <p>No se filtra cuando:
@@ -110,7 +110,7 @@ public interface ICocheraService {
      *     <li>quien pide es anonimo ({@code requesterEmail} null): el endpoint
      *     es publico y no hay persona contra la cual comparar;</li>
      *     <li>quien pide es ADMIN: suele estar reservando para otra persona,
-     *     cuya declaracion se valida al crear la reserva.</li>
+     *     cuya verificacion se valida al crear la reserva.</li>
      * </ul>
      *
      * <p>Esto es solo una comodidad de la pantalla: la regla real la aplica

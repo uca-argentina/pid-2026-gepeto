@@ -14,6 +14,7 @@ beforeEach(() => {
   historial = [];
   cotizar = (params) => Promise.resolve({ data: { tipo: params.tipo, total: params.tipo === "ACCESIBLE" ? 800 : 1000, horas: 1 } });
   get.mockImplementation((url, config) => {
+    if (url.startsWith("/api/v1/convenios")) return Promise.resolve({ data: [] });
     if (url.endsWith("/cotizacion")) return cotizar(config.params);
     if (url.endsWith("/vehiculos")) return Promise.resolve({ data: [{ id: "v1", patente: "ABC123", tipo: "AUTO", visitanteId: "u1" }] });
     if (url.endsWith("/visitantes")) return Promise.resolve({ data: [{ id: "u1", nombre: "Juan", tieneDiscapacidad: true }] });
@@ -90,18 +91,19 @@ it("muestra el importe histórico y distingue las reservas anteriores a las tari
   expect(screen.getByText("Sin importe registrado")).toBeInTheDocument();
 });
 
-it("el alta operativa también muestra y envía el precio Accesible", async () => {
+// La tarifa Accesible ya no se puede elegir en el alta (la cuenta nueva no tiene
+// el certificado verificado); el alta sigue enviando el precio cotizado.
+it("el alta operativa muestra y envía el precio cotizado, sin ofrecer la Accesible", async () => {
   const user = userEvent.setup();
   render(<VisitantesContent />);
   expect(await screen.findByText(/\$\s*1\.000,00/)).toBeInTheDocument();
   for (const [label, value] of [["Nombre", "Juan"], ["Documento", "12345678"], ["Email", "juan@test.com"], ["Patente", "ABC123"]]) {
     fireEvent.change(screen.getByLabelText(label), { target: { value } });
   }
-  await user.click(screen.getByLabelText(/Persona con discapacidad/));
-  await user.selectOptions(screen.getByLabelText("Cochera"), "c2");
-  expect(await screen.findByText(/\$\s*800,00/)).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: /AC-01/ })).not.toBeInTheDocument();
+  await user.selectOptions(screen.getByLabelText("Cochera"), "c1");
   await user.click(screen.getByRole("button", { name: "Dar de alta y reservar" }));
-  await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/visitantes/alta", expect.objectContaining({ precioEsperado: 800, cocheraId: "c2" })));
+  await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/visitantes/alta", expect.objectContaining({ precioEsperado: 1000, cocheraId: "c1" })));
 });
 
 it("sin tarifas configuradas no permite crear la reserva", async () => {

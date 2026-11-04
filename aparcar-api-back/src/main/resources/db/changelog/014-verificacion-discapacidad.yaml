@@ -1,0 +1,181 @@
+databaseChangeLog:
+  # Verificacion de discapacidad con certificado.
+  #
+  # visitantes.tiene_discapacidad se conserva, pero deja de ser autodeclarado:
+  # pasa a ser un valor derivado que solo cambia por una decision de un ADMIN.
+  # Las cuentas que ya lo tenian en true no se tocan aca: al arrancar,
+  # DiscapacidadMigracionBackfill les da un plazo de gracia (la cantidad de
+  # dias es configuracion, no SQL) para que suban su certificado.
+  - changeSet:
+      id: 014-verificacion-discapacidad
+      author: aparcar
+      changes:
+        - addColumn:
+            tableName: visitantes
+            columns:
+              - column:
+                  name: discapacidad_acceso_provisorio_hasta
+                  type: timestamp with time zone
+        - createTable:
+            tableName: verificaciones_discapacidad
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: visitante_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_verificaciones_discapacidad_visitante
+                    references: visitantes(id)
+              - column:
+                  name: estado
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: fecha_creacion
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              # Solo metadatos del certificado: el archivo vive fuera de la base.
+              - column:
+                  name: documento_clave
+                  type: varchar(60)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: documento_nombre
+                  type: varchar(120)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: documento_tipo
+                  type: varchar(40)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: documento_tamano
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: documento_sha256
+                  type: varchar(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: documento_eliminado_at
+                  type: timestamp with time zone
+              - column:
+                  name: resuelta_at
+                  type: timestamp with time zone
+              - column:
+                  name: resuelta_por_id
+                  type: uuid
+              - column:
+                  name: resuelta_por_nombre
+                  type: varchar(255)
+              - column:
+                  name: resuelta_por_email
+                  type: varchar(255)
+              - column:
+                  name: revocada_at
+                  type: timestamp with time zone
+              - column:
+                  name: revocada_por_id
+                  type: uuid
+              - column:
+                  name: revocada_por_nombre
+                  type: varchar(255)
+              - column:
+                  name: revocada_por_email
+                  type: varchar(255)
+              - column:
+                  name: motivo
+                  type: varchar(500)
+              - column:
+                  name: vence_el
+                  type: date
+              - column:
+                  name: version
+                  type: bigint
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+        # La cola del admin y el contador filtran por estado y ordenan por fecha.
+        - createIndex:
+            tableName: verificaciones_discapacidad
+            indexName: idx_verificaciones_estado_fecha
+            columns:
+              - column:
+                  name: estado
+              - column:
+                  name: fecha_creacion
+        - createIndex:
+            tableName: verificaciones_discapacidad
+            indexName: idx_verificaciones_visitante_fecha
+            columns:
+              - column:
+                  name: visitante_id
+              - column:
+                  name: fecha_creacion
+        - createTable:
+            tableName: verificacion_documento_accesos
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              # Copias, sin FK: la auditoria sobrevive a las bajas.
+              - column:
+                  name: verificacion_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: fecha
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actor_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actor_email
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: actor_rol
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: verificacion_documento_accesos
+            indexName: idx_verificacion_documento_accesos_verificacion
+            columns:
+              - column:
+                  name: verificacion_id
+
+  # Ultima red ante dos subidas simultaneas: una sola solicitud EN_REVISION por
+  # visitante. Es un indice parcial, que H2 no soporta; en los tests lo cubre
+  # el bloqueo de la cuenta que toma el servicio.
+  - changeSet:
+      id: 014-una-solicitud-en-revision-postgres
+      author: aparcar
+      dbms: postgresql
+      changes:
+        - sql:
+            sql: >-
+              CREATE UNIQUE INDEX uk_verificaciones_una_en_revision
+              ON verificaciones_discapacidad (visitante_id)
+              WHERE estado = 'EN_REVISION'

@@ -26,6 +26,10 @@ export default async function DashboardUserPage() {
             <DashboardIcon name="calendar" />
             <span>Mis reservas</span>
           </Link>
+          <Link href="/dashboard-user/puntos" className="dashboard-nav-link">
+            <DashboardIcon name="estrella" />
+            <span>Mis puntos</span>
+          </Link>
           <Link href="/dashboard-user/perfil#mis-vehiculos" className="dashboard-nav-link">
             <DashboardIcon name="car" />
             <span>Mis vehículos</span>

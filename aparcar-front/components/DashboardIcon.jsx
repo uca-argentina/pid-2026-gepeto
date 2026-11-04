@@ -6,12 +6,15 @@ const paths = {
   chevron: <path d="m7 10 5 5 5-5" />,
   shield: <><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6l8-3Z" /><path d="m8 12 3 3 5-5" /></>,
   tarifas: <><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M3 10h18m-6 5h3" /></>,
+  convenios: <><path d="m3 12 9-9h8a1 1 0 0 1 1 1v8l-9 9-9-9Z" /><circle cx="16.5" cy="7.5" r="1" /><path d="m8 13 3 3m-1-5 3 3" /></>,
   parking: <><rect x="4" y="3" width="16" height="18" rx="4" /><path d="M10 17V7h3a3 3 0 0 1 0 6h-3" /></>,
   calendar: <><rect x="3" y="5" width="18" height="16" rx="3" /><path d="M7 3v4m10-4v4M3 11h18m-13 5h2m4 0h2" /></>,
   users: <><circle cx="9" cy="8" r="3" /><path d="M3 21v-2a6 6 0 0 1 12 0v2m1-16a3 3 0 0 1 0 6m2 4a5 5 0 0 1 3 4v2" /></>,
   "user-plus": <><circle cx="9" cy="8" r="3" /><path d="M3 21v-2a6 6 0 0 1 12 0v2M18 8v6m3-3h-6" /></>,
   logout: <><path d="M9 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4m6-4 4-4-4-4m-7 4h11" /></>,
   car: <><path d="M5 17H3v-5l2-5h14l2 5v5h-2" /><path d="M3 12h18M9 17h6" /><circle cx="7" cy="17" r="2" /><circle cx="17" cy="17" r="2" /></>,
+  certificado: <><rect x="4" y="3" width="16" height="18" rx="2.5" /><path d="M8 8h8M8 12h5" /><path d="m11 17 1.5 1.5L16 15" /></>,
+  estrella: <path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z" />,
   qr: <><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3" /></>,
 };
 

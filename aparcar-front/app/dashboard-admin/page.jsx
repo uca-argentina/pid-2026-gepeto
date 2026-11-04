@@ -3,6 +3,7 @@ import { requireAuth } from "@/utils/serverAuth";
 import PanelOperativo from "./PanelOperativo";
 import DashboardHeader from "@/components/DashboardHeader";
 import DashboardIcon from "@/components/DashboardIcon";
+import ContadorVerificaciones from "@/components/ContadorVerificaciones";
 import ParkingHeading from "@/components/ParkingHeading";
 
 /**
@@ -63,6 +64,8 @@ export default async function DashboardAdminPage() {
             <span>Mis reservas recurrentes</span>
           </Link>
           )}
+          {/* Revisar certificados de discapacidad es un dato de salud: solo ADMIN. */}
+          {esAdmin && <ContadorVerificaciones />}
           {esAdmin && (
           <Link
             href="/dashboard-admin/usuarios"
@@ -76,6 +79,18 @@ export default async function DashboardAdminPage() {
           <Link href="/dashboard-admin/tarifas" className="dashboard-nav-link">
             <DashboardIcon name="tarifas" />
             <span>Gestionar tarifas</span>
+          </Link>
+          )}
+          {esAdmin && (
+          <Link href="/dashboard-admin/convenios" className="dashboard-nav-link">
+            <DashboardIcon name="convenios" />
+            <span>Gestionar convenios</span>
+          </Link>
+          )}
+          {esAdmin && (
+          <Link href="/dashboard-admin/sanciones" className="dashboard-nav-link">
+            <DashboardIcon name="shield" />
+            <span>Régimen de faltas</span>
           </Link>
           )}
         </DashboardHeader>

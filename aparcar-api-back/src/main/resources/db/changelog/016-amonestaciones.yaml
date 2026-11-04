@@ -1,0 +1,156 @@
+databaseChangeLog:
+  # Regimen de faltas: amonestaciones, bloqueo por acumulacion y los numeros
+  # con los que funciona, editables por el administrador.
+
+  - changeSet:
+      id: 016-visitantes-bloqueado-hasta
+      author: aparcar
+      changes:
+        # Hasta cuando la cuenta esta inhabilitada. Null = sin bloqueo. Es
+        # aparte de is_active, que es una baja administrativa sin vencimiento.
+        - addColumn:
+            tableName: visitantes
+            columns:
+              - column:
+                  name: bloqueado_hasta
+                  type: timestamp
+      rollback:
+        - dropColumn:
+            tableName: visitantes
+            columnName: bloqueado_hasta
+
+  - changeSet:
+      id: 016-crear-amonestaciones
+      author: aparcar
+      changes:
+        - createTable:
+            tableName: amonestaciones
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: visitante_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: fk_amonestaciones_visitante
+                    references: visitantes(id)
+              # Sin NOT NULL y sin borrado en cascada: el historial es
+              # permanente y no tiene que perderse si la reserva se limpia.
+              - column:
+                  name: reserva_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_amonestaciones_reserva
+                    references: reservas(id)
+              # La patente va copiada como texto, no por clave foranea, para
+              # que el historial siga siendo legible si el vehiculo se elimina.
+              - column:
+                  name: patente
+                  type: varchar(20)
+              - column:
+                  name: origen
+                  type: varchar(20)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: motivo
+                  type: varchar(500)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: autor_id
+                  type: uuid
+                  constraints:
+                    foreignKeyName: fk_amonestaciones_autor
+                    references: visitantes(id)
+              - column:
+                  name: autor_nombre
+                  type: varchar(255)
+              - column:
+                  name: fecha
+                  type: timestamp
+                  constraints:
+                    nullable: false
+
+  - changeSet:
+      id: 016-indice-amonestaciones-visitante
+      author: aparcar
+      changes:
+        # Las dos consultas calientes son "las de esta persona" y "las de esta
+        # persona en los ultimos tres meses". Las dos empiezan por visitante.
+        - createIndex:
+            indexName: idx_amonestaciones_visitante_fecha
+            tableName: amonestaciones
+            columns:
+              - column:
+                  name: visitante_id
+              - column:
+                  name: fecha
+
+  - changeSet:
+      id: 016-crear-configuracion-sanciones
+      author: aparcar
+      changes:
+        - createTable:
+            tableName: configuracion_sanciones
+            columns:
+              - column:
+                  name: id
+                  type: int
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: max_faltas
+                  type: int
+                  constraints:
+                    nullable: false
+              - column:
+                  name: dias_bloqueo
+                  type: int
+                  constraints:
+                    nullable: false
+              # Meses en los que una falta todavia cuenta para el bloqueo. No
+              # recorta el historial, que es permanente: solo decide que parte
+              # de el pesa hoy.
+              - column:
+                  name: meses_ventana
+                  type: int
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tolerancia_ingreso_min
+                  type: int
+                  constraints:
+                    nullable: false
+              - column:
+                  name: tolerancia_egreso_min
+                  type: int
+                  constraints:
+                    nullable: false
+              - column:
+                  name: version
+                  type: bigint
+
+  - changeSet:
+      id: 016-sembrar-configuracion-sanciones
+      author: aparcar
+      changes:
+        # La fila unica, con los valores de arranque. Se siembra aca y no en un
+        # seeder para que exista desde la primera migracion: el servicio que la
+        # lee no tiene que contemplar el caso "todavia no hay configuracion".
+        - insert:
+            tableName: configuracion_sanciones
+            columns:
+              - column: { name: id, valueNumeric: 1 }
+              - column: { name: max_faltas, valueNumeric: 3 }
+              - column: { name: dias_bloqueo, valueNumeric: 30 }
+              - column: { name: meses_ventana, valueNumeric: 3 }
+              - column: { name: tolerancia_ingreso_min, valueNumeric: 15 }
+              - column: { name: tolerancia_egreso_min, valueNumeric: 15 }
+              - column: { name: version, valueNumeric: 0 }

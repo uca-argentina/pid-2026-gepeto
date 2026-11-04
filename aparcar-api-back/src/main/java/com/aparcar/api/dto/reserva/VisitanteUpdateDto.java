@@ -39,13 +39,4 @@ public class VisitanteUpdateDto {
     public void setNombreEstacionamiento(String nombreEstacionamiento) {
         this.nombreEstacionamiento = nombreEstacionamiento == null ? null : nombreEstacionamiento.trim();
     }
-
-    /**
-     * Si la persona tiene una discapacidad (habilita las cocheras ACCESIBLE).
-     *
-     * <p>Opcional a proposito: si no viene (null), el valor guardado no se
-     * toca. Asi un cliente que todavia no manda este campo no le borra la
-     * declaracion a nadie sin querer.
-     */
-    private Boolean tieneDiscapacidad;
 }

@@ -11,6 +11,247 @@ Que prueba cada archivo de test del proyecto, caso por caso. Ver `ARCHIVOS.md` p
 
 # Backend (`aparcar-api-back/src/test/java/com/aparcar/api/`)
 
+## `entity/FranjaPuntosTests.java`
+
+_12 tests._ Caja blanca de las franjas de puntos.
+
+```
+Los bordes: el inicio es inclusive y el fin exclusive   (parametrizado: 00:00, 05:59, 06:00, 09:59, 10:00, 13:59, 14:00, 21:59, 22:00, 23:59)
+Cada minuto del dia cae en exactamente una franja       (recorre los 1440 minutos)
+La noche es la que mas puntos da
+```
+
+## `service/ReglasPuntosTests.java`
+
+_32 tests._ Caja blanca de `ReglasPuntos` con las propiedades por defecto
+(60 min, 2 por día, racha de 7, bonus de 10, tope del 50 %).
+
+```
+estimacion: cuenta la hora de inicio, aunque la reserva siga en otra franja
+estimacion: una reserva que cruza la medianoche arrancando a las 23 suma la nocturna
+estimacion: justo la duracion minima suma; un bloque menos no
+racha: el primer ingreso arranca la racha en 1
+racha: dos ingresos el mismo dia no la cambian
+racha: dias consecutivos la suman
+racha: saltear un dia la reinicia en 1 y conserva la mejor
+racha: un dia anterior al ultimo contado no la cambia
+racha: el cambio de dia es a la medianoche: 23:59 y 00:00 son dias consecutivos
+racha: el bonus toca en cada multiplo de 7          (8 casos: 0, 1, 6, 7, 8, 13, 14, 21)
+racha: 21 dias seguidos dan tres bonus, en los dias 7, 14 y 21
+racha: la racha se muestra viva si el ultimo dia fue hoy o ayer, y en 0 si fue antes
+racha: dias para el proximo bonus                   (5 casos)
+descuento: lineal, con BigDecimal y HALF_UP a 2 decimales   (7 casos, incluidos 4,999995 → 5,00 y 0,025 → 0,03)
+descuento: el tope de 50 % son 500 puntos
+```
+
+## `service/PuntosServiceTests.java`
+
+_29 tests._ Caja blanca de `PuntosService` con repositorios simulados y reloj
+fijo (lunes 2/11/2026 23:10).
+
+```
+acreditacion: una reserva nocturna suma 20 y arranca la racha
+acreditacion: una reserva ya acreditada no vuelve a sumar
+acreditacion: si ya existe el movimiento de esa reserva (otro intento en paralelo), no suma de nuevo
+acreditacion: una reserva mas corta que el minimo no suma, pero cuenta para la racha
+acreditacion: pasado el tope diario no suma, pero la reserva se usa igual
+acreditacion: el septimo dia seguido suma el bonus como movimiento aparte
+acreditacion: un segundo ingreso el mismo dia del bonus no lo repite
+acreditacion: un choque de version se traduce a 409
+canje: 100 puntos son 10 % de descuento
+canje: usar todos con mucho saldo usa solo lo que llega al tope
+canje: usar todos con poco saldo usa el saldo
+canje: usar todos sin saldo es un 400
+canje: cero, negativos y decimales se rechazan      (4 casos: 0, -5, 1.5, 0.01)
+canje: mas puntos que el saldo es un 400
+canje: pasar el tope de descuento es un 400, aunque alcance el saldo
+canje: confirmar descuenta el saldo y deja un movimiento negativo
+canje: si el saldo bajo entre la validacion y la confirmacion, es un 409 y no queda negativo
+reintegro: cancelar devuelve exactamente los puntos usados, una sola vez
+reintegro: sin puntos usados no hay nada que devolver
+consultas: sin billetera se muestra en cero, sin crearla
+consultas: una racha cortada se muestra en 0 y conserva la mejor
+consultas: la cotizacion sin puntos no cambia el precio y dice cuanto sumaria
+consultas: la cotizacion con puntos devuelve el total con descuento
+consultas: sin cuenta, la cotizacion queda como estaba
+consultas: una reserva pendiente muestra lo que sumaria; una cancelada, que no suma
+consultas: una reserva vencida con puntos usados no figura reintegrada
+```
+
+## `integration/PuntosControllerTests.java`
+
+_21 tests._ Caja negra contra la base real. Los datos se arman relativos al
+reloj real; el flujo completo calcula los puntos esperados con la franja del
+bloque en curso.
+
+```
+[Caja negra] un anonimo recibe 401 en la billetera
+[Caja negra] el resumen es solo del ADMIN                     (USER y EMPLEADO 403)
+[Caja negra] ningun endpoint acredita puntos
+[Caja negra] sin actividad, la billetera esta en cero con las franjas y no se crea
+[Caja negra] la cotizacion sin puntos mantiene el total y agrega lo que sumaria
+[Caja negra] la cotizacion con puntos descuenta: 100 puntos son 10 %   (y "usar todos"; cotizar no gasta)
+[Caja negra] puntos invalidos, sin saldo o sobre el tope en la cotizacion → 400   (6 casos: abc, 1.5, 0, -10, 301, 600)
+[Caja negra] la cotizacion corta avisa que no suma
+[Caja negra] reservar con descuento, ingresar y sumar: el libro cierra con la billetera
+[Caja negra] si el precio esperado no es el final con descuento, no reserva ni gasta
+[Caja negra] reservar con mas puntos que el saldo → 400 y no se crea
+[Caja negra] el ADMIN no canjea puntos de otra cuenta, y una reserva en espera no los usa
+[Caja negra] cancelar antes de usarla devuelve los puntos una sola vez
+[Caja negra] una reserva con puntos que vence sin ingreso no los devuelve
+Dos canjes simultaneos sobre el mismo saldo: uno gana, el otro ve el saldo nuevo
+Dos acreditaciones simultaneas de la misma reserva suman una sola vez
+```
+
+El flujo completo cubre además el doble escaneo (no vuelve a sumar), la racha
+en 1, el historial con el canje y la acreditación, y el bloque `puntos` de la
+reserva. Los tests de concurrencia corren dos transacciones reales a la vez y
+comprueban que el saldo sea la suma de los movimientos.
+
+## `integration/PuntosMigracionTests.java`
+
+_1 test._ La migración 015 sobre una base con una reserva: no le inventa puntos,
+crea la billetera (una por cuenta, saldo nunca negativo) y el libro (una
+acreditación por reserva; el bonus de la misma reserva es otro tipo), y se puede
+volver a correr.
+
+## `integration/VerificacionDiscapacidadControllerTests.java`
+
+_16 tests._ Caja negra de `/api/v1/verificaciones-discapacidad` con MockMvc
+multipart, base real y un `@TempDir` para los certificados (se vacía después de
+cada test). Los barridos se llaman a mano, en el mismo flujo: el `@Scheduled`
+corre una vez por hora y no interfiere.
+
+```
+[Caja negra] subir → queda en revision → el admin la ve, abre el certificado y aprueba → puede reservar ACCESIBLE
+[Caja negra] rechazar exige motivo; el visitante lo ve, no puede reservar ACCESIBLE y puede reenviar
+[Caja negra] revocar una vigente quita el acceso a las ACCESIBLE
+[Caja negra] una sola solicitud en revision: la segunda subida es 409
+[Caja negra] resolver dos veces la misma solicitud: la segunda es 409 y no la procesa de nuevo
+[Caja negra] archivo vacio 400, formato falso 415, grande 413, sin archivo 400, JSON en vez de multipart 415
+[Caja negra] USER y EMPLEADO reciben 403 en todos los endpoints del admin   (parametrizado: 2 casos)
+[Caja negra] un USER nunca ve el certificado de otro: ni por id ni por /mia
+[Caja negra] un anonimo recibe 401 al subir o consultar
+[Caja negra] el visitante puede cancelar su solicitud en revision y volver a enviar
+[Caja negra] una cuenta autodeclarada conserva el acceso durante la gracia y lo pierde al terminar
+[Caja negra] si subio el certificado durante la gracia, conserva el acceso hasta que lo revisen
+[Caja negra] una verificacion con vencimiento ayer pasa a VENCIDA y pierde el acceso
+[Caja negra] /disponibles no le ofrece ACCESIBLE a un USER sin verificacion vigente
+[Caja negra] el listado acepta filtrar por estado y rechaza uno inexistente
+```
+
+El flujo de aprobación verifica además las cabeceras del certificado
+(`application/pdf`, `nosniff`, `no-store`, `inline`), la auditoría de quién lo
+abrió y que el visitante no ve quién resolvió. El de revocación, que las
+reservas ya hechas no se cancelan.
+
+## `integration/VerificacionDiscapacidadMigracionTests.java`
+
+_1 test._ La migración 014 sobre una base con una cuenta autodeclarada: no le
+toca el acceso, crea las tablas (con FK a la cuenta y auditoría sin FK) y se
+puede volver a correr.
+
+## `service/VerificacionDiscapacidadServiceTests.java`
+
+_45 tests._ Caja blanca con reloj fijo (10/10/2026 10:00) y propiedades por
+defecto (5 MB, 30 días de retención y de gracia).
+
+```
+solicitar: crea la solicitud EN_REVISION con los metadatos y avisa a los admins, sin dar acceso todavia
+solicitar: una sola solicitud en revision a la vez: la segunda es 409 y no guarda nada
+solicitar: con una verificacion vigente no hace falta otra: 409
+solicitar: puede volver a enviar despues de un rechazo, revocacion, vencimiento o cancelacion   (4 casos)
+solicitar: si dos subidas llegan a la vez y la base rechaza la segunda, es 409
+solicitar: valida el archivo antes de guardarlo: vacio 400, grande 413, firma falsa 415
+solicitar: el nombre del cliente nunca es la ruta: con path traversal se guarda saneado
+aprobar: pone tieneDiscapacidad en true, guarda quien y cuando, y avisa al visitante
+aprobar: el vencimiento es opcional, y puede ser hoy mismo; ayer es 400
+aprobar: solo se aprueba una EN_REVISION: resolverla dos veces es 409 y no la procesa de nuevo   (5 casos)
+aprobar: dos admins a la vez: el segundo choca con la version y recibe 409
+aprobar: una solicitud inexistente es 404
+rechazar y revocar: rechazar deja tieneDiscapacidad en false, guarda el motivo y lo avisa
+rechazar y revocar: el motivo es obligatorio para rechazar y para revocar   (3 casos)
+rechazar y revocar: un motivo de mas de 500 caracteres es 400
+rechazar y revocar: rechazar una ya resuelta es 409
+rechazar y revocar: revocar una vigente la deja REVOCADA, sin acceso, y conserva quien la habia aprobado
+rechazar y revocar: solo se revoca una VERIFICADA   (5 casos)
+visitante: sin solicitudes: SIN_SOLICITUD, puede enviar
+visitante: rechazada: muestra el motivo y deja reenviar
+visitante: una cuenta migrada ve hasta cuando conserva el acceso provisorio
+visitante: el dueño ve su certificado y queda auditado; si ya se borro, 404
+visitante: el admin ve el certificado de cualquier solicitud y queda auditado
+visitante: cancelar retira la propia solicitud en revision; sin una, 409
+barridos: vence una verificacion cuyo ultimo dia fue ayer y le quita el acceso
+barridos: el borde del vencimiento lo marca la consulta: compara contra el dia de hoy del predio
+barridos: termina la gracia de una cuenta migrada sin solicitud; con una en revision, la conserva
+barridos: la gracia termina estrictamente despues del plazo: la consulta usa 'antes de ahora'
+barridos: retencion: rechazadas y canceladas enseguida, el resto despues de 30 dias
+barridos: si un archivo no se pudo borrar, queda para el proximo barrido
+barridos: migracion: las autodeclaradas reciben 30 dias de gracia desde ahora
+listar y contar delegan en la cola por estado
+```
+
+## `service/ValidadorDocumentoTests.java`
+
+_20 tests._ Caja blanca: no se confía en el nombre ni en el content-type.
+
+```
+acepta un PDF real y calcula todo del lado del servidor
+acepta JPG y PNG reales, y normaliza la extension   (4 casos)
+tolera parametros en el content-type
+un archivo vacio es 400
+justo en el limite (5 MB) se acepta; un byte mas es 413
+una extension no permitida es 415   (5 casos)
+un content-type que no coincide con la extension es 415
+la firma real manda: una imagen renombrada a .pdf es 415, aunque declare application/pdf
+un nombre con path traversal se sanea: solo queda el nombre, sin carpetas   (4 casos)
+un nombre raro o larguisimo queda corto y legible
+```
+
+## `component/DiscoDocumentoStorageTests.java`
+
+_11 tests._ Sobre un `@TempDir`.
+
+```
+guarda con un nombre generado (UUID + extension), lo lee y lo borra
+el archivo queda legible solo por el usuario del proceso
+crea el directorio si no existe
+un documento que ya no esta es 404
+rechaza cualquier clave que no haya generado el: no hay forma de salir del directorio   (7 casos)
+```
+
+## `component/NotificadorVerificacionesTests.java`
+
+_5 tests._
+
+```
+una solicitud nueva avisa a los admins activos, sin nombre ni datos del solicitante
+el rechazo le llega al visitante con el motivo
+con los avisos desactivados no se manda nada
+si el correo falla, la operacion no se entera
+sin admins activos, no hay a quien avisar
+```
+
+## `component/VerificacionesDiscapacidadBarridoTests.java`
+
+_2 tests._
+
+```
+corre los tres pasos: vencer, terminar la gracia y retirar certificados
+si un paso falla, los otros corren igual
+```
+
+## `filters/VerificacionRateLimitFilterTests.java`
+
+_4 tests._
+
+```
+solo cuenta el POST de la subida: ver el estado o el documento no consume cupo
+deja pasar 5 subidas por hora y la sexta recibe 429 en el formato del proyecto
+cuenta por cuenta: otra persona desde la misma IP tiene su propio cupo
+no choca con los otros limitadores: cada clase marca la request con su propio atributo
+```
+
 ## Reservas recurrentes y lista de espera
 
 - `integration/ReservaPlanificacionTests.java` — **28 tests**: espera sin
@@ -73,8 +314,9 @@ Frontend asociado:
   métricas del servidor, tabla accesible, carga sin ceros ficticios, reintento,
   conservación de datos ante error, solicitudes sin solapamiento, estado vacío,
   ocupación fuera de servicio, actualización solo visible y aborto al desmontar.
-- `test/dashboard-admin/dashboard/pagina.test.jsx` — **3 tests**: exige ADMIN,
-  no renderiza tras rechazo y agrega el enlace desde el panel existente.
+- `test/dashboard-admin/dashboard/pagina.test.jsx` ✏️ — **3 tests**: exige ADMIN,
+  no renderiza tras rechazo y agrega el enlace desde el panel existente. Además
+  comprueba que la ruta muestre la tarjeta de puntos.
 - `test/browser/dashboard.ui.mjs` — **8 tests**: temas claro y oscuro a
   360/768/1440 px, tabla con teclado, ausencia de desbordes y errores de navegador,
   reintento y lectura desactualizada, y acceso bloqueado para USER. La API se
@@ -302,7 +544,7 @@ _12 tests._
 - ADMIN guarda documento, teléfono y nombre del estacionamiento normalizados;
   GET recupera el nombre sin modificar otra cuenta ni los roles.
 - USER no puede enviar documento ni nombre del estacionamiento (2 casos).
-- USER conserva contacto y declaración de discapacidad.
+- USER conserva su contacto y no puede autodeclararse con acceso a cocheras accesibles (el campo se ignora).
 - Rechaza email y documento duplicados, incluso en cuentas inactivas (2 casos).
 - Rechaza documento vacío y email vacío o inválido (3 casos).
 - Limita el nombre a 100 caracteres y permite vaciarlo.
@@ -480,24 +722,24 @@ la 6ta request de la misma IP en la ventana recibe 429 y no llega al resto de la
 dos IPs distintas tienen buckets independientes
 ```
 
-## `integration/AccesibilidadTests.java`
+## `integration/AccesibilidadTests.java` ✏️
 
 _13 tests._
 
-🆕 Caja negra. Cocheras ACCESIBLE de punta a punta contra base H2 real. Cubre la declaracion de discapacidad al crear la cuenta (alta del admin y `/register`) y al editar el perfil (`PUT /me`, que sin el campo no la borra); quien puede reservar una ACCESIBLE (un USER con o sin la declaracion, y un ADMIN reservando a nombre de otro, donde cuenta la declaracion del dueño y no la del admin); y que ofrece `/disponibles` a cada uno: anonimo y ADMIN ven todas, un USER sin la declaracion no ve las ACCESIBLE.
+Caja negra. Cocheras ACCESIBLE de punta a punta contra base H2 real. ✏️ Ya no hay autodeclaración: el alta del admin, `/register` y `PUT /me` ignoran `tieneDiscapacidad` (un cliente viejo que lo manda no se habilita). Cubre además quién puede reservar una ACCESIBLE (un USER con o sin la verificación, y un ADMIN reservando a nombre de otro, donde cuenta la del dueño) y qué ofrece `/disponibles` a cada uno. El flujo de verificación está en `VerificacionDiscapacidadControllerTests`.
 
 ```
-[Caja negra] el alta con tieneDiscapacidad=true puede reservar una cochera ACCESIBLE
+[Caja negra] el alta con tieneDiscapacidad=true no habilita: la ACCESIBLE devuelve 400 y no crea nada
 [Caja negra] el alta sin discapacidad a una ACCESIBLE devuelve 400 y no deja nada creado
-[Caja negra] POST /register guarda la discapacidad declarada al crear la cuenta
-[Caja negra] PUT /api/v1/visitantes/me permite declarar la discapacidad y GET /me la devuelve
-[Caja negra] PUT /api/v1/visitantes/me sin el campo no borra la declaracion
-[Caja negra] un USER sin discapacidad declarada no puede reservar una ACCESIBLE
-[Caja negra] un USER con discapacidad declarada puede reservar una ACCESIBLE
-[Caja negra] un ADMIN no puede reservar una ACCESIBLE a nombre de alguien sin discapacidad declarada
-[Caja negra] un ADMIN puede reservar una ACCESIBLE a nombre de alguien con discapacidad declarada
-[Caja negra] /disponibles no le ofrece ACCESIBLE a un USER sin discapacidad declarada
-[Caja negra] /disponibles si le ofrece ACCESIBLE a un USER con discapacidad declarada
+[Caja negra] POST /register crea la cuenta pero ignora tieneDiscapacidad: no se autodeclara
+[Caja negra] PUT /api/v1/visitantes/me ignora tieneDiscapacidad=true: el perfil no habilita
+[Caja negra] PUT /api/v1/visitantes/me no le quita el acceso a quien esta verificado
+[Caja negra] un USER sin discapacidad verificada no puede reservar una ACCESIBLE
+[Caja negra] un USER con discapacidad verificada puede reservar una ACCESIBLE
+[Caja negra] un ADMIN no puede reservar una ACCESIBLE a nombre de alguien sin discapacidad verificada
+[Caja negra] un ADMIN puede reservar una ACCESIBLE a nombre de alguien con discapacidad verificada
+[Caja negra] /disponibles no le ofrece ACCESIBLE a un USER sin discapacidad verificada
+[Caja negra] /disponibles si le ofrece ACCESIBLE a un USER con discapacidad verificada
 [Caja negra] /disponibles le muestra ACCESIBLE a un ADMIN (reserva para otros)
 [Caja negra] /disponibles sigue siendo publico y le muestra ACCESIBLE a un anonimo
 ```
@@ -984,19 +1226,18 @@ crear rechaza una patente con formato de auto para un vehiculo MOTO
 crear rechaza una patente con formato de moto para un vehiculo AUTO
 ```
 
-## `service/VisitanteDiscapacidadTests.java`
+## `service/VisitanteDiscapacidadTests.java` ✏️
 
-_6 tests._
+_5 tests._
 
-🆕 Caja blanca de como se guarda y se edita la declaracion de discapacidad: en el alta del admin (queda en false si no viene), al editar el propio perfil (marcar, desmarcar, y sin el campo no se toca) y al leerlo para precargar el formulario.
+✏️ Caja blanca de que ni el alta del admin ni editar el propio perfil pueden cambiar el acceso a las cocheras ACCESIBLE: los DTOs ya no tienen el campo, el alta nace en false, y el perfil no lo pone ni lo quita. Solo lo cambia la verificación.
 
 ```
-altaConReserva guarda la discapacidad cuando el admin la marca
-altaConReserva deja la discapacidad en false si el admin no la manda
-actualizarPropio permite al visitante declarar su discapacidad
-actualizarPropio permite al visitante quitar la declaracion
-actualizarPropio sin el campo no le borra la declaracion a nadie
-obtenerPropio devuelve la declaracion actual para precargar el formulario
+altaConReserva crea la cuenta sin acceso a cocheras accesibles: eso lo da la verificacion
+el alta del admin ya no acepta declarar la discapacidad
+actualizarPropio no le da acceso a quien no esta verificado
+actualizarPropio no le quita el acceso a quien esta verificado
+obtenerPropio informa el acceso actual (derivado de la verificacion)
 ```
 
 ## `service/VisitanteServiceTests.java`
@@ -1034,6 +1275,121 @@ cambiarPasswordPropia lanza NotFoundException si no existe una cuenta con ese em
 ---
 
 # Frontend (`aparcar-front/test/`)
+
+## `components/BilleteraPuntos.test.jsx`
+
+_6 tests._
+
+```
+muestra el saldo, lo que alcanza de descuento y la racha con su avance
+explica las reglas con la tabla de franjas que manda el servidor
+lista el historial con signo y tipo
+sin actividad: saldo en cero, racha apagada y sin movimientos
+a un día del bonus lo dice así
+si falla la carga, avisa y permite reintentar
+```
+
+## `components/ReservasPuntos.test.jsx`
+
+_10 tests._ "Usar puntos" en el alta, con una cotización simulada que imita la
+del servidor (100 puntos = 10 %).
+
+```
+muestra el saldo, aplica los puntos con el precio del servidor y los envía
+'Usar todos' pide el máximo al servidor y lo envía sin cantidad
+con "1.5" / "400" / "-3" avisa, no lo cotiza y no deja confirmar   (3 casos)
+destaca lo que se gana en la franja que más suma
+si no suma, dice por qué
+sin saldo lo dice, sin campo para cargar puntos
+el modo admin no ofrece puntos ni dice lo que se gana
+Mis reservas muestra el total con descuento, los puntos usados y lo que suma
+```
+
+## `dashboard-admin/dashboard/ResumenPuntos.test.jsx`
+
+_2 tests._ La tarjeta "Programa de puntos" con sus cinco datos, y el error con
+reintento.
+
+## `utils/puntos.test.js`
+
+_16 tests._ `validarPuntos` (válidos, 8 rechazos y el tope con saldo de sobra),
+formatos de porcentaje y puntos, y los textos de puntos de una reserva
+(pendiente, con descuento y acreditada, cancelada con reintegro, vencida sin
+reintegro, sin sumar con motivo, sin datos).
+
+## `dashboard-user/paginas.test.jsx` ✏️
+
+Suma 2 tests: el encabezado del panel lleva a **Mis puntos**, y esa pantalla
+exige USER, muestra la billetera y vuelve al panel.
+
+## `components/VerificacionDiscapacidad.test.jsx`
+
+_17 tests._ El bloque "Cocheras accesibles" de Mis datos.
+
+```
+estados: sin solicitud invita a subir el certificado y explica la privacidad
+estados: en revisión lo dice, no deja subir otro y permite retirarla
+estados: verificada muestra hasta cuándo vale
+estados: rechazada muestra el motivo destacado y deja reenviar
+estados: REVOCADA / VENCIDA lo avisa y deja enviar uno nuevo   (2 casos)
+estados: una cuenta migrada ve el plazo para enviar el certificado sin perder el acceso
+estados: si no se pudo cargar, lo dice y permite reintentar
+subir: valida el tipo en el cliente antes de subir
+subir: valida el tamaño máximo que informa el backend
+subir: muestra el nombre elegido y envía el archivo como multipart
+subir: acepta un archivo arrastrado y soltado
+subir: muestra el error 409 / 415 / 413 del backend   (3 casos)
+subir: no envía dos veces con un doble clic
+subir: retirar la solicitud vuelve a dejar subir
+```
+
+## `utils/verificacionDiscapacidad.test.js`
+
+_12 tests._ Validación previa del archivo (tipos, extensión, vacío y borde del
+tamaño) y formato de fechas (un día sin hora se lee como fecha local).
+
+## `dashboard-admin/verificaciones/VerificacionesContent.test.jsx`
+
+_15 tests._
+
+```
+cola y detalle: lista las pendientes, más viejas primero según el backend, con datos mínimos
+cola y detalle: filtra por estado
+cola y detalle: sin pendientes lo dice
+cola y detalle: muestra el PDF obtenido con la sesión, desde memoria y sin URL pública
+cola y detalle: una imagen se muestra como imagen
+cola y detalle: si el certificado ya se eliminó, lo explica y conserva la decisión
+resolver: aprueba con vencimiento opcional tras confirmar, y refresca la cola y el contador
+resolver: aprobar sin vencimiento manda un cuerpo vacío
+resolver: si no confirma, no hace nada
+resolver: rechazar exige el motivo antes de confirmar
+resolver: un doble clic manda una sola decisión
+resolver: si otro admin ya la resolvió (409), lo avisa y recarga la cola
+resolver: otro error del backend se muestra sin cerrar el detalle
+resolver: revoca una verificación vigente con motivo obligatorio
+resolver: una solicitud ya resuelta no ofrece acciones
+```
+
+## `dashboard-admin/verificaciones/pagina.test.jsx`
+
+_3 tests._
+
+```
+exige ADMIN (no EMPLEADO: son datos de salud) y permite volver al panel
+el panel del admin incorpora el acceso con el contador de pendientes
+el empleado no ve el acceso
+```
+
+## `components/ContadorVerificaciones.test.jsx`
+
+_4 tests._
+
+```
+muestra la cantidad de pendientes al entrar
+sin pendientes no muestra el contador
+se actualiza cada minuto y cuando se resuelve una solicitud
+si la consulta falla, sigue mostrando el acceso
+```
 
 ## `dashboard-admin/accesos/ControlAccesoContent.test.jsx`
 
@@ -1196,9 +1552,9 @@ _13 tests._
   campos/botones mientras guarda.
 - Recargar con cambios pendientes requiere aceptar descartarlos.
 
-## `hooks/useCotizacion.test.jsx`
+## `hooks/useCotizacion.test.jsx` ✏️
 
-_5 tests._
+_7 tests._
 
 - No consulta sin tipo o con franja inválida.
 - Ignora respuestas tardías e invalida el precio inmediatamente al cambiar la
@@ -1206,6 +1562,7 @@ _5 tests._
 - Expone errores del backend y permite reintentar, incluyendo precio cero.
 - Rechaza respuestas sin un precio válido.
 - Cambiar la franja vuelve a consultar el importe.
+- Con un canje pide `puntos` o `usarTodos`; sin canje no manda parámetros de puntos.
 
 ## `components/ReservasTarifas.test.jsx`
 
@@ -1218,7 +1575,7 @@ _9 tests._
 - Si cambia el precio al confirmar, muestra el nuevo importe sin reenviar
   automáticamente la reserva.
 - Muestra el importe histórico y distingue reservas anteriores a las tarifas.
-- El alta operativa muestra y envía el precio Accesible.
+- El alta operativa muestra y envía el precio cotizado, sin ofrecer la Accesible (✏️: la cuenta nueva no tiene el certificado verificado).
 - Sin tarifas configuradas impide crear la reserva.
 
 ## `api.test.jsx`
@@ -1459,12 +1816,12 @@ no trae el alta de visitante ni el formulario de reservas
 
 ## `dashboard-admin/VisitantesContent.test.jsx`
 
-_21 tests._
+_19 tests._
 
 Incluye los dos formatos de patente MOTO en espera, normalización de espacios y
 guiones, detalle de validación por campo y mensaje en español cuando falta detalle.
 
-El alta operativa del admin: crea cuenta, vehiculo y reserva en una sola llamada, con su franja. ✏️ Suma el checkbox opcional de **discapacidad**: desmarcado por defecto, viaja en el alta, y las cocheras ACCESIBLE no se ofrecen hasta marcarlo (si se desmarca con una elegida, se deselecciona).
+El alta operativa del admin: crea cuenta, vehiculo y reserva en una sola llamada, con su franja. ✏️ Ya no autodeclara la **discapacidad**: no tiene el checkbox, no manda el campo y no ofrece cocheras ACCESIBLE (una cuenta nueva no tiene el certificado verificado).
 
 ```
 consulta disponibilidad y reserva para la franja elegida, limpiando la cochera anterior
@@ -1479,11 +1836,9 @@ manda cuenta, vehiculo y cochera en una sola llamada
 avisa que la contraseña inicial es el documento
 avisa al padre para que refresque ocupacion y reservas
 si el alta falla (ej. documento duplicado), muestra el error del backend
-muestra el checkbox de discapacidad desmarcado por defecto
-sin marcarlo, manda tieneDiscapacidad: false
-marcado, manda tieneDiscapacidad: true y permite reservar una ACCESIBLE
-oculta las cocheras ACCESIBLE hasta que se marca el checkbox
-si se desmarca con una ACCESIBLE elegida, la deselecciona
+ya no tiene el checkbox y explica que la verificación se pide desde el perfil
+el alta nunca manda tieneDiscapacidad
+no ofrece cocheras ACCESIBLE y lo explica
 ```
 
 ## `dashboard-admin/cocheras/CocherasManagement.test.jsx`
@@ -1588,25 +1943,22 @@ edita un vehiculo existente con PUT /api/v1/vehiculos/{id}
 elimina un vehiculo con confirmacion
 ```
 
-## `components/ProfileSettings.test.jsx`
+## `components/ProfileSettings.test.jsx` ✏️
 
-_18 tests._
+_15 tests._
 
-Contacto, declaración de discapacidad y cambio de contraseña, trasladados al componente compartido. Conserva las validaciones y endpoints existentes.
+Contacto, acceso a cocheras accesibles y cambio de contraseña. ✏️ El checkbox autodeclarado se reemplazó por el bloque de verificación (`VerificacionDiscapacidad.test.jsx`): el perfil ya no manda `tieneDiscapacidad`.
 
 ```
 precarga telefono y email actuales
 guarda los cambios de telefono/email con PUT /api/v1/visitantes/me
 no deja vaciar el email, porque es con lo que se inicia sesion
-el formulario de edicion muestra el checkbox de discapacidad
-precarga el checkbox marcado si el perfil lo tiene declarado
-precarga el checkbox desmarcado si el perfil no lo tiene declarado
-si el perfil no trae el campo, el checkbox arranca desmarcado
-al marcarlo manda tieneDiscapacidad: true en el PUT
-al desmarcarlo manda tieneDiscapacidad: false en el PUT
-si guarda sin tocar el checkbox, conserva la discapacidad
-muestra la insignia en sus datos cuando lo tiene declarado
-no muestra la insignia cuando no lo tiene declarado
+ya no tiene el checkbox para autodeclararse
+el PUT del perfil nunca manda tieneDiscapacidad
+muestra el bloque de cocheras accesibles con el estado de la verificación
+el administrador también ve el bloque para verificarse
+muestra la insignia en sus datos cuando puede usar cocheras accesibles
+no muestra la insignia cuando no puede
 el formulario esta oculto hasta tocar 'Cambiar contraseña'
 manda la actual y la nueva a PUT /api/v1/visitantes/me/password
 exige la contraseña actual
@@ -1791,10 +2143,29 @@ es case-insensitive
 
 | | Archivos | Tests |
 |---|---|---|
-| Backend | 58 | 644 |
-| Frontend (Vitest) | 45 | 570 |
+| Backend | 72 | 852 |
+| Frontend (Vitest) | 55 | 680 |
 | Frontend UI (Playwright) | 5 | 42 |
-| **Total** | **108** | **1256** |
+| **Total** | **132** | **1574** |
+
+Puntos, rachas y descuentos: antes de empezar, los runners daban 67 archivos /
+757 tests de backend y 51 / 642 de Vitest. La feature suma 5 archivos y 95 tests
+de backend (los tests existentes solo se ajustaron a las dependencias nuevas, sin
+cambiar casos) y 4 archivos y 38 tests de Vitest (`useCotizacion` y
+`dashboard-user/paginas` suman 2 cada uno). Verificación: `mvn clean install`
+(852 tests, sin fallos), también con `-Duser.timezone=UTC` como en CI, `npm test`
+(680), `npm run lint` (sin errores; conserva la advertencia previa de React Hook
+Form) y `npm run build`. La regresión de Playwright no se volvió a correr.
+
+Verificación de discapacidad con certificado: antes de empezar, los runners
+daban 59 archivos / 654 tests de backend y 46 / 596 de Vitest (la tabla de arriba
+estaba desactualizada). La feature suma 8 archivos y 104 tests de backend, y
+`VisitanteDiscapacidadTests` pasa de 6 a 5 casos al dejar de probar la
+autodeclaración. En Vitest suma 5 archivos y 51 tests; `ProfileSettings` (−3) y
+`VisitantesContent` (−2) reemplazan los casos del checkbox por los de su
+ausencia. Verificación: `mvn clean install` (757 tests, sin fallos), `npm test`
+(642), `npm run lint` (sin errores; conserva la advertencia previa de React Hook
+Form) y `npm run build`. La regresión de Playwright no se volvió a correr.
 
 Corrección del test de barrido en CI: `mvn -B -Duser.timezone=UTC clean install`
 completo (644 tests, sin fallos). Se reprodujo primero el fallo original al

@@ -39,6 +39,7 @@ const { default: ReservasPage } = await import("@/app/dashboard-admin/reservas/p
 const { default: RecurrentesPage } = await import("@/app/dashboard-admin/recurrentes/page");
 const { default: VisitantesPage } = await import("@/app/dashboard-admin/visitantes/page");
 const { default: TarifasPage } = await import("@/app/dashboard-admin/tarifas/page");
+const { default: ConveniosPage } = await import("@/app/dashboard-admin/convenios/page");
 const { default: DashboardPage } = await import("@/app/dashboard-admin/page");
 const { default: PerfilAdminPage } = await import("@/app/dashboard-admin/perfil/page");
 const { default: PerfilUserPage } = await import("@/app/dashboard-user/perfil/page");
@@ -57,6 +58,21 @@ describe("Rutas de perfil", () => {
       expect(screen.getByRole("link", { name: /volver al panel/i })).toHaveAttribute("href", href);
     }
   );
+});
+
+describe("/dashboard-admin/convenios", () => {
+  it("exige ADMIN y permite volver al panel", async () => {
+    await renderPagina(ConveniosPage);
+    expect(requireAuthMock).toHaveBeenCalledWith(["ADMIN"]);
+    expect(screen.getByRole("heading", { name: "Gestionar convenios" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /volver al panel/i })).toHaveAttribute("href", "/dashboard-admin");
+  });
+
+  it("no renderiza contenido cuando falla la autorización", async () => {
+    requireAuthMock.mockRejectedValueOnce(new Error("Sin permiso"));
+    await expect(ConveniosPage()).rejects.toThrow("Sin permiso");
+    expect(getMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("/dashboard-admin/tarifas", () => {
@@ -168,7 +184,7 @@ describe("/dashboard-admin/visitantes", () => {
  */
 describe("el panel según el rol", () => {
   /** Lo que solo tiene que ver un administrador. */
-  const soloAdmin = ["Dashboard", "Gestionar cocheras", "Gestionar usuarios", "Gestionar tarifas"];
+  const soloAdmin = ["Dashboard", "Gestionar cocheras", "Gestionar usuarios", "Gestionar tarifas", "Gestionar convenios"];
   /** Lo que forma parte de operar y ve también el empleado. */
   const operacion = ["Control de acceso", "Nuevo visitante", "Ver reservas"];
 

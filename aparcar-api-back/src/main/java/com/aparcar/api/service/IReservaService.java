@@ -25,8 +25,8 @@ public interface IReservaService {
      *     <li>Que el tipo de la cochera sea compatible con el tipo del vehiculo
      *     (ACCESIBLE acepta cualquier tipo; el resto debe coincidir exactamente).</li>
      *     <li>Que, si la cochera es ACCESIBLE, el visitante dueño de la reserva
-     *     tenga declarada una discapacidad (aunque la cargue un ADMIN en su
-     *     nombre: cuenta la declaracion del dueño, no la del admin).</li>
+     *     tenga verificada su discapacidad (aunque la cargue un ADMIN en su
+     *     nombre: cuenta la verificacion del dueño, no la del admin).</li>
      *     <li>Que la cochera no tenga ya otra reserva CONFIRMADA en la misma fecha.</li>
      * </ul>
      *
