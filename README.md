@@ -619,3 +619,67 @@ docker run --rm -v "$(pwd):/app" -w /app maven:3.9.9-eclipse-temurin-21-alpine m
 ```
 
 Si preferís instalar Maven local (por ejemplo para usar `mvn spring-boot:run` en vez de Docker), después podés correr directamente `mvn test`.
+
+---
+
+## 9. Ayuda memoria de Mateo
+
+### 9.1 Flujo de Git para empezar una tarea
+
+**Antes de empezar**, partir de `dev` actualizado y crear una rama:
+
+```bash
+git checkout dev
+git pull origin dev
+git checkout -b feature/nombre-de-tu-tarea
+```
+
+**Al terminar**, guardar los cambios y subir la rama:
+
+```bash
+git add .
+git commit -m "Descripción de lo que hiciste"
+git push -u origin feature/nombre-de-tu-tarea
+```
+
+---
+
+### 9.2 Cuándo correr `docker compose up -d --build server`
+
+El backend corre desde una imagen de Docker que ya tiene el `.jar` compilado. Si cambia algo que forma parte de esa imagen, hay que reconstruirla: `docker compose restart` no alcanza, porque vuelve a usar la imagen anterior.
+
+Desde `aparcar-api-back`:
+
+```bash
+docker compose up -d --build server
+```
+
+| Qué cambié | Qué hacer |
+|---|---|
+| Código Java en `src/main/java` | `docker compose up -d --build server` |
+| Recursos en `src/main/resources` (`application*.yml`, migraciones de Liquibase) | `docker compose up -d --build server` |
+| `pom.xml` o `dockerfiles/server.Dockerfile` | `docker compose up -d --build server` |
+| `.env` o `docker-compose.yaml` del backend | `docker compose up -d server` (no hace falta `--build`) |
+| Solo tests en `src/test` | No hace falta reconstruir: correr los tests (ver sección 8) |
+| Frontend (`aparcar-front`) | No hace falta reconstruir el backend: `npm run dev` toma los cambios solo |
+
+Para confirmar que levantó bien, mirar los logs hasta ver `Started AparcarApiApplication`:
+
+```bash
+docker compose logs -f server
+```
+
+> **Señal típica de imagen vieja:** el código parece correcto, pero el backend se comporta como antes del cambio. Por ejemplo, un valor nuevo de un enum devuelve `The request body is missing or malformed`.
+
+---
+
+### 9.3 Caso particular: agregar un tipo de vehículo o cochera
+
+Ejemplo real: agregar `BICICLETA`. Además de sumar el valor a los enums y a las listas de opciones del front, hay que acordarse de estos cuatro archivos:
+
+| Archivo | Qué cambiar | Si me lo olvido |
+|---|---|---|
+| `aparcar-front/app/dashboard-admin/tarifas/TarifasManagement.jsx` | `.length(4)` → `.length(5)` en el schema, texto "16 precios" → "20 precios", y `xl:grid-cols-4` → `xl:grid-cols-5` | Al guardar tarifas **no aparece ningún mensaje** y no se envía el pedido |
+| `aparcar-front/utils/patenteValidation.js` | En `formatoPatenteValido`, agregar la regla del tipo nuevo (para `BICICLETA`, devolver `true`) | El front le exige al vehículo una patente con formato de auto |
+| `aparcar-api-back/src/main/java/com/aparcar/api/dto/reserva/TarifasRequestDto.java` | `@Size(min = 4, max = 4)` → `@Size(min = 5, max = 5)` | Al guardar tarifas aparece `Validation failed` |
+| `aparcar-api-back/src/test/java/com/aparcar/api/integration/TarifaControllerTests.java` | `.value(4)` → `.value(5)` y sumar el tipo a `"AUTO,MOTO,ACCESIBLE,CARGA,BICICLETA"` | Fallan los tests de tarifas |
