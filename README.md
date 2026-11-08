@@ -683,3 +683,76 @@ Ejemplo real: agregar `BICICLETA`. Además de sumar el valor a los enums y a las
 | `aparcar-front/utils/patenteValidation.js` | En `formatoPatenteValido`, agregar la regla del tipo nuevo (para `BICICLETA`, devolver `true`) | El front le exige al vehículo una patente con formato de auto |
 | `aparcar-api-back/src/main/java/com/aparcar/api/dto/reserva/TarifasRequestDto.java` | `@Size(min = 4, max = 4)` → `@Size(min = 5, max = 5)` | Al guardar tarifas aparece `Validation failed` |
 | `aparcar-api-back/src/test/java/com/aparcar/api/integration/TarifaControllerTests.java` | `.value(4)` → `.value(5)` y sumar el tipo a `"AUTO,MOTO,ACCESIBLE,CARGA,BICICLETA"` | Fallan los tests de tarifas |
+
+---
+
+### 9.4 Caso particular: agregar un estado de cochera
+
+Ejemplo real: agregar `MANTENIMIENTO`.
+
+**Back:** sumar el valor a `CocheraEstado.java`. Si el estado nuevo saca la cochera de servicio, sumarlo también a la condición que cancela reservas en `CocheraService.editar()`.
+
+**Front:** sumar el valor al `z.enum` de `estado` y a los 3 `<select>` de `CocherasManagement.jsx`. Después, revisar estos lugares, que comparan contra `"DESHABILITADA"`:
+
+| Archivo | Dónde | Cambio |
+|---|---|---|
+| `aparcar-front/app/dashboard-admin/cocheras/CocherasManagement.jsx` | Debajo de `TIPO_LABELS` y en la celda `data-label="Estado"` de la tabla | Ver **Badge de estado** más abajo |
+| `aparcar-front/app/dashboard-admin/cocheras/CocherasManagement.jsx` | `onEditCochera`, condición del `window.confirm` | `data.estado === "DESHABILITADA"` → `data.estado !== "HABILITADA"` |
+| `aparcar-front/components/OcupacionCocheras.jsx` | `const deshabilitada = ...` dentro del `.map` | `=== "DESHABILITADA"` → `!== "HABILITADA"` |
+| `aparcar-front/utils/ocupacion.js` | `agruparOcupacion`, campo `deshabilitadas` | `=== "DESHABILITADA"` → `!== "HABILITADA"` |
+
+#### Badge de estado (`CocherasManagement.jsx`)
+
+**1. Agregar** debajo de `const TIPO_LABELS = { ... };` (un estado nuevo = una entrada en cada mapa) (linea 74):
+
+```jsx
+const ESTADO_LABELS = {
+  HABILITADA: "Habilitada",
+  DESHABILITADA: "Deshabilitada",
+  MANTENIMIENTO: "Mantenimiento",
+};
+
+const ESTADO_ESTILOS = {
+  HABILITADA: "bg-accent/10 text-link ring-accent/20",
+  DESHABILITADA: "bg-ink/5 text-ink/50 ring-ink/10",
+  MANTENIMIENTO:
+    "bg-amber-500/10 text-amber-800 ring-amber-600/30 dark:text-amber-300 dark:ring-amber-400/40",
+};
+```
+
+**2. Reemplazar** el contenido de `<td role="cell" data-label="Estado" ...>` en la tabla (linea 909).
+
+Antes:
+
+```jsx
+{cochera.estado === "HABILITADA" ? (
+  <span className="rounded-full bg-accent/10 px-2.5 py-1 text-xs font-medium text-link ring-1 ring-inset ring-accent/20">
+    Habilitada
+  </span>
+) : (
+  <span className="rounded-full bg-ink/5 px-2.5 py-1 text-xs font-medium text-ink/50 ring-1 ring-inset ring-ink/10">
+    Deshabilitada
+  </span>
+)}
+```
+
+Después:
+
+```jsx
+<span
+  className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${
+    ESTADO_ESTILOS[cochera.estado] ?? ESTADO_ESTILOS.DESHABILITADA
+  }`}
+>
+  {ESTADO_LABELS[cochera.estado] ?? cochera.estado}
+</span>
+```
+
+> **Regla rápida:** en el front, preguntar `!== "HABILITADA"` en vez de `=== "DESHABILITADA"`. Así cualquier estado nuevo queda fuera de servicio sin tener que tocar cada comparación.
+
+**Si me olvido:**
+- La tabla muestra el estado nuevo como "Deshabilitada".
+- Al editar, se cancelan las reservas sin pedir confirmación.
+- En ocupación, la cochera aparece "Libre", y el botón "Deshabilitar" en realidad la habilita.
+
+**Después:** reconstruir el back (ver 9.2) y probar con una cochera que tenga una reserva confirmada.
