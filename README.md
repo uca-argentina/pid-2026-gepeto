@@ -750,9 +750,188 @@ Después:
 
 > **Regla rápida:** en el front, preguntar `!== "HABILITADA"` en vez de `=== "DESHABILITADA"`. Así cualquier estado nuevo queda fuera de servicio sin tener que tocar cada comparación.
 
-**Si me olvido:**
-- La tabla muestra el estado nuevo como "Deshabilitada".
-- Al editar, se cancelan las reservas sin pedir confirmación.
-- En ocupación, la cochera aparece "Libre", y el botón "Deshabilitar" en realidad la habilita.
+---
 
-**Después:** reconstruir el back (ver 9.2) y probar con una cochera que tenga una reserva confirmada.
+### 9.5 Caso particular: agregar un tipo de cochera exclusivo para un tipo de vehículo
+
+Ejemplo: una cochera `CARGA_PESADA` que solo puedan usar vehículos `CARGA`.
+
+> **Por qué no alcanza con sumar el valor al enum:** la compatibilidad entre vehículo y cochera compara el **nombre** de los dos enums (`CARGA` == `CARGA`). Un tipo de cochera con otro nombre no lo podría usar **ningún** vehículo.
+
+#### Paso 1: centralizar la regla en `CocheraTipo.java`
+
+`aparcar-api-back/src/main/java/com/aparcar/api/entity/reserva/CocheraTipo.java`
+
+```java
+package com.aparcar.api.entity.reserva;
+
+public enum CocheraTipo {
+    AUTO,
+    MOTO,
+    ACCESIBLE,
+    CARGA,
+    BICICLETA,
+    CARGA_PESADA;
+
+    /**
+     * Que tipo de vehiculo entra fisicamente en esta cochera. ACCESIBLE admite
+     * cualquiera: la restriccion ahi es sobre la PERSONA y se valida aparte.
+     * El switch es exhaustivo a proposito: un tipo nuevo no compila hasta
+     * decidir que vehiculos admite.
+     */
+    public boolean admite(VehiculoTipo vehiculo) {
+        if (vehiculo == null) {
+            return false;
+        }
+        return switch (this) {
+            case AUTO -> vehiculo == VehiculoTipo.AUTO;
+            case MOTO -> vehiculo == VehiculoTipo.MOTO;
+            case BICICLETA -> vehiculo == VehiculoTipo.BICICLETA;
+            case CARGA, CARGA_PESADA -> vehiculo == VehiculoTipo.CARGA;
+            case ACCESIBLE -> true;
+        };
+    }
+}
+```
+
+#### Paso 2: reemplazar la comparación por nombre en los 3 lugares que validan
+
+Cada lugar conserva su manejo especial de `ACCESIBLE`; solo cambia la comparación.
+
+| Archivo y método | Qué hace | Antes | Después |
+|---|---|---|---|
+| `ReservaService.validarCompatibilidad` | **Bloquea** la reserva con una cochera elegida (400) | `!cochera.getTipo().name().equals(vehiculo.getTipo().name())` | `!cochera.getTipo().admite(vehiculo.getTipo())` |
+| `PlanificacionReservas.compatible` | Valida la lista de espera y elige cochera en `disponible()` y `promover()` | `tipo != null && tipo.name().equals(vehiculo.getTipo().name())` | `tipo != null && tipo.admite(vehiculo.getTipo())` |
+| `CocheraService.esCompatible` | Filtra el desplegable de `/disponibles` (no bloquea) | `cocheraTipo.name().equals(tipoVehiculo.name())` | `cocheraTipo.admite(tipoVehiculo)` |
+
+> **Regla rápida:** para cambiar qué vehículo entra en qué cochera, se toca **solo** el `switch` de `CocheraTipo.admite`. Nunca comparar `.name()` entre los dos enums.
+
+#### Paso 3: el front
+
+**1. Archivo nuevo** `aparcar-front/utils/compatibilidad.js`. Es el espejo de `CocheraTipo.admite()` en el back: si cambia allá, cambia acá.
+
+```js
+// Espejo de CocheraTipo.admite (back). Si cambia allá, cambiarlo acá.
+export const CATEGORIAS_POR_VEHICULO = {
+  AUTO: ["AUTO"],
+  MOTO: ["MOTO"],
+  CARGA: ["CARGA", "CARGA_PESADA"],
+  BICICLETA: ["BICICLETA"],
+};
+
+export const categoriasPara = (tipoVehiculo) => CATEGORIAS_POR_VEHICULO[tipoVehiculo] ?? [];
+```
+
+**2. `aparcar-front/utils/ocupacion.js`**: sumar la etiqueta en `TIPO_ETIQUETA`:
+
+```js
+  CARGA_PESADA: "Carga pesada",
+```
+
+**3. `aparcar-front/components/AvisoListaEspera.jsx`**: mostrar la etiqueta en vez del valor crudo (si no, dice "carga_pesada").
+
+Agregar arriba:
+```js
+import { TIPO_ETIQUETA } from "@/utils/ocupacion";
+```
+Reemplazar:
+```jsx
+// antes
+de tipo {tipoCochera?.toLowerCase()} mientras
+// después
+de tipo {(TIPO_ETIQUETA[tipoCochera] ?? tipoCochera)?.toLowerCase()} mientras
+```
+
+**4. `aparcar-front/app/dashboard-admin/VisitantesContent.jsx`** (alta de visitante, admin)
+
+Imports (`TIPO_ETIQUETA` solo si no está importado):
+```js
+import { categoriasPara } from "@/utils/compatibilidad";
+import { TIPO_ETIQUETA } from "@/utils/ocupacion";
+```
+
+Schema, debajo de `listaEspera: z.boolean().optional(),`. Hay que declararlo: zod descarta los campos que no están en el schema.
+```js
+    categoriaEspera: z.string().optional(),
+```
+
+Valores iniciales. Sumar `categoriaEspera: ""` **en los dos lugares**, el `defaultValues` y el `reset(...)` de después de enviar:
+```js
+{ tipoVehiculo: "AUTO", cocheraId: "", listaEspera: false, categoriaEspera: "", ...franjaPorDefecto() }
+```
+
+Categoría elegida, justo debajo de `const enEspera = puedeEsperar && listaEspera;`:
+```js
+  const categorias = categoriasPara(tipoVehiculo);
+  const categoriaEspera = watch("categoriaEspera") || categorias[0] || tipoVehiculo;
+```
+
+Cotización:
+```js
+// antes
+useCotizacion(cocheraElegida?.tipo ?? tipoVehiculo, desde, hasta, null, convenios.contextoCotizacion);
+// después
+useCotizacion(cocheraElegida?.tipo ?? categoriaEspera, desde, hasta, null, convenios.contextoCotizacion);
+```
+
+Limpiar la elección al cambiar vehículo o franja, en el `useEffect` que depende de `disponibilidad.solicitud`:
+```js
+  useEffect(() => {
+    setValue("cocheraId", "");
+    setValue("listaEspera", false);
+    setValue("categoriaEspera", "");
+  }, [disponibilidad.solicitud, setValue]);
+```
+
+Envío, en `onSubmit`:
+```js
+// antes
+...(enEspera ? { listaEspera: true, tipoCochera: data.tipoVehiculo } : {}),
+// después
+...(enEspera ? { listaEspera: true, tipoCochera: categoriaEspera } : {}),
+```
+
+Selector, reemplazando la línea del `<AvisoListaEspera ... />`:
+```jsx
+{puedeEsperar && categorias.length > 1 && (
+  <div className="mt-3">
+    <label className="ui-label" htmlFor="alta-categoria-espera">Esperar por cochera de tipo</label>
+    <select id="alta-categoria-espera" {...register("categoriaEspera")} className="ui-input">
+      {categorias.map((c) => (
+        <option key={c} value={c}>{TIPO_ETIQUETA[c] ?? c}</option>
+      ))}
+    </select>
+  </div>
+)}
+{puedeEsperar && (
+  <AvisoListaEspera id="alta-lista-espera" registro={register("listaEspera")} tipoCochera={categoriaEspera} />
+)}
+```
+
+**5. `aparcar-front/components/ReservasContent.jsx`** (reserva del usuario y del admin)
+
+Son los mismos cambios que en el punto 4, pero el tipo sale de `vehiculoEncontrado?.tipo`:
+
+| Qué | Antes | Después |
+|---|---|---|
+| Imports | — | Los mismos 2 imports del punto 4 |
+| Schema `reservaSchema` | — | `categoriaEspera: z.string().optional(),` debajo de `listaEspera` |
+| `defaultValues` y `reset(...)` | `cocheraId: "", listaEspera: false` | `cocheraId: "", listaEspera: false, categoriaEspera: ""` |
+| Debajo de `const enEspera = ...` | — | `const categorias = categoriasPara(vehiculoEncontrado?.tipo);`<br>`const categoriaEspera = watch("categoriaEspera") \|\| categorias[0] \|\| vehiculoEncontrado?.tipo;` |
+| `tipoTarifa` | `cocheraElegida?.tipo ?? vehiculoEncontrado?.tipo` | `cocheraElegida?.tipo ?? categoriaEspera` |
+| `useEffect` que limpia `cocheraId` y `listaEspera` | — | Sumar `setValue("categoriaEspera", "");` |
+| `onSubmit` | `tipoCochera: vehiculoEncontrado.tipo` | `tipoCochera: categoriaEspera` |
+| `<AvisoListaEspera ... />` | `tipoCochera={vehiculoEncontrado?.tipo}` | El mismo bloque del punto 4, con `id="reserva-categoria-espera"` y `tipoCochera={categoriaEspera}` |
+
+> **Por qué el selector solo aparece con más de una categoría:** para auto, moto o bicicleta no hay nada que elegir, y `categoriaEspera` vale lo mismo que antes (el tipo del vehículo). El comportamiento actual no cambia para ellos.
+
+#### Paso 4: el checklist de siempre al sumar un tipo de cochera (ver 9.3)
+
+- **Numeración:** prefijo nuevo en `NumeracionCocheras.prefijo`. El `switch` también es exhaustivo, así que si falta no compila.
+- **Tarifas:** una fila más (pasan a ser 6). Hay que ajustarlo en tres lugares:
+  - el `@Size` de `TarifasRequestDto`;
+  - el `.length(...)` de `TarifasManagement.jsx`;
+  - los tipos en `TarifaControllerTests`.
+- **Front:** sumar el valor a `TIPOS_COCHERA`, `TIPO_LABELS`, `TIPOS_TARIFA` y a los `<select>` de `CocherasManagement.jsx`.
+- **Back:** reconstruir con `docker compose up -d --build server` (ver 9.2).
+- **Precios:** cargar la tarifa nueva desde **Gestionar tarifas**, porque el seeder no la agrega en una base con datos.
