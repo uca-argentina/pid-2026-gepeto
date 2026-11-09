@@ -935,3 +935,253 @@ Son los mismos cambios que en el punto 4, pero el tipo sale de `vehiculoEncontra
 - **Front:** sumar el valor a `TIPOS_COCHERA`, `TIPO_LABELS`, `TIPOS_TARIFA` y a los `<select>` de `CocherasManagement.jsx`.
 - **Back:** reconstruir con `docker compose up -d --build server` (ver 9.2).
 - **Precios:** cargar la tarifa nueva desde **Gestionar tarifas**, porque el seeder no la agrega en una base con datos.
+
+---
+
+### 9.6 Caso particular: agregar un campo nuevo con un enum nuevo a la cochera
+
+Ejemplo real: campo `cobertura` con los valores `TECHADA`, `SEMICUBIERTA` y `DESCUBIERTA`.
+
+> **Diferencia con 9.4 (sumar un valor a un enum existente):** acá la columna no existe. Hace falta el enum, la columna en la base (migración), los DTOs de entrada y salida, el mapeo en el servicio y el schema de zod.
+
+**Decisión:** el campo es **opcional en el request**, con `DESCUBIERTA` por defecto. Si fuera obligatorio (`@NotNull`), se romperían los tests que crean cocheras sin mandarlo.
+
+#### Back
+
+**1. Enum nuevo:** `aparcar-api-back/src/main/java/com/aparcar/api/entity/reserva/CocheraCobertura.java`
+
+```java
+package com.aparcar.api.entity.reserva;
+
+/** Cuánto protege la cochera de la intemperie. */
+public enum CocheraCobertura {
+    TECHADA,
+    SEMICUBIERTA,
+    DESCUBIERTA
+}
+```
+
+**2. Entidad:** en `Cochera.java`, debajo del campo `estado`:
+
+```java
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private CocheraCobertura cobertura = CocheraCobertura.DESCUBIERTA;
+```
+
+El `= DESCUBIERTA` hace que todo `new Cochera()` (seeders, tests, servicio) arranque con un valor válido.
+
+**3. Migración:** `aparcar-api-back/src/main/resources/db/changelog/018-cobertura-cocheras.yaml`
+
+> ⚠️ Tiene que ir **dentro de `db/changelog/`** y con extensión **`.yaml`**, la misma que usa el `include`. Si no, el back no arranca ("file ... was not found in the configured search path"), y desde el front se ve como un **error de login**.
+
+```yaml
+databaseChangeLog:
+  - changeSet:
+      id: 018-cobertura-cocheras
+      author: aparcar
+      changes:
+        - addColumn:
+            tableName: cocheras
+            columns:
+              - column:
+                  name: cobertura
+                  type: varchar(20)
+                  defaultValue: DESCUBIERTA
+                  constraints:
+                    nullable: false
+      rollback:
+        - dropColumn:
+            tableName: cocheras
+            columnName: cobertura
+```
+
+`defaultValue` es obligatorio: ya hay filas en `cocheras`, y Postgres no puede agregar una columna `NOT NULL` sin un valor para ellas.
+
+Al final de `db.changelog-master.yaml`:
+
+```yaml
+  - include:
+      file: db/changelog/018-cobertura-cocheras.yaml
+```
+
+**4. DTO de entrada:** en `CocheraRequestDto.java`, debajo de `estado`. Va **sin** `@NotNull`:
+
+```java
+import com.aparcar.api.entity.reserva.CocheraCobertura;
+```
+```java
+    /** Opcional. Al crear, si no viene: DESCUBIERTA. Al editar, si no viene: se mantiene la actual. */
+    private CocheraCobertura cobertura;
+```
+
+**5. DTO de salida:** `CocheraResponseDto.java` es un `record`. Agregar el componente **después de `estado`**, porque el orden importa:
+
+```java
+        CocheraEstado estado,
+        CocheraCobertura cobertura,
+        Boolean disponibleEnFecha
+```
+
+**6. Los lugares que construyen el `CocheraResponseDto`**
+
+Si no los actualizás, no compila. Son **4**: 2 en el código y 2 en los tests.
+
+**a) `CocheraService.java`, método `toResponseDto` (~línea 315):**
+```java
+                cochera.getEstado(),
+                cochera.getCobertura(),
+                disponibleEnFecha);
+```
+
+**b) `ReservaService.java`, armado de `cocheraDto` (~línea 495):**
+```java
+                reserva.getCochera().getEstado(),
+                reserva.getCochera().getCobertura(),
+                null);
+```
+
+**c) `src/test/java/com/aparcar/api/service/VisitanteDiscapacidadTests.java` (~línea 96):**
+
+Import:
+```java
+import com.aparcar.api.entity.reserva.CocheraCobertura;
+```
+Antes:
+```java
+                new CocheraResponseDto(UUID.randomUUID(), "A-01", "Planta Baja", CocheraTipo.AUTO,
+                        CocheraEstado.HABILITADA, null),
+```
+Después:
+```java
+                new CocheraResponseDto(UUID.randomUUID(), "A-01", "Planta Baja", CocheraTipo.AUTO,
+                        CocheraEstado.HABILITADA, CocheraCobertura.DESCUBIERTA, null),
+```
+
+**d) `src/test/java/com/aparcar/api/service/VisitanteServiceTests.java` (~línea 110):**
+
+Import:
+```java
+import com.aparcar.api.entity.reserva.CocheraCobertura;
+```
+Antes:
+```java
+                new CocheraResponseDto(COCHERA_ID, "A-01", "Planta Baja", CocheraTipo.AUTO, CocheraEstado.HABILITADA, null),
+```
+Después:
+```java
+                new CocheraResponseDto(COCHERA_ID, "A-01", "Planta Baja", CocheraTipo.AUTO, CocheraEstado.HABILITADA, CocheraCobertura.DESCUBIERTA, null),
+```
+
+**7. Guardar el valor: `CocheraService.java`**
+
+Hay tres `setEstado(dto.getEstado())`. Agregá un bloque debajo de cada uno.
+
+**`crear` (~línea 59), `crearEnLote` (~línea 95) y `editar` (~línea 203)**, donde `cochera` es nueva:
+```java
+        if (dto.getCobertura() != null) {
+            cochera.setCobertura(dto.getCobertura());
+        }
+```
+
+**`crearPorPlanta`:** no hace falta tocarlo, las cocheras quedan en `DESCUBIERTA`. Si querés elegirla también ahí:
+1. Agregá `private CocheraCobertura cobertura;` en `CocheraAltaPorPlantaDto`.
+2. Calculá la variable arriba, igual que `estado`: `dto.getCobertura() == null ? CocheraCobertura.DESCUBIERTA : dto.getCobertura()`.
+3. Junto a `cochera.setEstado(estado);` (~línea 142), agregá `cochera.setCobertura(cobertura);`.
+
+**8. Reconstruir:** `docker compose up -d --build server` (ver 9.2). En los logs tiene que aparecer el changeset `018-cobertura-cocheras` aplicado y después `Started AparcarApiApplication`.
+
+#### Front: `aparcar-front/app/dashboard-admin/cocheras/CocherasManagement.jsx`
+
+> Sin el paso A, zod descarta el campo y **nunca llega al back**.
+
+**A. Schema `cocheraSchema`:** agregar debajo de `estado`:
+
+```js
+  cobertura: z.enum(["TECHADA", "SEMICUBIERTA", "DESCUBIERTA"], {
+    message: "Selecciona una cobertura",
+  }),
+```
+
+**B. Etiquetas:** agregar debajo de `ESTADO_ESTILOS`:
+
+```js
+const COBERTURA_LABELS = {
+  TECHADA: "Techada",
+  SEMICUBIERTA: "Semicubierta",
+  DESCUBIERTA: "Descubierta",
+};
+```
+
+**C. Valores por defecto:** en **todos** los objetos `{ numero: "", sector: "", tipo: "AUTO", estado: "HABILITADA" }`. Son los `defaultValues` del alta y de la edición, `cancelEditing` y el `reset` después de crear. Reemplazar cada uno por:
+
+```js
+{ numero: "", sector: "", tipo: "AUTO", estado: "HABILITADA", cobertura: "DESCUBIERTA" }
+```
+
+**D. Cargar el valor al editar:** en `resetEdit({...})`, debajo de `estado: cochera.estado,`:
+
+```js
+      cobertura: cochera.cobertura ?? "DESCUBIERTA",
+```
+
+Sin esto, al editar el select arranca en el default y se **pisa** la cobertura guardada.
+
+**E. Select en el alta:** agregar después del `</div>` que cierra el bloque de **Estado** del formulario de alta (~linea 520):
+
+```jsx
+<div>
+  <label htmlFor="cobertura" className={labelClasses}>
+    Cobertura
+  </label>
+  <select id="cobertura" {...registerCreate("cobertura")} className={inputClasses}>
+    {Object.entries(COBERTURA_LABELS).map(([valor, etiqueta]) => (
+      <option key={valor} value={valor}>{etiqueta}</option>
+    ))}
+  </select>
+  {createErrors.cobertura && (
+    <p className="mt-1 text-sm text-red-500">{createErrors.cobertura.message}</p>
+  )}
+</div>
+```
+
+**F. Select en la edición:** agregar después del `</div>` del bloque `edit-estado` (~linea 783):
+
+```jsx
+<div>
+  <label htmlFor="edit-cobertura" className={labelClasses}>
+    Cobertura
+  </label>
+  <select id="edit-cobertura" {...registerEdit("cobertura")} className={inputClasses}>
+    {Object.entries(COBERTURA_LABELS).map(([valor, etiqueta]) => (
+      <option key={valor} value={valor}>{etiqueta}</option>
+    ))}
+  </select>
+</div>
+```
+
+Si la grilla del formulario queda desacomodada, sumar una columna (por ejemplo `lg:grid-cols-5`).
+
+**G. Columna en la tabla:**
+
+Encabezado, después del `<th>` de **Estado** (~linea 886):
+
+```jsx
+<th scope="col" role="columnheader" className="px-6 py-3 text-left text-xs font-semibold uppercase tracking-wider text-ink/50">
+  Cobertura
+</th>
+```
+
+Celda, después del `</td>` de `data-label="Estado"` (~linea 921):
+
+```jsx
+<td role="cell" data-label="Cobertura" className="whitespace-nowrap px-6 py-4 text-sm text-ink/70">
+  {COBERTURA_LABELS[cochera.cobertura] ?? cochera.cobertura}
+</td>
+```
+
+**Si me olvido:**
+- **Un `new CocheraResponseDto` sin actualizar:** el build de Docker falla en `testCompile`.
+- **El changelog fuera de `db/changelog/` o con `.yml`:** el back no arranca, y en el front se ve como "credenciales incorrectas".
+- **El campo en el schema de zod:** el select se ve, pero el valor no llega al back y todo queda `DESCUBIERTA`.
+- **`cobertura` en `resetEdit`:** cada edición pisa la cobertura con el default.
