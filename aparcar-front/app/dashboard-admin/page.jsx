@@ -58,6 +58,10 @@ export default async function DashboardAdminPage() {
             <DashboardIcon name="calendar" />
             <span>Ver reservas</span>
           </Link>
+          <Link href="/dashboard-admin/buscar-patente" className="dashboard-nav-link">
+            <DashboardIcon name="search" />
+            <span>Buscar por patente</span>
+          </Link>
           {esAdmin && (
           <Link href="/dashboard-admin/recurrentes" className="dashboard-nav-link">
             <DashboardIcon name="calendar" />
