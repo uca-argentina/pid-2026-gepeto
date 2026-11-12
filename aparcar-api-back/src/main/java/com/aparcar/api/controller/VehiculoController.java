@@ -65,7 +65,10 @@ public class VehiculoController {
     /**
      * Un visitante solo ve sus propios vehiculos, sin importar que pida: el
      * catalogo completo es cosa del ADMIN, que lo necesita para reservar en
-     * nombre de otro.
+     * nombre de otro. 
+     * A partir de exactamente este GetMapping se devuelve la lista de todos lo vehiculos exclusivamente
+     * para el ADMIN por lo que la lista de vehiculos podria llegar hasta lo que hice del frontend
+     * sin problemas. 
      */
     @GetMapping
     public ResponseEntity<List<VehiculoResponseDto>> listar(

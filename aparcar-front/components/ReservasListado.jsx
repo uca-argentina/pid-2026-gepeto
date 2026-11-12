@@ -15,6 +15,9 @@ import {
 
 const POR_PAGINA = 10;
 
+const inputClasses =
+  "ui-input";
+
 /** Ingreso y egreso registrados en la puerta, en una línea. */
 const textoAcceso = (acceso) => {
   if (!acceso?.ingresoAt) return null;
@@ -27,6 +30,14 @@ const textoAcceso = (acceso) => {
 /**
  * Presentación compartida; solo el modo admin muestra ocupantes y auditoría.
  * `onVerCodigo`, si viene, agrega "Ver QR" a las reservas con código vigente.
+ * 
+ * Ademas agregar algo asi aca para encontrar los vehiculos con determinada patente
+ * 
+ *   const vehiculoEncontrado = useMemo(() => {
+    const normalizada = patente?.trim().toUpperCase();
+    if (!normalizada) return null;
+    return vehiculos.find((v) => v.patente === normalizada) || null;
+  }, [patente, vehiculos]);
  */
 export default function ReservasListado({
   modo = "user", reservas, cargando, error, onReintentar, onCancelar, onVerCodigo,
@@ -39,10 +50,11 @@ export default function ReservasListado({
   const resultadosRef = useRef(null);
   const [filtro, setFiltro] = useState("CONFIRMADA");
   const [orden, setOrden] = useState("INICIO_ASC");
+  const [filtroPatente, setFiltroPatente] = useState(1); // Aca deberia ir implementada una logica que filtre por patente. El backend ya tiene un Endpoint de get por lo tanto solo se podria filtrar por frontend y listo. 
   const [pagina, setPagina] = useState(1);
   const [cancelando, setCancelando] = useState(null);
   const { visibles, cantidades } = useMemo(
-    () => seleccionarReservas(reservas, filtro, orden), [reservas, filtro, orden]
+    () => seleccionarReservas(reservas, filtro, orden, filtroPatente), [reservas, filtro, orden, filtroPatente]
   );
   // Una cancelación o recarga puede dejar vacía la última página.
   const paginas = Math.max(1, Math.ceil(visibles.length / POR_PAGINA));
@@ -105,6 +117,20 @@ export default function ReservasListado({
                 {ORDENES_RESERVAS.map(({ clave, etiqueta }) => <option key={clave} value={clave}>{etiqueta}</option>)}
               </select>
             </div>
+
+            <div>
+              <label className="ui-label" htmlFor={"reserva-patente"}>Buscar por patente:</label>
+              <input
+                      id="reserva-patente"
+                      list="patentes-registradas"
+                      placeholder="ABC123 / AB123CD"
+                      className={`${inputClasses} uppercase`}
+                      onChange={(e) => setFiltroPatente(e.target.value)}
+                />
+              
+            </div>
+            
+
             <p className={styles.ayuda}>
               {filtro === "CONFIRMADA" ? "Activas: con el vehículo adentro y próximas reservas."
                 : filtro === "LISTA_ESPERA" ? "Pendientes de una cochera compatible. Se confirman automáticamente si se libera mientras la franja siga vigente."
